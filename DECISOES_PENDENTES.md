@@ -20,13 +20,15 @@ preenchido manualmente, sem integração real.
 [`PESQUISA_ENTIDADE_REGISTRADORA.md`](PESQUISA_ENTIDADE_REGISTRADORA.md)
 para o levantamento completo com fontes:**
 
-- **CERC — recomendação.** Único par (junto com B3) citado por
-  fornecedores independentes de software para ESC como registradora padrão
-  do segmento; tem categoria "Factoring & ESC" nomeada; API REST
-  documentada publicamente.
-- **B3 Registradora — plano B**, aparece emparelhada com CERC em toda
-  literatura de mercado sobre ESC, mas não foi pesquisada em detalhe (fora
-  do escopo da pesquisa original).
+- **CERC e B3 Registradora — as duas finalistas**, empatadas na pesquisa
+  web, cada uma com um perfil de trade-off diferente:
+  - CERC: onboarding mais leve, prazo de integração estimado menor
+    (3–6 semanas), vertical "Factoring & ESC" nomeada no site.
+  - B3: pedigree histórico mais forte (**processou as primeiras operações
+    de ESC do mercado, em setembro de 2019**), apetite comercial ativo e
+    declarado por fintechs de crédito pequenas/médias, governança
+    institucional mais robusta — mas processo de credenciamento
+    formalmente mais pesado (comitê de risco, auditoria pré-operacional).
 - **Núclea (ex-CIP)** — tecnicamente capaz, mas nenhum caso de uso ESC
   documentado publicamente; vale pergunta comercial direta antes de
   descartar.
@@ -35,9 +37,10 @@ para o levantamento completo com fontes:**
   de crédito. Recomenda-se remover das candidatas salvo confirmação
   comercial em contrário.
 
-**Decisão necessária:** confirmação comercial direta com CERC (tarifário
-oficial, prazo real de integração, requisito de porte mínimo) antes de
-fechar — a pesquisa web deu direção, não substitui contato comercial.
+**Decisão necessária:** conversa comercial em paralelo com CERC e B3
+(tarifário oficial, prazo real de integração, requisito de porte mínimo/
+garantia) antes de fechar — a pesquisa web reduziu de 3 candidatas a 2
+finalistas, mas não substitui contato comercial direto.
 
 **Depois da decisão:** implementar `app/routers/contratos.py` — geração de
 CCB, chamada à API da entidade, callback de confirmação que preenche
