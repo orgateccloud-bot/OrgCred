@@ -20,8 +20,17 @@ preenchido manualmente, sem integração real.
 [`PESQUISA_ENTIDADE_REGISTRADORA.md`](PESQUISA_ENTIDADE_REGISTRADORA.md)
 para o levantamento completo com fontes:**
 
-- **CERC e B3 Registradora — as duas finalistas**, empatadas na pesquisa
-  web, cada uma com um perfil de trade-off diferente:
+- **SPC Grafeno — recomendação líder** após pesquisa aprofundada
+  (2026-07-12): é a **única candidata com parceria comercial oficial e
+  nomeada com a ABRAFESC** (associação nacional de ESC), com desconto para
+  membros que escala com adoção setorial. Processa ~50% de todas as CCBs
+  registradas no Brasil (maior fatia entre as 5 candidatas pesquisadas) e
+  oferece emissão de CCB sem mensalidade. Adesão via e-mail direto
+  (`comercial@abrafesc.com.br`). Fragilidade técnica encontrada: a API de
+  Crédito da Grafeno **ainda não suporta webhooks** — exigiria polling
+  para o callback de `registro_entidade_ref`.
+- **CERC e B3 Registradora — finalistas fortes**, cada uma com um perfil
+  de trade-off diferente:
   - CERC: onboarding mais leve, prazo de integração estimado menor
     (3–6 semanas), vertical "Factoring & ESC" nomeada no site.
   - B3: pedigree histórico mais forte (**processou as primeiras operações
@@ -31,8 +40,8 @@ para o levantamento completo com fontes:**
     formalmente mais pesado (comitê de risco, auditoria pré-operacional).
 - **Núclea (ex-CIP)** — pesquisada em profundidade em rodada dedicada:
   tecnicamente capaz (registra CCB e credencia explicitamente factoring
-  companies, segmento próximo em porte à ESC) mas é a única das 3
-  candidatas originais sem nenhum sinal público — direto ou indireto —
+  companies, segmento próximo em porte à ESC) mas é a única das 5
+  candidatas pesquisadas sem nenhum sinal público — direto ou indireto —
   de atender especificamente o segmento ESC; documentação técnica
   detalhada está bloqueada publicamente (erro 403 em todos os manuais).
   Não descartada, mas não é aposta natural sem contato comercial.
@@ -41,10 +50,12 @@ para o levantamento completo com fontes:**
   de crédito. Recomenda-se remover das candidatas salvo confirmação
   comercial em contrário.
 
-**Decisão necessária:** conversa comercial em paralelo com CERC e B3
-(tarifário oficial, prazo real de integração, requisito de porte mínimo/
-garantia) antes de fechar — a pesquisa web reduziu de 3 candidatas a 2
-finalistas, mas não substitui contato comercial direto.
+**Decisão necessária:** conversa comercial em paralelo com SPC Grafeno
+(via ABRAFESC), CERC e B3 (tarifário oficial, prazo real de integração,
+requisito de porte mínimo/garantia, e para a SPC Grafeno especificamente
+o roadmap de suporte a webhook) antes de fechar — a pesquisa web reduziu
+de 5 candidatas a 3 finalistas com sinal de adequação confirmado, mas não
+substitui contato comercial direto.
 
 **Depois da decisão:** implementar `app/routers/contratos.py` — geração de
 CCB, chamada à API da entidade, callback de confirmação que preenche
