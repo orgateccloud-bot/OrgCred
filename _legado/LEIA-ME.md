@@ -28,3 +28,27 @@ diff _legado/test_concorrencia.py tests/test_concorrencia.py
 
 Se os diffs confirmarem que são redundantes, esta pasta pode ser removida com
 segurança em uma limpeza futura.
+
+---
+
+## Originais pré-modernização (arquivados em 2026-07-12, sessão de Fases 0-7)
+
+`capital_engine.py.pre-modernizacao`, `config.py.pre-modernizacao` e
+`operacoes.py.pre-modernizacao` são os três arquivos Python que existiam na
+raiz do projeto **antes** da reconstituição da Fase 0 — a versão que a
+revisão de 2026-07-11 (`REVISAO_2026-07-11.md`) analisou e testou pela
+primeira vez contra Postgres real.
+
+Eles **divergem** das versões atuais em `app/`:
+- `capital_engine.py` → [`app/capital_engine.py`](../app/capital_engine.py):
+  ganhou hierarquia de exceções (`app/core/exceptions.py`), mapeamento de
+  OC005, métricas Prometheus, propagação de `usuario_id` (migration 004).
+- `config.py` → [`app/core/config.py`](../app/core/config.py): migrou de
+  `os.environ` manual para `pydantic-settings`, com validação no startup em
+  vez de no import do módulo.
+- `operacoes.py` → [`app/routers/operacoes.py`](../app/routers/operacoes.py):
+  ganhou autenticação JWT obrigatória, resposta de erro estruturada com
+  código SQLSTATE, rate limiting.
+
+Mantidos aqui só como referência histórica do estado antes da modernização
+— não são a fonte de verdade e não devem ser reintroduzidos na raiz.
