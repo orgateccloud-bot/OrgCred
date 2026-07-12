@@ -25,6 +25,7 @@ MIGRATIONS = [
     "002_usuarios_papeis",
     "003_hardening_capital",
     "004_auditoria_autor",
+    "005_ledger_imutavel",
 ]
 
 
