@@ -16,14 +16,28 @@ ativação. O sistema já **enforcement** isso — `operacao_credito.registro_en
 é obrigatório para ativar (SQLSTATE OC004) — mas hoje esse campo é
 preenchido manualmente, sem integração real.
 
-**Candidatas identificadas (não confirmadas, levantamento não-exaustivo):**
-- CERC
-- Núclea (ex-CIP)
-- TAG
+**Candidatas pesquisadas em detalhe (2026-07-12) — ver
+[`PESQUISA_ENTIDADE_REGISTRADORA.md`](PESQUISA_ENTIDADE_REGISTRADORA.md)
+para o levantamento completo com fontes:**
 
-**Decisão necessária:** qual entidade, condições comerciais (custo por
-registro, SLA de integração), e se a API dela é REST/webhook (compatível
-com o padrão já usado no resto do sistema) ou exige outro protocolo.
+- **CERC — recomendação.** Único par (junto com B3) citado por
+  fornecedores independentes de software para ESC como registradora padrão
+  do segmento; tem categoria "Factoring & ESC" nomeada; API REST
+  documentada publicamente.
+- **B3 Registradora — plano B**, aparece emparelhada com CERC em toda
+  literatura de mercado sobre ESC, mas não foi pesquisada em detalhe (fora
+  do escopo da pesquisa original).
+- **Núclea (ex-CIP)** — tecnicamente capaz, mas nenhum caso de uso ESC
+  documentado publicamente; vale pergunta comercial direta antes de
+  descartar.
+- **TAG** — **provavelmente não serve**: produto é especificamente
+  recebíveis de arranjo de pagamento (cartão), não registro de CCB/operação
+  de crédito. Recomenda-se remover das candidatas salvo confirmação
+  comercial em contrário.
+
+**Decisão necessária:** confirmação comercial direta com CERC (tarifário
+oficial, prazo real de integração, requisito de porte mínimo) antes de
+fechar — a pesquisa web deu direção, não substitui contato comercial.
 
 **Depois da decisão:** implementar `app/routers/contratos.py` — geração de
 CCB, chamada à API da entidade, callback de confirmação que preenche
