@@ -27,7 +27,7 @@ from app.core.exceptions import (
 from app.core.logging import configure_logging, get_logger
 from app.core.metrics import registrar_bloqueio, registrar_falha_auth
 from app.db import engine
-from app.routers import operacoes
+from app.routers import capital, cobranca, compliance, contratos, fiscal, operacoes, tomadores
 
 
 # Configurar logging estruturado
@@ -79,7 +79,14 @@ app.add_middleware(
 )
 
 # Registra routers
+app.include_router(capital.router)
 app.include_router(operacoes.router)
+# Stubs — ver docstring de cada módulo para o bloqueador ou escopo pendente
+app.include_router(tomadores.router)
+app.include_router(contratos.router)
+app.include_router(fiscal.router)
+app.include_router(compliance.router)
+app.include_router(cobranca.router)
 
 
 @app.get("/health")
