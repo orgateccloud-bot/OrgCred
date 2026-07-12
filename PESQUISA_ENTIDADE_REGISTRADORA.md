@@ -10,35 +10,50 @@ substitui** confirmação comercial direta com a entidade escolhida
 
 ## Resumo executivo
 
-**SPC Grafeno passa a ser a recomendação mais forte** desde a rodada de
-pesquisa de 2026-07-12: é a **única candidata com parceria comercial
-oficial direta com a ABRAFESC** (a própria associação da indústria de
-ESC) — sinal de adequação ao caso de uso mais forte do que qualquer
-citação de terceiro encontrada para CERC ou B3. Além disso, processa
-**~50% de todas as CCBs registradas no Brasil** (maior fatia de mercado
-entre as 5 candidatas pesquisadas) e oferece emissão de CCB **sem
-mensalidade**. **CERC e B3 seguem como finalistas fortes**, cada uma com
-seu próprio trade-off (ver seção dedicada). **TAG não é adequada**: produto
-é especificamente recebíveis de cartão. **Núclea** é tecnicamente capaz
-mas sem nenhum sinal de adequação ao segmento ESC encontrado.
+**CRDC e SPC Grafeno empatam como as recomendações mais fortes** após a
+rodada de pesquisa de 2026-07-12 — cada uma com o tipo de evidência mais
+direta possível, de naturezas diferentes:
 
-**Recomendação prática:** abrir conversa comercial com as três (SPC
-Grafeno, CERC, B3) em paralelo, mas dar prioridade ao primeiro contato à
-**SPC Grafeno via ABRAFESC** (`comercial@abrafesc.com.br`) — o caminho de
-entrada é mais direto e o desconto do parceiro escala com adoção setorial,
-o que pode ser vantajoso se outras ESCs da região também aderirem.
+- **CRDC** tem **"Contratos ESC" como categoria de ativo nomeada dentro
+  do próprio sistema de registro** — não é uma parceria comercial externa,
+  é o produto em si reconhecendo ESC como tipo de operação. Tem também
+  **integração nativa com sistemas de ESC** (atualização automática de
+  saldo devedor e parcelas vencidas) e parceria com a Stand, fornecedor de
+  software especializado em ESC/factoring/FIDC. É citada, ao lado da CERC
+  — não da B3 — como o par padrão do segmento por pelo menos duas fontes
+  independentes (Stand, SINFAC-SP).
+- **SPC Grafeno** tem a **parceria comercial oficial e nomeada com a
+  ABRAFESC** (associação da indústria de ESC), processa ~50% de todas as
+  CCBs registradas no Brasil, e oferece emissão sem mensalidade.
+
+**CERC segue como terceira finalista forte** (citada por praticamente
+todas as fontes, ao lado tanto de CRDC quanto de B3/Núclea, tornando-a a
+opção mais consistentemente mencionada em todo o levantamento). **B3**
+tem o pedigree histórico mais antigo (primeira ESC registrada, 2019) mas
+processo de credenciamento mais pesado. **TAG não é adequada**. **Núclea**
+é tecnicamente capaz mas sem nenhum sinal de adequação ao ESC.
+
+**Recomendação prática:** abrir conversa comercial em paralelo com CRDC,
+SPC Grafeno e CERC — as três com evidência de produto/parceria mais
+direta — mantendo B3 como alternativa institucional caso as três primeiras
+não confirmem boas condições. Vale nota: a CRDC está no meio de uma
+disputa antitruste (o CADE recomendou reprovar a compra de 60% da CRDC
+pela B3, decisão final pendente) — hoje a CRDC segue 100%
+independente/controlada pela ACSP, o que é positivo para uma ESC pequena
+que prefira uma contraparte não dominada por um player maior, mas vale
+acompanhar o desfecho.
 
 ---
 
-## As 5 registradoras autorizadas pelo Banco Central (panorama)
+## As 6 registradoras autorizadas pelo Banco Central (panorama)
 
-Cinco entidades estão autorizadas pelo Banco Central para registro de
-ativos financeiros/recebíveis relevantes a este caso de uso: **CERC**,
-**B3 Registradora**, **Núclea (ex-CIP)**, **TAG Infraestrutura** e **SPC
-Grafeno** (joint venture SPC Brasil + Grafeno, autorizada em novembro de
-2023 — a mais recente das cinco). Uma sexta, **CRDC**, também aparece em
-levantamentos de mercado mas não foi pesquisada em detalhe (fora do
-escopo desta comparação, que cobriu as cinco citadas).
+Seis entidades foram identificadas como autorizadas pelo Banco Central
+para registro de ativos financeiros/recebíveis relevantes a este caso de
+uso: **CRDC**, **CERC**, **B3 Registradora**, **Núclea (ex-CIP)**, **TAG
+Infraestrutura** e **SPC Grafeno** (joint venture SPC Brasil + Grafeno,
+autorizada em novembro de 2023 — a mais recente das seis). Todas as seis
+foram agora pesquisadas em algum nível de detalhe — CRDC e SPC Grafeno
+em rodadas dedicadas, adicionais ao levantamento original.
 
 Importante: essas entidades nasceram, em sua maioria, para registrar
 **recebíveis de cartão de crédito/débito** (Resolução CMN 4.734, Circular
@@ -46,29 +61,29 @@ BACEN 3.952). O registro de operações de ESC (empréstimo, financiamento,
 desconto de título — não recebíveis de arranjo de pagamento) é um uso da
 mesma base legal (Art. 28, Lei 12.810/2013), mas nem toda registradora
 expandiu seu produto para cobrir isso — TAG é o exemplo claro de quem não
-expandiu; SPC Grafeno, CERC e B3 expandiram e têm evidência de uso por
-ESC; Núclea tem o produto mas sem evidência de uso por ESC.
+expandiu; CRDC, SPC Grafeno, CERC e B3 expandiram e têm evidência de uso
+por ESC; Núclea tem o produto mas sem evidência de uso por ESC.
 
 ---
 
 ## Comparação detalhada
 
-| Critério | **SPC Grafeno** | **CERC** | **B3 Registradora** | **Núclea (ex-CIP)** | **TAG Infraestrutura** |
-|---|---|---|---|---|---|
-| **Fundação** | Joint venture SPC Brasil + Grafeno; autorizada pelo BC em nov/2023 (pedido levou 4 anos até aprovação) | 2015 | B3 (bolsa) é histórica; registradora de recebíveis é vertical mais recente | CIP existe há 20+ anos; rebatizada Núclea | 2018/2020 |
-| **Controlador** | 50/50 entre SPC Brasil (bureau de crédito) e Grafeno (fintech de infra bancária) | Independente (fintech de infra) | B3 S.A. — bolsa de valores, maior instituição de mercado de capitais do Brasil | Consórcio de instituições financeiras | Grupo Stone Co. |
-| **Produto para CCB/empréstimo/ESC** | ✅ RegistrAtivos cobre duplicatas, notas promissórias e **CCB** explicitamente; API de Crédito da Grafeno emite CCB/CPR/Nota Comercial com simulação, parcelas e amortização | ✅ Categoria explícita "Financeiros" (CCBs, contrato de crédito, mútuos, títulos bancários); site lista "Factoring & ESC" como solução nomeada | ✅ Produto de registro de CCB via plataforma "Balcão" (2 variantes: CCB-NoMe e CCB-Plataforma Balcão) — registro, alteração, consulta, conciliação, gestão de parcelas | ✅ Registra CCB, CCE, NCE, CPR e contratos de crédito genéricos via C3 Registradora — produto existe, mas sem vertical "ESC" nomeada | ❌ Não — produto é especificamente recebíveis de arranjo de pagamento (cartão) |
-| **Histórico/parceria específica com ESC** | 🏆 **Parceria comercial oficial e direta com a ABRAFESC** (associação da indústria de ESC) — desconto para membros, escalando com adoção setorial; sinal mais direto de todas as candidatas | Citada por fornecedores terceiros como parceira padrão | ✅ **Recebeu os primeiros registros de operação de ESC do mercado, em setembro de 2019** — meses após a LC 167/2019 entrar em vigor (abril/2019) | ❌ Nenhum caso de uso ESC encontrado, mesmo em pesquisa dedicada | Nenhum caso de uso ESC encontrado |
-| **Market share (CCB/duplicatas)** | 🏆 **~50% de todas as CCBs registradas no Brasil e ~40% das duplicatas**, R$ 250+ bi transacionados em 2025 — maior fatia de mercado entre as 5 candidatas pesquisadas | Não quantificado nesta pesquisa | Não quantificado nesta pesquisa | Não quantificado nesta pesquisa | Não aplicável ao produto de CCB |
-| **Estratégia comercial atual** | Parceria setorial ativa via associação (ABRAFESC); modelo de desconto coletivo incentiva adoção em massa pelo setor | Foco declarado em fintechs de crédito e digitalização de recebíveis | Superintendente da B3 declarou publicamente que **o primeiro esforço da área é atuar junto a fintechs de crédito e bancos pequenos e médios** | Programa "FAVO" de inovação aberta com startups — mas é parceria de co-desenvolvimento de produto, **não** canal de credenciamento de pequenas instituições como clientes do registro | Foco em recebíveis de cartão (Stone/adquirentes) |
-| **Uso documentado por terceiros em software/associação ESC** | ✅✅ **Confirmação de primeira mão pela própria associação setorial (ABRAFESC)** — mais forte que citação de fornecedor terceiro | ✅ Citada por 3 fornecedores independentes (APPESC/Decisão Sistemas, Fomenti, Stand) como padrão do segmento, ao lado da B3 | ✅ Mesma citação — aparece emparelhada com CERC nos mesmos 3 fornecedores | ❌ Nenhum dos 3 fornecedores especializados em ESC cita Núclea | ❌ Nenhum caso de uso ESC encontrado em fontes independentes |
-| **Tipos de participante elegíveis** | Explicitamente: instituições financeiras (bancos, fintechs), **sociedades de crédito**, PMEs emissoras de CCB, credores diversificando carteira | Não detalhado com a mesma granularidade nesta pesquisa | Participantes de mercado de capitais + fintechs de crédito (estratégia recente) | Explicitamente: bancos, credenciadoras, fintechs, **factoring companies**, corretoras, gestores de investimento | Credenciadoras/adquirentes de cartão |
-| **Certificações / governança** | 100% cloud AWS; combina base de dados de crédito do SPC Brasil (décadas de histórico) com infra bancária da Grafeno | ISO 27001, 27017, 27018 | Instituição sob regulação direta e intensa do BACEN/CVM como bolsa; "alto padrão de governança institucional" | ISO 27001, 22301 | Não encontrado nesta pesquisa |
-| **Integração técnica** | API de Crédito da Grafeno: REST, emissão/simulação/parcelas/amortização, sandbox de testes — **webhooks ainda não suportados** (requer polling) | API REST documentada (Apiary/CERC Integração Agente de Registro); ERP com certificado digital envia título via API padronizada | REST + Swagger/OpenAPI, 54 APIs no portal "Balcão", sandbox gratuito — **mas acesso é exclusivamente B2B**, requer credenciais próprias (CAU) | API, arquivo ou portal — documentação técnica detalhada (manuais MAPX) **bloqueada por erro 403** em acesso público | Documentação técnica existe mas focada em recebíveis de cartão |
-| **Processo de onboarding** | Via ABRAFESC: email direto (`comercial@abrafesc.com.br`) com CNPJ e contato — caminho mais simples encontrado entre as 5 | Adesão contratual mais leve (perfil fintech) | **Processo formal de credenciamento**: análise reputacional/jurídica/econômica + auditoria pré-operacional pela BSM + CTRC + possível depósito de garantia | Não detalhado — nenhuma evidência de requisito mínimo de porte/volume, mas também nenhuma confirmação de ausência dele | Não aplicável |
-| **Prazo de integração estimado** | Não encontrado prazo específico, mas onboarding via associação setorial sugere processo simplificado | 3 a 6 semanas (fonte: mercado/Celcoin, não confirmado diretamente) | Não encontrado — processo de credenciamento formal sugere ciclo mais longo que o da CERC | Não encontrado | Não aplicável |
-| **Custo/modelo de cobrança** | 🏆 Emissão de CCB **sem mensalidade** ("sem contratar conta ou assumir taxas mensais"); desconto adicional via parceria ABRAFESC escalando com volume setorial — modelo comercial diferente das demais | R$ 0,30 a R$ 1,50/título + R$ 0,15–0,80/evento — faixa de mercado, **não confirmada oficialmente** | R$ 0,80 a R$ 1,50/título + R$ 0,30–0,80/evento, tabela negociada acima de 50 mil títulos/mês — **também não confirmada oficialmente** | Não encontrado nesta pesquisa | Não aplicável |
-| **Posição de mercado para ESC** | 🏆 **Maior sinal de adequação confirmada** (parceria direta com a associação setorial) + maior market share de CCB | Registradora de referência do segmento, ágil para integração pequena | **Pioneira histórica do segmento** + prioridade comercial declarada para fintechs pequenas, mas processo de admissão mais formal | Capaz tecnicamente, mas sem nenhum sinal público de atender o segmento ESC | Fora do escopo — produto não serve o caso de uso |
+| Critério | **CRDC** | **SPC Grafeno** | **CERC** | **B3 Registradora** | **Núclea (ex-CIP)** | **TAG Infraestrutura** |
+|---|---|---|---|---|---|---|
+| **Fundação** | 2014, operacional desde 2016; controlada majoritariamente pela ACSP desde 2015; atuação nacional desde out/2019 | Joint venture SPC Brasil + Grafeno; autorizada pelo BC em nov/2023 (pedido levou 4 anos até aprovação) | 2015 | B3 (bolsa) é histórica; registradora de recebíveis é vertical mais recente | CIP existe há 20+ anos; rebatizada Núclea | 2018/2020 |
+| **Controlador** | ACSP (Associação Comercial de São Paulo), 100% independente hoje — venda de 60% à B3 foi **recomendada para reprovação pelo CADE** (decisão final pendente) | 50/50 entre SPC Brasil (bureau de crédito) e Grafeno (fintech de infra bancária) | Independente (fintech de infra) | B3 S.A. — bolsa de valores, maior instituição de mercado de capitais do Brasil | Consórcio de instituições financeiras | Grupo Stone Co. |
+| **Produto para CCB/empréstimo/ESC** | 🏆 **"Contratos ESC" é categoria de ativo NOMEADA dentro do próprio sistema de registro** — não é adaptação, é tipo de ativo reconhecido nativamente, ao lado de CCB, duplicata, CPR, nota promissória | ✅ RegistrAtivos cobre duplicatas, notas promissórias e **CCB** explicitamente; API de Crédito da Grafeno emite CCB/CPR/Nota Comercial com simulação, parcelas e amortização | ✅ Categoria explícita "Financeiros" (CCBs, contrato de crédito, mútuos, títulos bancários); site lista "Factoring & ESC" como solução nomeada | ✅ Produto de registro de CCB via plataforma "Balcão" (2 variantes: CCB-NoMe e CCB-Plataforma Balcão) — registro, alteração, consulta, conciliação, gestão de parcelas | ✅ Registra CCB, CCE, NCE, CPR e contratos de crédito genéricos via C3 Registradora — produto existe, mas sem vertical "ESC" nomeada | ❌ Não — produto é especificamente recebíveis de arranjo de pagamento (cartão) |
+| **Histórico/parceria específica com ESC** | 🏆 **Integração nativa com sistemas de ESC**, com atualização automática de saldo devedor e parcelas vencidas — resolveria diretamente a limitação de "amortização parcial não libera capital" hoje documentada em `DECISOES_PENDENTES.md`. Parceria ativa com a Stand (software especializado em ESC/factoring/FIDC) para consulta prévia de registro no processo de crédito | 🏆 **Parceria comercial oficial e direta com a ABRAFESC** (associação da indústria de ESC) — desconto para membros, escalando com adoção setorial | Citada por fornecedores terceiros como parceira padrão | ✅ **Recebeu os primeiros registros de operação de ESC do mercado, em setembro de 2019** — meses após a LC 167/2019 entrar em vigor (abril/2019) | ❌ Nenhum caso de uso ESC encontrado, mesmo em pesquisa dedicada | Nenhum caso de uso ESC encontrado |
+| **Market share (CCB/duplicatas)** | Não quantificado nesta pesquisa | 🏆 **~50% de todas as CCBs registradas no Brasil e ~40% das duplicatas**, R$ 250+ bi transacionados em 2025 — maior fatia de mercado entre as 6 candidatas pesquisadas | Não quantificado nesta pesquisa | Não quantificado nesta pesquisa | Não quantificado nesta pesquisa | Não aplicável ao produto de CCB |
+| **Estratégia comercial atual** | IOSMF de nicho voltada a bancos, FIDCs, factoring, fintechs, securitizadoras e ESC — posicionamento explícito no público de porte pequeno/médio desde a origem | Parceria setorial ativa via associação (ABRAFESC); modelo de desconto coletivo incentiva adoção em massa pelo setor | Foco declarado em fintechs de crédito e digitalização de recebíveis | Superintendente da B3 declarou publicamente que **o primeiro esforço da área é atuar junto a fintechs de crédito e bancos pequenos e médios** | Programa "FAVO" de inovação aberta com startups — mas é parceria de co-desenvolvimento de produto, **não** canal de credenciamento de pequenas instituições como clientes do registro | Foco em recebíveis de cartão (Stone/adquirentes) |
+| **Uso documentado por terceiros em software/associação ESC** | 🏆 Citada por **pelo menos 2 fontes independentes** (Stand, SINFAC-SP) — a Stand cita explicitamente **"CRDC e CERC"**, não "B3 e CERC", como o par padrão do segmento (correção de uma inferência anterior desta pesquisa) | ✅✅ **Confirmação de primeira mão pela própria associação setorial (ABRAFESC)** — mais forte que citação de fornecedor terceiro | ✅ Citada por múltiplos fornecedores independentes como padrão do segmento — a candidata mais consistentemente mencionada em toda a pesquisa (ao lado tanto de CRDC quanto de B3, dependendo da fonte) | ✅ Citada por Decisão Sistemas/Fomenti ao lado da CERC — mas a Stand, especificamente, cita CRDC em vez de B3 nesse papel | ❌ Nenhuma fonte especializada em ESC cita Núclea | ❌ Nenhum caso de uso ESC encontrado em fontes independentes |
+| **Tipos de participante elegíveis** | Explicitamente: Bancos, FIDCs, Factoring, Fintechs, Securitizadoras, **Empresas Simples de Crédito (ESC)** e empresários buscando crédito com base em recebíveis — ESC nomeada literalmente na lista de público-alvo | Explicitamente: instituições financeiras (bancos, fintechs), **sociedades de crédito**, PMEs emissoras de CCB, credores diversificando carteira | Não detalhado com a mesma granularidade nesta pesquisa | Participantes de mercado de capitais + fintechs de crédito (estratégia recente) | Explicitamente: bancos, credenciadoras, fintechs, **factoring companies**, corretoras, gestores de investimento | Credenciadoras/adquirentes de cartão |
+| **Certificações / governança** | IOSMF avaliada pelo Bacen segundo os Princípios PFMI (BIS/IOSCO) — mesmo padrão internacional aplicado a infraestruturas de mercado sistemicamente relevantes | 100% cloud AWS; combina base de dados de crédito do SPC Brasil (décadas de histórico) com infra bancária da Grafeno | ISO 27001, 27017, 27018 | Instituição sob regulação direta e intensa do BACEN/CVM como bolsa; "alto padrão de governança institucional" | ISO 27001, 22301 | Não encontrado nesta pesquisa |
+| **Integração técnica** | API REST/JSON para registro de ativos financeiros; layout específico definido por participante em fase de onboarding; gera NUR (Número Único de Registro) por ativo | API de Crédito da Grafeno: REST, emissão/simulação/parcelas/amortização, sandbox de testes — **webhooks ainda não suportados** (requer polling) | API REST documentada (Apiary/CERC Integração Agente de Registro); ERP com certificado digital envia título via API padronizada | REST + Swagger/OpenAPI, 54 APIs no portal "Balcão", sandbox gratuito — **mas acesso é exclusivamente B2B**, requer credenciais próprias (CAU) | API, arquivo ou portal — documentação técnica detalhada (manuais MAPX) **bloqueada por erro 403** em acesso público | Documentação técnica existe mas focada em recebíveis de cartão |
+| **Processo de onboarding** | Manuais de acesso/integração públicos (Portal de Registro CRDC); site institucional (`crdc.com.br`) **bloqueado por erro 403** em várias tentativas de acesso direto, mas documentação técnica (PDFs de manual) está indexada e acessível via busca | Via ABRAFESC: email direto (`comercial@abrafesc.com.br`) com CNPJ e contato — caminho mais simples encontrado entre as 6 | Adesão contratual mais leve (perfil fintech) | **Processo formal de credenciamento**: análise reputacional/jurídica/econômica + auditoria pré-operacional pela BSM + CTRC + possível depósito de garantia | Não detalhado — nenhuma evidência de requisito mínimo de porte/volume, mas também nenhuma confirmação de ausência dele | Não aplicável |
+| **Prazo de integração estimado** | Não encontrado nesta pesquisa | Não encontrado prazo específico, mas onboarding via associação setorial sugere processo simplificado | 3 a 6 semanas (fonte: mercado/Celcoin, não confirmado diretamente) | Não encontrado — processo de credenciamento formal sugere ciclo mais longo que o da CERC | Não encontrado | Não aplicável |
+| **Custo/modelo de cobrança** | Tabela de preços existe (`CRDC-Tabela-de-Preco-SRO`) mas **não foi acessível publicamente** (erro 403) — cobrança segue proposta comercial individual por participante | 🏆 Emissão de CCB **sem mensalidade** ("sem contratar conta ou assumir taxas mensais"); desconto adicional via parceria ABRAFESC escalando com volume setorial — modelo comercial diferente das demais | R$ 0,30 a R$ 1,50/título + R$ 0,15–0,80/evento — faixa de mercado, **não confirmada oficialmente** | R$ 0,80 a R$ 1,50/título + R$ 0,30–0,80/evento, tabela negociada acima de 50 mil títulos/mês — **também não confirmada oficialmente** | Não encontrado nesta pesquisa | Não aplicável |
+| **Posição de mercado para ESC** | 🏆 **Único produto com "Contratos ESC" nomeado nativamente** + integração automática de saldo devedor — evidência de produto mais direta de todas | 🏆 **Maior sinal de adequação confirmada** (parceria direta com a associação setorial) + maior market share de CCB | Registradora de referência do segmento, mencionada de forma mais consistente em toda a pesquisa | **Pioneira histórica do segmento** + prioridade comercial declarada para fintechs pequenas, mas processo de admissão mais formal | Capaz tecnicamente, mas sem nenhum sinal público de atender o segmento ESC | Fora do escopo — produto não serve o caso de uso |
 
 ---
 
@@ -87,6 +102,91 @@ recebíveis de cartão.
 **Conclusão:** TAG deveria ser removida das candidatas, a menos que uma
 confirmação comercial direta revele um produto não descoberto nesta
 pesquisa.
+
+## CRDC em detalhe (pesquisa aprofundada 2026-07-12)
+
+Rodada dedicada de pesquisa, a pedido. Veredito: **evidência de produto
+mais direta de todas as seis candidatas** — não uma parceria comercial
+externa (como SPC Grafeno/ABRAFESC) nem uma citação de terceiro (como
+CERC/B3), mas o próprio sistema de registro reconhecendo "ESC" como tipo
+de ativo nativo.
+
+### O que a pesquisa confirmou
+
+1. **"Contratos ESC" é uma categoria de ativo nomeada dentro do sistema
+   de registro da CRDC**, ao lado de CCB, duplicata, CPR e nota
+   promissória — confirmado em múltiplas fontes independentes descrevendo
+   o catálogo de produtos da CRDC. Isso é qualitativamente diferente de
+   "produto genérico de CCB que também serve para ESC": é o tipo de
+   operação reconhecido nativamente pelo sistema.
+2. **Integração nativa com sistemas de ESC**, incluindo "atualização
+   automática de saldo devedor de contratos e parcelas vencidas" — a
+   fonte descreve exatamente a funcionalidade que resolveria, do lado da
+   registradora, a limitação hoje documentada em `DECISOES_PENDENTES.md`
+   ("amortização parcial não libera capital" — interpretação conservadora
+   porque o OrgCred usa `valor_principal` integral até liquidação). Se a
+   CRDC já rastreia saldo devedor automaticamente, isso pode simplificar
+   uma futura mudança de interpretação, caso a decisão jurídico-contábil
+   pendente (item 5 de `DECISOES_PENDENTES.md`) for nessa direção.
+3. **Parceria ativa e nomeada com a Stand** (fornecedor de software
+   especializado em Factoring/FIDC/Securitizadora/ESC — o mesmo Stand
+   citado como fonte terceira em outras partes desta pesquisa) para
+   consulta prévia de registro no processo de análise de crédito, evitando
+   negociar recebíveis já comprometidos.
+4. **Público-alvo declarado inclui ESC nominalmente**: a própria
+   descrição institucional da CRDC lista "Bancos, FIDCs, Factoring,
+   Fintechs, Securitizadoras, **Empresas Simples de Crédito (ESC)** e
+   empresários buscando crédito com base em recebíveis" — ESC aparece
+   como categoria própria, não inferida.
+5. **Citada por pelo menos 2 fontes independentes** (Stand, SINFAC-SP)
+   como registradora do segmento — e a Stand especificamente nomeia
+   **"CRDC e CERC"**, não "B3 e CERC", como o par padrão. Isso corrige uma
+   inferência anterior desta pesquisa (a seção "CERC vs. B3" original
+   presumia que todos os fornecedores de software ESC citavam o mesmo
+   par; na verdade, a citação varia por fornecedor).
+6. **Fundação e trajetória**: criada em 2014 pela Associação Comercial de
+   São Paulo (ACSP), operacional desde 2016, atuação nacional desde
+   outubro de 2019 — anterior ou contemporânea à própria LC 167/2019
+   (abril de 2019), sugerindo que a CRDC também esteve presente desde o
+   início do arcabouço legal de ESC, como a B3.
+7. **Status societário independente confirmado**: a B3 tentou comprar 60%
+   da CRDC; a Superintendência-Geral do CADE **recomendou reprovar** a
+   operação por preocupação de concentração de mercado (decisão final
+   ainda pendente no tribunal do CADE). Hoje a CRDC segue 100% controlada
+   pela ACSP. Isso é relevante para o OrgCred de duas formas: (a) positivo
+   — significa que a CRDC não está subordinada à mesma instituição que
+   controla a B3, oferecendo uma contraparte de registro genuinamente
+   independente; (b) pontos de atenção — a disputa societária é uma fonte
+   de incerteza de médio prazo que vale monitorar antes de um compromisso
+   de longo prazo.
+
+### O que a pesquisa NÃO conseguiu confirmar
+
+1. **Tarifário público não encontrado** — a tabela de preços da CRDC
+   existe (`CRDC-Tabela-de-Preco-SRO`) mas retornou erro 403 em toda
+   tentativa de acesso direto; a cobrança parece seguir proposta
+   comercial individual por participante, sem tabela pública simples
+   como a estimativa de mercado disponível para CERC/B3.
+2. **Prazo de integração técnica** não foi encontrado especificamente.
+3. **O site institucional principal (`crdc.com.br`) bloqueou WebFetch em
+   toda tentativa** (erro 403) — o material disponível veio de PDFs
+   indexados (manuais de produto, regulamentos) e de descrições de
+   terceiros, não da leitura direta das páginas institucionais "A CRDC",
+   "Soluções" ou "Parceiros". Uma conversa comercial direta é ainda mais
+   necessária aqui do que para as outras candidatas, já que a barreira de
+   acesso público é a mais alta de todas as seis.
+
+### Conclusão
+
+CRDC tem a evidência de adequação ao caso de uso mais forte e mais direta
+de toda a pesquisa: "Contratos ESC" nomeado nativamente no sistema, não
+inferido nem dependente de uma parceria comercial externa. A soma dessa
+evidência de produto com a integração automática de saldo devedor
+(potencialmente relevante para a decisão pendente sobre amortização
+parcial) torna a CRDC uma finalista tão forte quanto a SPC Grafeno — a
+diferença é que a SPC Grafeno tem evidência mais forte do lado comercial
+(parceria nomeada, desconto setorial, sem mensalidade) enquanto a CRDC
+tem evidência mais forte do lado de produto/funcionalidade.
 
 ## Núclea em detalhe (pesquisa aprofundada 2026-07-12)
 
@@ -220,74 +320,95 @@ deve ser confirmada/mitigada antes de fechar.
 
 ---
 
-## SPC Grafeno vs. CERC vs. B3: os três finalistas, lado a lado
+## CRDC vs. SPC Grafeno vs. CERC vs. B3: os quatro finalistas, lado a lado
 
-As três passam no teste básico (produto para CCB/ESC existe, uso
-documentado, API REST). A diferença está no **perfil de trade-off**:
+As quatro passam no teste básico (produto para CCB/ESC existe, uso
+documentado, API REST). A diferença está no **perfil de trade-off** e,
+mais importante, no **tipo de evidência** que sustenta cada uma:
+
+### A favor da CRDC
+1. **Evidência de produto mais direta de todas**: "Contratos ESC" é tipo
+   de ativo nomeado nativamente no sistema de registro — não uma
+   adaptação de produto genérico, não uma parceria comercial externa, é o
+   próprio catálogo de ativos reconhecendo ESC.
+2. **Integração automática de saldo devedor** — potencialmente relevante
+   para a decisão pendente sobre amortização parcial (`DECISOES_PENDENTES.md`,
+   item "O que NÃO está bloqueado").
+3. **Independência societária protegida por decisão antitruste**
+   (CADE recomendou reprovar a compra de 60% pela B3) — contraparte não
+   subordinada a outro player maior do mercado, ao menos por ora.
+4. Parceria nomeada com a Stand (software especializado em ESC) para
+   consulta prévia no processo de crédito.
 
 ### A favor da SPC Grafeno
-1. **Evidência de adequação mais forte e mais direta**: parceria comercial
-   nomeada com a própria associação da indústria (ABRAFESC), não uma
-   citação de terceiro nem um caso histórico — a diferença entre "a
-   associação da indústria escolheu esta registradora como parceira" e
-   "fornecedores de software citam esta registradora" é qualitativa, não
-   só de grau.
-2. **Maior participação de mercado em CCB** (~50%) entre as cinco
+1. **Evidência comercial mais forte**: parceria nomeada com a própria
+   associação da indústria (ABRAFESC), com termos publicados.
+2. **Maior participação de mercado em CCB** (~50%) entre as seis
    candidatas — reduz o risco de escolher uma registradora com pouca
    adoção do lado credor/investidor.
 3. **Caminho de adesão mais simples e nomeado** (e-mail direto via
    ABRAFESC) — sem processo de credenciamento formal documentado.
 4. **Modelo de cobrança sem mensalidade** pode ser vantajoso para o volume
    baixo esperado de uma ESC municipal pequena no início de operação.
-5. **Desconto que escala com adoção setorial** — argumento de rede que
-   nenhuma outra candidata oferece.
 
 ### A favor da CERC
 1. **Onboarding mais leve** — adesão contratual de perfil fintech, sem o
    aparato de comitê de risco/auditoria pré-operacional que a B3 exige.
 2. **Prazo de integração estimado menor** (3–6 semanas, fonte de mercado)
    — ainda que não confirmado diretamente com a CERC.
-3. Vertical **"Factoring & ESC"** nomeada explicitamente no site — sinal
-   de que o produto foi desenhado (ou pelo menos empacotado) para esse
-   público, não é uma adaptação genérica.
+3. Vertical **"Factoring & ESC"** nomeada explicitamente no site.
+4. **A candidata mais consistentemente citada** em toda a pesquisa —
+   aparece emparelhada tanto com CRDC quanto com B3, dependendo da fonte,
+   sugerindo reconhecimento amplo no setor independentemente de qual seja
+   a "segunda" registradora citada.
 
 ### A favor da B3
-1. **Pedigree histórico mais forte no segmento**: foi a registradora que
-   processou as primeiras operações de ESC do mercado, em setembro de
-   2019 — meses depois da lei existir. Nenhuma outra candidata tem esse
-   histórico.
-2. **Apetite comercial ativo e recente por clientes do porte do
-   OrgCred** — a própria B3 declarou publicamente (via seu superintendente
-   da área) que a prioridade atual é fintechs de crédito e bancos
-   pequenos/médios.
+1. **Pedigree histórico mais antigo**: processou as primeiras operações
+   de ESC do mercado, em setembro de 2019.
+2. **Apetite comercial ativo e recente** por fintechs de crédito e bancos
+   pequenos/médios, declarado publicamente pela própria B3.
 3. **Governança institucional mais robusta** — relevante se, no futuro, o
    OrgCred precisar demonstrar a auditores externos, investidores ou ao
-   próprio Banco Central que opera com uma contraparte de registro do mais
-   alto padrão do mercado.
+   próprio Banco Central que opera com uma contraparte do mais alto
+   padrão do mercado.
 4. **Maturidade técnica da plataforma de API** (Swagger/OpenAPI, sandbox
-   gratuito, 54 endpoints documentados) mais extensa do que a
-   documentação pública da CERC ou da SPC Grafeno.
+   gratuito, 54 endpoints documentados) mais extensa que a documentação
+   pública das demais.
 
 ### Leitura prática
 
-**SPC Grafeno tem a evidência mais forte de adequação ao caso de uso e o
-caminho de entrada mais simples** — é o primeiro contato recomendado. A
-única fragilidade técnica concreta encontrada (webhooks ainda não
-suportados na API de Crédito) precisa ser confirmada/mitigada antes de
-fechar, já que o fluxo de `registro_entidade_ref` do OrgCred foi pensado
-como callback assíncrono. Se a SPC Grafeno não confirmar boas condições
-para o porte do OrgCred, CERC continua sendo a alternativa mais ágil
-operacionalmente, e B3 a mais sólida institucionalmente a longo prazo.
-Nenhuma das três foi eliminada pela pesquisa; a escolha final depende de
-dados que só saem em conversa comercial direta com as três em paralelo.
+Não há uma vencedora óbvia entre CRDC e SPC Grafeno — são o tipo de
+evidência mais forte de toda a pesquisa, mas de naturezas diferentes
+(produto nativo vs. parceria comercial nomeada). **Recomenda-se contato
+comercial com as duas em paralelo como primeira prioridade**, seguido de
+CERC (opção mais consistentemente citada, onboarding mais leve) e B3
+(mais sólida institucionalmente, mas processo mais pesado). Pontos
+específicos a resolver em cada conversa:
+- **CRDC**: tarifário (não encontrado publicamente) e se a
+  independência societária segue estável após a decisão final do CADE.
+- **SPC Grafeno**: roadmap de suporte a webhook (hoje exige polling).
+- **CERC**: confirmação de que o onboarding realmente é mais rápido na
+  prática, não só no papel.
+- **B3**: se o apetite declarado por fintechs pequenas realmente
+  simplifica o processo formal de credenciamento na prática.
+
+Nenhuma das quatro foi eliminada pela pesquisa; a escolha final depende
+de dados que só saem em conversa comercial direta.
 
 ---
 
 ## Próximos passos concretos
 
-1. **Contato comercial direto com SPC Grafeno via ABRAFESC**
-   (`comercial@abrafesc.com.br`) — primeiro contato recomendado dado o
-   sinal de adequação mais forte. Confirmar: (a) tarifário real por
+1. **Contato comercial direto com CRDC** — solicitar proposta via
+   `crdc.com.br/solicitar-proposta` (o site bloqueou acesso direto de
+   pesquisa, mas o formulário deve estar acessível normalmente para um
+   usuário real). Confirmar: (a) tarifário para "Contratos ESC" — não
+   encontrado publicamente, (b) se a integração automática de saldo
+   devedor está disponível desde o início ou é add-on, (c) prazo real de
+   integração técnica, (d) impacto prático da disputa CADE/B3 na
+   independência operacional a médio prazo.
+2. **Contato comercial direto com SPC Grafeno via ABRAFESC**
+   (`comercial@abrafesc.com.br`) — confirmar: (a) tarifário real por
    CCB/evento (o material público só diz "sem mensalidade", sem detalhar
    cobrança por operação), (b) se/quando o suporte a webhook será
    lançado — hoje a API exige polling, o que muda o design do callback em
@@ -295,35 +416,48 @@ dados que só saem em conversa comercial direta com as três em paralelo.
    (distinto do prazo comercial de adesão via associação), (d) condições
    específicas do desconto coletivo — quantas ESCs já aderiram pela
    ABRAFESC.
-2. **Contato comercial direto com CERC**: confirmar (a) tarifário oficial
+3. **Contato comercial direto com CERC**: confirmar (a) tarifário oficial
    2026 para operações tipo CCB/empréstimo (não recebível de cartão), (b)
    prazo real de integração para uma equipe pequena, (c) se há algum
    requisito de porte/volume mínimo que uma ESC municipal pequena não
    atenderia.
-3. **Contato comercial direto com B3 Registradora**: pedir explicitamente
+4. **Contato comercial direto com B3 Registradora**: pedir explicitamente
    (a) tarifário oficial para registro de CCB de ESC — não achamos a
    tabela pública detalhada, só estimativa de mercado, (b) se o processo
    de credenciamento (CTRC, auditoria BSM) tem uma trilha simplificada
    para ESCs pequenas dado o apetite comercial declarado por esse
    segmento, (c) prazo real ponta a ponta até produção.
-4. **Pergunta direta à Núclea** se atendem ESC e como — depois da pesquisa
+5. **Pergunta direta à Núclea** se atendem ESC e como — depois da pesquisa
    aprofundada, especificamente perguntar: (a) qual produto seria usado
    para registrar CCB de empréstimo de ESC (C3 Registradora? Registro de
    Ativos?), (b) se factoring companies já credenciadas dão precedente
    direto para uma ESC de porte semelhante, (c) requisito mínimo de
    volume/porte, se houver, (d) acesso à documentação técnica completa
    (os manuais MAPX estão bloqueados publicamente).
-5. Depois da escolha: implementar a integração em `app/routers/contratos.py`
+6. Depois da escolha: implementar a integração em `app/routers/contratos.py`
    (hoje stub) — geração de CCB, chamada à API, callback que preenche
    `operacao_credito.registro_entidade_ref`. Se a escolhida for a SPC
    Grafeno e o webhook ainda não estiver disponível, desenhar o
    preenchimento de `registro_entidade_ref` via polling/job periódico em
-   vez de callback assíncrono.
+   vez de callback assíncrono. Se for a CRDC, avaliar se a integração
+   automática de saldo devedor influencia a decisão pendente sobre
+   amortização parcial (item "O que NÃO está bloqueado" em
+   `DECISOES_PENDENTES.md`).
 
 ---
 
 ## Fontes consultadas
 
+- [Central de Registro de Direitos Creditórios — CRDC (home)](https://www.crdc.com.br/)
+- [A CRDC — Central de Registro de Direitos Creditórios](https://www.crdc.com.br/a-crdc/)
+- [CRDC recebe autorização do BC para registro de novos ativos financeiros — Finsiders Brasil](https://finsidersbrasil.com.br/regulamentacao/crdc-recebe-autorizacao-do-bc-para-registro-de-novos-ativos-financeiros/)
+- [Banco Central autoriza CRDC da Associação Comercial de SP a ser registradora de duplicatas — ACSP](https://acsp.com.br/publicacao-imprensa/s/banco-central-autoriza-crdc-da-associacao-comercial-de-sp-a-ser-registradora-de-duplicatas)
+- [Cade recomenda reprovação da compra da CRDC pela B3 — Gov.br/CADE](https://www.gov.br/cade/pt-br/assuntos/noticias/cade-recomenda-reprovacao-da-compra-da-crdc-pela-b3-e-o-acordo-de-parceria-delas-com-acsp)
+- [Manual do Produto — CCB, Sistema de Registro CRDC](https://www.crdc.com.br/wp-content/uploads/2025/04/21154_CRDC_Manual_CCB_v1.0_original.pdf)
+- [Manual de Integração — CRDC](https://www.crdc.com.br/wp-content/uploads/2024/11/CRDC_Manual_de_Integracao_SRO-Pessoas-Orientacoes.pdf)
+- [Entenda a ESC — Empresa Simples de Crédito — Stand](https://www.stand.com.br/blog/entenda-a-esc-empresa-simples-de-credito/) (cita explicitamente "CRDC e CERC")
+- [ESC – Contrato de financiamento com caução de recebíveis — SINFAC-SP](https://www.sinfacsp.com.br/conteudo/esc-contrato-de-financiamento-com-caucao-de-recebiveis)
+- Tabela de preços CRDC (`CRDC-Tabela-de-Preco-SRO`) — **inacessível publicamente** (erro 403 em todas as tentativas de fetch direto)
 - [SPC GRAFENO é a nova parceira da ABRAFESC — Abrafesc](https://abrafesc.com.br/spc-grafeno)
 - [BC aprova nova registradora SPC Grafeno — Finsiders Brasil](https://finsidersbrasil.com.br/regulamentacao/bc-aprova-nova-registradora-spc-grafeno-adyen-e-zapay-sao-autorizadas-como-ip/)
 - [SPC Grafeno, registradora 100% em nuvem, é autorizada a operar pelo Banco Central — Universo do Seguro](https://universodoseguro.com.br/spc-grafeno-registradora-100-em-nuvem-e-autorizada-a-operar-pelo-banco-central/)
