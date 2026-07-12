@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: orgcred
+      POSTGRES_PASSWORD: orgcred_dev_password
+      POSTGRES_DB: orgcred_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - orgcred_pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orgcred -d orgcred_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      ORGCRED_DATABASE_URL: postgresql://orgcred:orgcred_dev_password@postgres:5432/orgcred_dev
+      ORGCRED_ENVIRONMENT: development
+      SUPABASE_JWT_SECRET: dev-secret-key-change-in-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+
+volumes:
+  orgcred_pgdata:
