@@ -2,27 +2,50 @@
 Aplicação FastAPI — OrgCred ESC.
 
 Monta a API e registra todos os routers. Validação de config ocorre no startup.
+Integra: autenticação (JWT), rate limiting, CORS, logging estruturado, exception handlers.
 """
 
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Dict
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.core.config import settings
+from app.core.exceptions import (
+    PermissaoNegada,
+    RegraNegocioViolada,
+    TokenAusente,
+    TokenInvalido,
+)
+from app.core.logging import configure_logging, get_logger
 from app.routers import operacoes
+
+
+# Configurar logging estruturado
+configure_logging()
+logger = get_logger("app.main")
+
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Contexto de vida útil da aplicação: startup e shutdown."""
     # Startup
-    print(f"[OrgCred] Iniciando em ambiente: {settings.environment}")
-    print(f"[OrgCred] Database: {settings.database_url.split('/')[-1]}")
+    logger.info(
+        "app_startup",
+        environment=settings.environment,
+        database=settings.database_url.split("/")[-1],
+    )
     yield
     # Shutdown
-    print("[OrgCred] Encerrando")
+    logger.info("app_shutdown")
 
 
 app = FastAPI(
@@ -32,6 +55,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:8080",
+        # Em produção, adicionar URLs do painel aqui
+    ]
+    if settings.environment == "development"
+    else [],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Registra routers
 app.include_router(operacoes.router)
@@ -53,10 +94,52 @@ def root() -> Dict[str, str]:
     }
 
 
-# Exception handler global para erros de banco
+# Exception handlers para auth
+@app.exception_handler(TokenAusente)
+async def token_ausente_handler(request: Request, exc: TokenAusente) -> JSONResponse:
+    """Token ausente ou malformado."""
+    logger.warning("auth_token_ausente", path=str(request.url.path), method=request.method)
+    return JSONResponse(status_code=401, content={"detail": exc.message, "codigo": "TOKEN_AUSENTE"})
+
+
+@app.exception_handler(TokenInvalido)
+async def token_invalido_handler(request: Request, exc: TokenInvalido) -> JSONResponse:
+    """Token inválido ou expirado."""
+    logger.warning("auth_token_invalido", path=str(request.url.path), reason=exc.message)
+    return JSONResponse(
+        status_code=401, content={"detail": exc.message, "codigo": "TOKEN_INVALIDO"}
+    )
+
+
+@app.exception_handler(PermissaoNegada)
+async def permissao_negada_handler(request: Request, exc: PermissaoNegada) -> JSONResponse:
+    """Usuário sem permissão."""
+    logger.warning("auth_permissao_negada", path=str(request.url.path), reason=exc.message)
+    return JSONResponse(
+        status_code=403, content={"detail": exc.message, "codigo": "PERMISSAO_NEGADA"}
+    )
+
+
+@app.exception_handler(RegraNegocioViolada)
+async def regra_negocio_handler(request: Request, exc: RegraNegocioViolada) -> JSONResponse:
+    """Regra de negócio violada."""
+    logger.warning(
+        "regra_negocio_violada",
+        path=str(request.url.path),
+        sqlstate=exc.sqlstate,
+        message=exc.message,
+    )
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={"detail": exc.message, "codigo": exc.sqlstate},
+    )
+
+
+# Exception handler global para erros não tratados
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handler genérico para exceções não capturadas."""
+    logger.error("unhandled_exception", path=str(request.url.path), error=str(exc))
     if settings.environment == "development":
         raise
     return JSONResponse(
