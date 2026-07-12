@@ -23,9 +23,15 @@ auditoria pré-operacional, possível depósito de garantia) é
 estruturalmente mais pesado que o de uma fintech de infraestrutura como a
 CERC. **TAG não é adequada**: seu produto é especificamente recebíveis de
 cartão (arranjo de pagamento), não registro de operações de crédito/CCB.
-**Núclea é tecnicamente capaz** mas não tem nenhum caso de uso ESC
-documentado publicamente — precisa de confirmação direta se ela atende
-esse segmento na prática.
+**Núclea** foi pesquisada em profundidade (rodada dedicada,
+2026-07-12) e permanece **tecnicamente capaz mas sem confirmação de
+adequação ao caso de uso**: registra os tipos de ativo certos (CCB
+incluída) e credencia explicitamente "factoring companies" — segmento
+próximo em porte/risco ao de uma ESC — mas nenhum caso de uso ESC nomeado
+foi encontrado em nenhuma fonte, e a documentação técnica mais detalhada
+está atrás de barreira de acesso (vários manuais retornaram erro 403),
+diferente da abertura pública da CERC e da B3. Não é "não", é "sem dado
+suficiente" — decisão real depende de contato comercial direto.
 
 **Recomendação prática:** abrir conversa comercial com as duas (CERC e B3)
 em paralelo — a decisão final depende de dados que só aparecem em
@@ -60,17 +66,18 @@ produto para cobrir isso.
 |---|---|---|---|---|
 | **Fundação** | 2015 | B3 (bolsa) é histórica; registradora de recebíveis é vertical mais recente | CIP existe há 20+ anos; rebatizada Núclea | 2018/2020 |
 | **Controlador** | Independente (fintech de infra) | B3 S.A. — bolsa de valores, maior instituição de mercado de capitais do Brasil | Consórcio de instituições financeiras | Grupo Stone Co. |
-| **Produto para CCB/empréstimo/ESC** | ✅ Categoria explícita "Financeiros" (CCBs, contrato de crédito, mútuos, títulos bancários); site lista "Factoring & ESC" como solução nomeada | ✅ Produto de registro de CCB via plataforma "Balcão" (2 variantes: CCB-NoMe e CCB-Plataforma Balcão) — registro, alteração, consulta, conciliação, gestão de parcelas | ⚠️ Tem "Registro de Ativos" e "SRCC" (crédito consignado) — sem confirmação de produto ESC/CCB genérico | ❌ Não — produto é especificamente recebíveis de arranjo de pagamento (cartão) |
-| **Histórico específico com ESC** | Citada por fornecedores terceiros como parceira padrão | ✅ **Recebeu os primeiros registros de operação de ESC do mercado, em setembro de 2019** — meses após a LC 167/2019 entrar em vigor (abril/2019) | Nenhum caso de uso ESC encontrado | Nenhum caso de uso ESC encontrado |
-| **Estratégia comercial atual** | Foco declarado em fintechs de crédito e digitalização de recebíveis | Superintendente da B3 declarou publicamente que **o primeiro esforço da área é atuar junto a fintechs de crédito e bancos pequenos e médios** — sinaliza apetite ativo por clientes do porte do OrgCred | Não encontrado | Foco em recebíveis de cartão (Stone/adquirentes) |
-| **Uso documentado por terceiros em software ESC** | ✅ Citada por 3 fornecedores independentes (APPESC/Decisão Sistemas, Fomenti, Stand) como padrão do segmento, ao lado da B3 | ✅ Mesma citação — aparece emparelhada com CERC nos mesmos 3 fornecedores | ❌ Nenhum caso de uso ESC encontrado em fontes independentes | ❌ Nenhum caso de uso ESC encontrado em fontes independentes |
+| **Produto para CCB/empréstimo/ESC** | ✅ Categoria explícita "Financeiros" (CCBs, contrato de crédito, mútuos, títulos bancários); site lista "Factoring & ESC" como solução nomeada | ✅ Produto de registro de CCB via plataforma "Balcão" (2 variantes: CCB-NoMe e CCB-Plataforma Balcão) — registro, alteração, consulta, conciliação, gestão de parcelas | ✅ Registra CCB, CCE, NCE, CPR e contratos de crédito genéricos via C3 Registradora — produto existe, mas sem vertical "ESC" nomeada | ❌ Não — produto é especificamente recebíveis de arranjo de pagamento (cartão) |
+| **Histórico específico com ESC** | Citada por fornecedores terceiros como parceira padrão | ✅ **Recebeu os primeiros registros de operação de ESC do mercado, em setembro de 2019** — meses após a LC 167/2019 entrar em vigor (abril/2019) | ❌ Nenhum caso de uso ESC encontrado, mesmo em pesquisa dedicada | Nenhum caso de uso ESC encontrado |
+| **Estratégia comercial atual** | Foco declarado em fintechs de crédito e digitalização de recebíveis | Superintendente da B3 declarou publicamente que **o primeiro esforço da área é atuar junto a fintechs de crédito e bancos pequenos e médios** — sinaliza apetite ativo por clientes do porte do OrgCred | Programa "FAVO" de inovação aberta com startups — mas é parceria de co-desenvolvimento de produto, **não** canal de credenciamento de pequenas instituições como clientes do registro | Foco em recebíveis de cartão (Stone/adquirentes) |
+| **Uso documentado por terceiros em software ESC** | ✅ Citada por 3 fornecedores independentes (APPESC/Decisão Sistemas, Fomenti, Stand) como padrão do segmento, ao lado da B3 | ✅ Mesma citação — aparece emparelhada com CERC nos mesmos 3 fornecedores | ❌ Nenhum dos 3 fornecedores especializados em ESC cita Núclea | ❌ Nenhum caso de uso ESC encontrado em fontes independentes |
+| **Tipos de participante elegíveis** | Não detalhado com a mesma granularidade nesta pesquisa | Participantes de mercado de capitais + fintechs de crédito (estratégia recente) | Explicitamente: bancos, credenciadoras, **fintechs, factoring companies**, corretoras, gestores de investimento — factoring é sinal indireto de abertura a instituições de porte pequeno | Credenciadoras/adquirentes de cartão |
 | **Certificações / governança** | ISO 27001, 27017, 27018 | Instituição sob regulação direta e intensa do BACEN/CVM como bolsa; "alto padrão de governança institucional" segundo comparativo de mercado — acima do padrão de uma fintech | ISO 27001, 22301 | Não encontrado nesta pesquisa |
 | **Clientes conhecidos** | PagSeguro, Mercado Pago, MagaluPay, iFood, Vindi | Ecossistema de participantes de mercado de capitais + fintechs de crédito/bancos pequenos (estratégia recente) | Cielo, Rede, Getnet, SafraPay | Stone Co., PagarMe, Yapay, Rappi |
-| **Integração técnica** | API REST documentada (Apiary/CERC Integração Agente de Registro); ERP com certificado digital envia título via API padronizada | REST + Swagger/OpenAPI, 54 APIs no portal "Balcão", ambiente de sandbox/certificação gratuito — **mas acesso é exclusivamente B2B**, requer credenciais próprias (CAU) | API, arquivo ou portal, "conforme necessidade de cada entidade" — sem doc técnica pública equivalente | Documentação técnica existe mas focada em recebíveis de cartão |
-| **Processo de onboarding** | Adesão contratual mais leve (perfil fintech) | **Processo formal de credenciamento**: análise reputacional/jurídica/econômica + auditoria pré-operacional pela BSM + aprovação do Comitê Técnico de Risco de Crédito (CTRC) + possível depósito de garantia — estruturalmente mais pesado | Não detalhado nesta pesquisa | Não aplicável |
+| **Integração técnica** | API REST documentada (Apiary/CERC Integração Agente de Registro); ERP com certificado digital envia título via API padronizada | REST + Swagger/OpenAPI, 54 APIs no portal "Balcão", ambiente de sandbox/certificação gratuito — **mas acesso é exclusivamente B2B**, requer credenciais próprias (CAU) | API, arquivo ou portal, "conforme necessidade de cada entidade" — documentação técnica detalhada (manuais MAPX) **bloqueada por erro 403** em acesso público, sugerindo exigência de credencial de participante para ver o material completo | Documentação técnica existe mas focada em recebíveis de cartão |
+| **Processo de onboarding** | Adesão contratual mais leve (perfil fintech) | **Processo formal de credenciamento**: análise reputacional/jurídica/econômica + auditoria pré-operacional pela BSM + aprovação do Comitê Técnico de Risco de Crédito (CTRC) + possível depósito de garantia — estruturalmente mais pesado | Não detalhado nesta pesquisa — nenhuma evidência de requisito mínimo de porte/volume, mas também nenhuma confirmação de ausência dele | Não aplicável |
 | **Prazo de integração estimado** | 3 a 6 semanas (fonte: mercado/Celcoin, não confirmado diretamente) | Não encontrado prazo específico — processo de credenciamento formal sugere ciclo mais longo que o da CERC | Não encontrado | Não aplicável |
 | **Custo por título registrado** | R$ 0,30 a R$ 1,50/título + R$ 0,15–0,80/evento — faixa de mercado, **não confirmada oficialmente** | R$ 0,80 a R$ 1,50/título + R$ 0,30–0,80/evento, com tabela negociada acima de 50 mil títulos/mês — faixa de mercado similar à CERC, **também não confirmada oficialmente na página de tarifas pública** | Não encontrado nesta pesquisa | Não aplicável |
-| **Posição de mercado para ESC** | Registradora de referência do segmento, ágil para integração pequena | **Pioneira histórica do segmento** + prioridade comercial declarada para fintechs pequenas, mas com processo de admissão institucional mais formal | Grande player geral, sem evidência de foco em ESC | Fora do escopo — produto não serve o caso de uso |
+| **Posição de mercado para ESC** | Registradora de referência do segmento, ágil para integração pequena | **Pioneira histórica do segmento** + prioridade comercial declarada para fintechs pequenas, mas com processo de admissão institucional mais formal | Capaz tecnicamente, mas é a única das 3 candidatas originais sem NENHUM sinal público de atender o segmento ESC especificamente | Fora do escopo — produto não serve o caso de uso |
 
 ---
 
@@ -90,20 +97,71 @@ recebíveis de cartão.
 confirmação comercial direta revele um produto não descoberto nesta
 pesquisa.
 
-## Por que Núclea é incerta
+## Núclea em detalhe (pesquisa aprofundada 2026-07-12)
 
-Núclea (ex-CIP) é claramente capaz tecnicamente — é descrita como "a maior
-registradora de ativos financeiros do mercado" e tem produtos como
-"Registro de Ativos" e "SRCC" (Serviço de Registro de Crédito Consignado).
-O problema não é capacidade, é **evidência de adequação ao caso de uso**:
-nenhuma fonte independente (fornecedores de software ESC, artigos
-setoriais) cita Núclea como opção para esse segmento — só CERC e B3
-aparecem nesse contexto específico. Isso pode significar (a) Núclea
-simplesmente não é usada por ESCs pequenas na prática, (b) é usada mas sem
-cobertura editorial, ou (c) atende via um produto genérico que não foi
-encontrado nesta pesquisa. **Vale uma pergunta direta ao suporte comercial
-da Núclea** antes de descartá-la — mas não é a aposta natural sem essa
-confirmação.
+Rodada adicional de pesquisa, especificamente para tentar confirmar ou
+descartar a Núclea como opção viável. Veredito: **capacidade técnica
+confirmada, adequação ao caso de uso ESC permanece não-confirmada** — nem
+descartada, nem validada.
+
+### O que a pesquisa confirmou
+
+1. **Produto de registro de crédito geral existe e é robusto.** Além do
+   "Registro de Ativos" e do "SRCC" (crédito consignado), a Núclea/CIP
+   registra explicitamente **CCB, CCE (Cédula de Crédito à Exportação),
+   NCE (Nota de Crédito à Exportação) e CPR (Cédula de Produto Rural)** —
+   ou seja, o tipo de ativo que o OrgCred precisaria registrar (CCB de
+   empréstimo) está dentro do escopo documentado de produtos da Núclea,
+   não é uma lacuna de produto.
+2. **A C3 Registradora de Ativos Financeiros** (unidade específica da
+   Núclea) permite que participantes registrem "contratos de crédito
+   celebrados com seus clientes" e operações de cessão/bloqueio — a
+   descrição genérica bate com o que uma ESC precisaria.
+3. **Tipos de participante elegíveis incluem explicitamente "factoring
+   companies"** (empresas de fomento mercantil), ao lado de bancos,
+   fintechs, corretoras e gestores de investimento. Isso é um sinal
+   indireto relevante: factoring e ESC são segmentos de porte e perfil de
+   risco semelhantes — se a Núclea já credencia factorings, a barreira de
+   entrada para uma ESC pequena provavelmente não é estruturalmente maior.
+4. **Velocidade de lançamento de produtos novos é alta**: a Núclea lançou
+   uma solução de crédito com garantia em previdência/capitalização
+   (Resolução Conjunta CMN/CNSP 12) e bateu R$ 1 bilhão em contratos em
+   apenas um mês — evidência de que a empresa constrói e escala produtos
+   de registro de contrato de crédito rapidamente quando há demanda de
+   mercado, não é uma operação lenta ou legada.
+5. **Programa "FAVO"** de inovação aberta com startups existe, mas é um
+   programa de parceria/co-desenvolvimento de produtos complementares
+   (crédito, cobrança, fraude, dados) — **não é um canal de credenciamento
+   de pequenas instituições de crédito como clientes diretos do
+   registro**. Não deve ser confundido com "Núclea atende ESC pequenas".
+
+### O que a pesquisa NÃO conseguiu confirmar
+
+1. **Nenhum caso de uso ESC nomeado** em nenhuma fonte — nem no site da
+   própria Núclea, nem em fornecedores de software especializados em ESC
+   (os mesmos que citam CERC/B3 explicitamente não citam Núclea nenhuma
+   vez).
+2. **Nenhum requisito mínimo de volume/porte encontrado** publicamente —
+   não há evidência de que a Núclea *exclua* pequenas instituições, mas
+   também não há confirmação de que as *aceite* sem barreira adicional.
+3. Vários documentos técnicos oficiais da Núclea (manuais de operação,
+   regulamento geral do C3 Registradora) retornaram **erro 403** ao
+   tentar acesso direto — o material técnico mais detalhado está atrás de
+   alguma barreira de acesso (provavelmente exige login/credencial de
+   participante), o que por si só é um dado: o nível de abertura pública
+   da documentação é menor que o da CERC (Apiary público) ou da B3
+   (portal de developers público com sandbox).
+
+### Conclusão
+
+Núclea não deve ser descartada por incapacidade técnica — o produto
+existe. Mas também não é a aposta natural sem confirmação, porque **é a
+única das três candidatas originais sem nenhuma evidência pública,
+direta ou indireta, de atender especificamente o segmento ESC**, ao
+contrário de CERC e B3, ambas com sinais concretos (vertical nomeada /
+histórico de primeira operação registrada). Se o custo de uma ligação
+comercial for baixo, vale perguntar diretamente — a documentação técnica
+bloqueada sugere que a resposta completa só vem por esse canal mesmo.
 
 ## CERC vs. B3: os dois finalistas, lado a lado
 
@@ -168,9 +226,13 @@ conversa comercial direta.
    de credenciamento (CTRC, auditoria BSM) tem uma trilha simplificada
    para ESCs pequenas dado o apetite comercial declarado por esse
    segmento, (c) prazo real ponta a ponta até produção.
-3. **Pergunta direta à Núclea** se atendem ESC e como, antes de descartar
-   de vez — o silêncio editorial não é prova de inadequação, só de menor
-   visibilidade nesse nicho.
+3. **Pergunta direta à Núclea** se atendem ESC e como — depois da pesquisa
+   aprofundada, especificamente perguntar: (a) qual produto seria usado
+   para registrar CCB de empréstimo de ESC (C3 Registradora? Registro de
+   Ativos?), (b) se factoring companies já credenciadas dão precedente
+   direto para uma ESC de porte semelhante, (c) requisito mínimo de
+   volume/porte, se houver, (d) acesso à documentação técnica completa
+   (os manuais MAPX estão bloqueados publicamente).
 4. Depois da escolha: implementar a integração em `app/routers/contratos.py`
    (hoje stub) — geração de CCB, chamada à API, callback que preenche
    `operacao_credito.registro_entidade_ref`.
@@ -189,6 +251,11 @@ conversa comercial direta.
 - [Registro de Ativos — Núclea](https://www.nuclea.com.br/registro-de-ativos/)
 - [Registro de Crédito Consignado — Núclea](https://www.nuclea.com.br/registro-de-credito-consignado/)
 - [Núclea CIP: conheça a história e evolução da empresa](https://www.nuclea.com.br/nuclea-cip-conheca-a-historia-e-evolucao-da-empresa/)
+- [Registro de Duplicatas — Núclea (institucional)](https://institucional.nuclea.com.br/registro-de-duplicatas)
+- [Como a Núclea (antiga CIP) quer crescer com as startups — Finsiders Brasil](https://finsidersbrasil.com.br/reportagem-exclusiva-fintechs/como-a-nuclea-antiga-cip-quer-crescer-com-as-startups/)
+- [Núclea bate R$ 1 bilhão em contratos de crédito vinculados à previdência e capitalização — SEGS](https://www.segs.com.br/seguros/437909-nuclea-bate-r-1-bilhao-em-contratos-de-credito-vinculados-a-previdencia-e-capitalizacao)
+- [Consulta financeira de CNPJ — Núclea](https://www.nuclea.com.br/consulta-financeira-de-cnpj/)
+- Manuais técnicos MAPX (C3 Registradora, Registradora Núclea) — **inacessíveis publicamente** (erro 403 em todas as tentativas de fetch direto)
 - [Registro de Recebíveis de Arranjo de Pagamento — TAG](https://docs.taginfraestrutura.com.br/docs/registro-arranjo)
 - [Recebíveis de cartão — TAG](https://www.taginfraestrutura.com.br/recebiveis-cartao)
 - [Cédula de Crédito Bancário — B3](https://www.b3.com.br/pt_br/produtos-e-servicos/registro/renda-fixa-e-valores-mobiliarios/cedula-de-credito-bancario.htm)

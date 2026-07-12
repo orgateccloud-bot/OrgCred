@@ -29,9 +29,13 @@ para o levantamento completo com fontes:**
     declarado por fintechs de crédito pequenas/médias, governança
     institucional mais robusta — mas processo de credenciamento
     formalmente mais pesado (comitê de risco, auditoria pré-operacional).
-- **Núclea (ex-CIP)** — tecnicamente capaz, mas nenhum caso de uso ESC
-  documentado publicamente; vale pergunta comercial direta antes de
-  descartar.
+- **Núclea (ex-CIP)** — pesquisada em profundidade em rodada dedicada:
+  tecnicamente capaz (registra CCB e credencia explicitamente factoring
+  companies, segmento próximo em porte à ESC) mas é a única das 3
+  candidatas originais sem nenhum sinal público — direto ou indireto —
+  de atender especificamente o segmento ESC; documentação técnica
+  detalhada está bloqueada publicamente (erro 403 em todos os manuais).
+  Não descartada, mas não é aposta natural sem contato comercial.
 - **TAG** — **provavelmente não serve**: produto é especificamente
   recebíveis de arranjo de pagamento (cartão), não registro de CCB/operação
   de crédito. Recomenda-se remover das candidatas salvo confirmação
