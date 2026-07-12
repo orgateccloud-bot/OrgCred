@@ -24,31 +24,15 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import (
+    MunicipioNaoAutorizado,
+    OperacaoNaoEncontrada,
+    ReducaoCapitalBloqueada,
+    RegistroEntidadeAusente,
+    TetoCapitalExcedido,
+    TransicaoInvalida,
+)
 from app.models import OperacaoCredito
-
-
-class OperacaoNaoEncontrada(Exception):
-    pass
-
-
-class TetoCapitalExcedido(Exception):
-    pass
-
-
-class MunicipioNaoAutorizado(Exception):
-    pass
-
-
-class TransicaoInvalida(Exception):
-    pass
-
-
-class RegistroEntidadeAusente(Exception):
-    pass
-
-
-class ReducaoCapitalBloqueada(Exception):
-    pass
 
 
 _PGCODE_MAP = {
