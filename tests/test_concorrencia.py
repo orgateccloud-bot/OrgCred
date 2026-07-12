@@ -10,10 +10,12 @@ uma deve ativar e a outra deve ser bloqueada com SQLSTATE OC001.
 Uso: python3 tests/test_concorrencia.py [dbname]
 Requer: psycopg2, acesso peer/local ao Postgres.
 """
+
 import sys
 import threading
 
 import psycopg2
+
 
 DB = sys.argv[1] if len(sys.argv) > 1 else "orgcred_conc_test"
 ADMIN_DSN = "dbname=postgres user=postgres host=/var/run/postgresql"
@@ -40,7 +42,9 @@ for mig in ("001_initial_schema", "002_usuarios_papeis", "003_hardening_capital"
     with open(f"migrations/{mig}.sql") as f:
         run_sql(DSN, f.read())
 
-run_sql(DSN, """
+run_sql(
+    DSN,
+    """
     insert into esc_capital_social (valor, tipo_evento) values (50000,'constituicao');
     insert into tomador (cnpj, razao_social, porte, municipio, uf, municipio_autorizado)
     values ('11111111000111','Alvo A ME','ME','Formoso','GO',true),
@@ -48,7 +52,8 @@ run_sql(DSN, """
     insert into operacao_credito (tomador_id,tipo,valor_principal,taxa_juros_mensal,
                                   sistema_amortizacao,numero_parcelas,status,registro_entidade_ref)
     select id,'emprestimo',30000,2.5,'PRICE',12,'registrada','REG-CONC' from tomador;
-""")
+""",
+)
 
 barrier = threading.Barrier(2)
 results = {}
@@ -76,7 +81,10 @@ def ativar(cnpj, key):
 
 t1 = threading.Thread(target=ativar, args=("11111111000111", "A"))
 t2 = threading.Thread(target=ativar, args=("22222222000122", "B"))
-t1.start(); t2.start(); t1.join(); t2.join()
+t1.start()
+t2.start()
+t1.join()
+t2.join()
 
 check = psycopg2.connect(DSN)
 c = check.cursor()
@@ -92,11 +100,7 @@ codes = [v[1] for v in results.values() if v[1]]
 print(f"resultados: {results}")
 print(f"total ativo: {total} | capital: {cap}")
 
-ok = (
-    total <= cap
-    and statuses == ["ATIVADA", "BLOQUEADA"]
-    and codes == ["OC001"]
-)
+ok = total <= cap and statuses == ["ATIVADA", "BLOQUEADA"] and codes == ["OC001"]
 if ok:
     print("PASS — exatamente uma ativou; a outra foi bloqueada com OC001; teto respeitado.")
 else:
