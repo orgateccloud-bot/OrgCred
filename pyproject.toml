@@ -26,6 +26,8 @@ dependencies = [
     # Logging & Observability
     "structlog==24.4.0",
     "prometheus-client==0.20.0",
+    # Schema migrations
+    "alembic==1.13.3",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +45,8 @@ dev = [
 line-length = 100
 target-version = "py311"
 exclude = ["migrations/", "__pycache__", ".venv", "venv"]
+# alembic/ NÃO é excluído do ruff (só do mypy) — queremos lint/format normal
+# nas revisões, apenas sem type-checking estrito nelas.
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]  # E=errors, F=pyflakes, W=warnings, I=isort
@@ -59,7 +63,7 @@ quote-style = "double"
 [tool.mypy]
 python_version = "3.11"
 strict = true
-exclude = ["migrations/", "venv/", ".venv/", "tests/"]
+exclude = ["migrations/", "venv/", ".venv/", "tests/", "alembic/"]
 warn_unused_ignores = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

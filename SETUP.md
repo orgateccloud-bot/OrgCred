@@ -45,15 +45,22 @@ cp .env.example .env
 
 ## Passo 4: Aplicar migrações
 
+**Via Alembic (recomendado):**
+```bash
+alembic upgrade head
+```
+
+Isso aplica as 3 revisões baseline (`0001`–`0003`), que executam o SQL em
+`migrations/*.sql` e ficam versionadas na tabela `alembic_version`. Ver
+[`alembic/README_MIGRACAO.md`](alembic/README_MIGRACAO.md) para o workflow
+de novas migrations.
+
+**Via psql direto** (equivalente, sem tracking de versão — usado por
+`docker-entrypoint-initdb.d` e pelos scripts de teste legados):
 ```bash
 psql -d orgcred_dev -f migrations/001_initial_schema.sql
 psql -d orgcred_dev -f migrations/002_usuarios_papeis.sql
 psql -d orgcred_dev -f migrations/003_hardening_capital.sql
-```
-
-Ou, com Python (futuramente Alembic):
-```bash
-python -c "from app.db import engine; from app.models import Base; Base.metadata.create_all(engine)"
 ```
 
 ## Passo 5: Rodar a API em desenvolvimento
@@ -66,18 +73,21 @@ Acesse:
 - **API:** http://localhost:8000
 - **Docs:** http://localhost:8000/docs
 - **ReDoc:** http://localhost:8000/redoc
+- **Métricas:** http://localhost:8000/metrics
+- **Readiness:** http://localhost:8000/health/ready
 
-## Passo 6: Rodar testes (Linux/Mac)
+## Passo 6: Rodar testes
 
 ```bash
-# Testes de regressão do capital (bash)
+# Suite pytest completa (requer Postgres real via ORGCRED_TEST_DATABASE_URL
+# ou ORGCRED_DATABASE_URL — cria e dropa um banco de teste isolado por sessão)
+pytest tests/ -v
+
+# Testes de regressão do capital (bash — Linux/Mac apenas)
 ./tests/test_capital_invariant.sh
 
-# Teste de concorrência (Python)
+# Teste de concorrência standalone (Linux/Mac apenas — não roda via pytest)
 python tests/test_concorrencia.py
-
-# Suite pytest (quando implementado)
-pytest tests/ -v --cov=app
 ```
 
 ## Troubleshooting

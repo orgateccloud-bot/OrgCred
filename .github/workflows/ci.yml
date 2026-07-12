@@ -48,7 +48,6 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: orgcred_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -71,17 +70,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
-      - name: Apply migrations
-        env:
-          ORGCRED_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orgcred_test
-        run: |
-          psql -h localhost -U postgres -d orgcred_test -f migrations/001_initial_schema.sql
-          psql -h localhost -U postgres -d orgcred_test -f migrations/002_usuarios_papeis.sql
-          psql -h localhost -U postgres -d orgcred_test -f migrations/003_hardening_capital.sql
-
+      # tests/conftest.py cria e migra seu próprio banco isolado por sessão
+      # pytest (via ORGCRED_TEST_DATABASE_URL, usada só para descobrir o
+      # servidor admin) — não há migration para aplicar manualmente aqui.
       - name: Run pytest
         env:
-          ORGCRED_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orgcred_test
+          ORGCRED_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          SUPABASE_JWT_SECRET: ci-test-secret-not-for-production
         run: uv run pytest tests/ -v --cov=app --cov-report=xml
 
       - name: Upload coverage to Codecov
@@ -90,6 +85,52 @@ jobs:
           files: ./coverage.xml
           flags: unittests
           name: codecov-umbrella
+
+  alembic:
+    name: Alembic upgrade/downgrade
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: orgcred_alembic_ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: alembic upgrade head
+        env:
+          ORGCRED_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orgcred_alembic_ci
+        run: uv run alembic upgrade head
+
+      - name: alembic current aponta para 0003
+        env:
+          ORGCRED_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orgcred_alembic_ci
+        run: uv run alembic current | grep -q "0003 (head)"
+
+      - name: alembic downgrade base (rollback completo)
+        env:
+          ORGCRED_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orgcred_alembic_ci
+        run: uv run alembic downgrade base
 
   integration:
     name: Integration Tests (Postgres real)
