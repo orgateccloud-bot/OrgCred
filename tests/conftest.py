@@ -20,7 +20,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 
 MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
-MIGRATIONS = ["001_initial_schema", "002_usuarios_papeis", "003_hardening_capital"]
+MIGRATIONS = [
+    "001_initial_schema",
+    "002_usuarios_papeis",
+    "003_hardening_capital",
+    "004_auditoria_autor",
+]
 
 
 def _base_admin_url() -> str:

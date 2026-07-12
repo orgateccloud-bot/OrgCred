@@ -234,6 +234,42 @@ class TestIdempotenciaAtivacao:
         assert eventos_antes == eventos_depois == 1
 
 
+class TestTrilhaDeAuditoriaComAutor:
+    """
+    Migration 004 (Fase 6): usuario_id propagado via SET LOCAL app.user_id
+    é registrado no capital_ledger pelo trigger.
+    """
+
+    def test_ativacao_com_usuario_id_registra_autor_no_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+
+        ativar_operacao(db_session, op_id, usuario_id="operador-teste-123")
+
+        autor = db_session.execute(
+            text("select usuario_id from capital_ledger where operacao_id = :id"),
+            {"id": str(op_id)},
+        ).scalar_one()
+
+        assert autor == "operador-teste-123"
+
+    def test_ativacao_sem_usuario_id_nao_quebra(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Compatibilidade retroativa: chamadas sem usuario_id continuam funcionando."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+
+        op = ativar_operacao(db_session, op_id)
+
+        assert op.status == "ativa"
+        autor = db_session.execute(
+            text("select usuario_id from capital_ledger where operacao_id = :id"),
+            {"id": str(op_id)},
+        ).scalar_one()
+        assert autor is None
+
+
 class TestConsultarCapitalDisponivel:
     def test_consulta_capital_disponivel_sem_operacoes(
         self, db_session: Session, capital_constituido: None
