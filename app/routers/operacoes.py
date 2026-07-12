@@ -53,7 +53,7 @@ def post_ativar_operacao(
       - 422: Regra de negócio violada (teto, município, registro, capital)
     """
     try:
-        op = ativar_operacao(db, operacao_id)
+        op = ativar_operacao(db, operacao_id, usuario_id=user.user_id)
     except OperacaoNaoEncontrada as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RegraNegocioViolada as exc:

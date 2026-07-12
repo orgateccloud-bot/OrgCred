@@ -75,8 +75,29 @@ def consultar_capital_disponivel(db: Session) -> Decimal:
     return Decimal(row.disponivel)
 
 
-def ativar_operacao(db: Session, operacao_id: UUID) -> OperacaoCredito:
-    """Tenta 'registrada' -> 'ativa'; o banco valida tudo que importa."""
+def ativar_operacao(
+    db: Session, operacao_id: UUID, usuario_id: Optional[str] = None
+) -> OperacaoCredito:
+    """
+    Tenta 'registrada' -> 'ativa'; o banco valida tudo que importa.
+
+    `usuario_id` (tipicamente CurrentUser.user_id do JWT autenticado, ver
+    app/core/auth.py) é propagado ao trigger via `SET LOCAL app.user_id`,
+    válido só nesta transação — a migration 004 usa
+    `current_setting('app.user_id', true)` para registrar o autor no
+    capital_ledger. Sem isso, a trilha de auditoria segue funcionando, só
+    sem autor (equivalente ao comportamento antes da Fase 6).
+
+    Sempre executa o SET LOCAL (com o valor ou com DEFAULT) para não
+    depender do estado anterior da conexão física: como as conexões vêm de
+    um pool, uma sessão sem usuario_id poderia herdar o valor setado por uma
+    ativação anterior na mesma conexão se o guard fosse condicional.
+    """
+    if usuario_id:
+        db.execute(text("SET LOCAL app.user_id = :usuario_id"), {"usuario_id": usuario_id})
+    else:
+        db.execute(text("SET LOCAL app.user_id TO DEFAULT"))
+
     op: Optional[OperacaoCredito] = (
         db.query(OperacaoCredito).filter(OperacaoCredito.id == operacao_id).one_or_none()
     )
