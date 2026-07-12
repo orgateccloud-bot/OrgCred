@@ -3,9 +3,11 @@ Aplicação FastAPI — OrgCred ESC.
 
 Monta a API e registra todos os routers. Validação de config ocorre no startup.
 """
-from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, Dict
+
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
@@ -13,7 +15,7 @@ from app.routers import operacoes
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Contexto de vida útil da aplicação: startup e shutdown."""
     # Startup
     print(f"[OrgCred] Iniciando em ambiente: {settings.environment}")
@@ -36,13 +38,13 @@ app.include_router(operacoes.router)
 
 
 @app.get("/health")
-def health_check() -> dict:
+def health_check() -> Dict[str, str]:
     """Verificação de saúde."""
     return {"status": "ok", "service": "orgcred"}
 
 
 @app.get("/")
-def root() -> dict:
+def root() -> Dict[str, str]:
     """Raiz da API."""
     return {
         "service": "OrgCred",
@@ -53,7 +55,7 @@ def root() -> dict:
 
 # Exception handler global para erros de banco
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handler genérico para exceções não capturadas."""
     if settings.environment == "development":
         raise

@@ -1,33 +1,34 @@
 """Modelos SQLAlchemy espelhando o schema PostgreSQL."""
-from uuid import UUID
-from decimal import Decimal
-from datetime import datetime
 
-from sqlalchemy import (
-    Column, String, Numeric, Integer, Boolean, DateTime, ForeignKey, Text, Enum
-)
-from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 import enum
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import declarative_base, relationship
 
 
-Base = declarative_base()
+Base: Any = declarative_base()
 
 
 class TipoOperacao(str, enum.Enum):
     """Tipos de operação de crédito."""
+
     emprestimo = "emprestimo"
     financiamento = "financiamento"
 
 
 class SistemaAmortizacao(str, enum.Enum):
     """Sistemas de amortização suportados."""
+
     PRICE = "PRICE"
     SAC = "SAC"
 
 
 class StatusOperacao(str, enum.Enum):
     """Estados válidos de uma operação de crédito."""
+
     proposta = "proposta"
     registrada = "registrada"
     ativa = "ativa"
@@ -39,6 +40,7 @@ class StatusOperacao(str, enum.Enum):
 
 class Tomador(Base):
     """Tomadores de crédito."""
+
     __tablename__ = "tomador"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True)
@@ -56,6 +58,7 @@ class Tomador(Base):
 
 class OperacaoCredito(Base):
     """Operações de crédito."""
+
     __tablename__ = "operacao_credito"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True)
@@ -75,6 +78,7 @@ class OperacaoCredito(Base):
 
 class CapitalLedger(Base):
     """Ledger imutável de movimentações de capital."""
+
     __tablename__ = "capital_ledger"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True)
@@ -88,6 +92,7 @@ class CapitalLedger(Base):
 
 class EscCapitalSocial(Base):
     """Histórico de capital social (constituição e reduções)."""
+
     __tablename__ = "esc_capital_social"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True)
@@ -98,6 +103,7 @@ class EscCapitalSocial(Base):
 
 class Usuario(Base):
     """Usuários do painel de operações."""
+
     __tablename__ = "usuario"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True)

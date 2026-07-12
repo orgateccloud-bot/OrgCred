@@ -4,12 +4,15 @@ Configuração central via variáveis de ambiente (pydantic-settings).
 Validação ocorre no startup da aplicação (lifespan), não no import de módulo.
 Recusa iniciar em produção sem `ORGCRED_DATABASE_URL` explícita.
 """
+
 import os
+
 from pydantic_settings import BaseSettings
 
 
 class ConfigError(RuntimeError):
     """Erro de configuração durante startup."""
+
     pass
 
 

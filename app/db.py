@@ -1,8 +1,12 @@
 """Configuração de banco de dados via SQLAlchemy."""
+
+from typing import Generator
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
+
 
 engine = create_engine(
     settings.database_url,
@@ -13,7 +17,7 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-def get_db() -> Session:
+def get_db() -> Generator[Session, None, None]:
     """Dependency: fornece sessão de banco para requisição."""
     db = SessionLocal()
     try:
