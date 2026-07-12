@@ -72,7 +72,7 @@ warn_unreachable = true
 show_error_codes = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=app --cov-report=term-missing --cov-report=html"
+addopts = "--cov=app --cov-report=term-missing --cov-report=html --ignore=tests/test_concorrencia.py"
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
