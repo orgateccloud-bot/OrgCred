@@ -67,6 +67,61 @@ select coalesce(sum(
 ), 0) as capital_atual
 from esc_capital_social;
 
+-- Trigger do teto de capital (versão original, pré-hardening).
+--
+-- ATENÇÃO: esta versão tem a race condition F1 documentada em
+-- REVISAO_2026-07-11.md (SELECT SUM sem lock: duas ativações concorrentes
+-- podem ambas passar pelo teto). A migration 003_hardening_capital.sql
+-- substitui o CORPO desta função (CREATE OR REPLACE) com o advisory lock
+-- e a máquina de estados — mas o TRIGGER em si é criado aqui e nunca é
+-- recriado por 003, então precisa existir desde a migration 001.
+create or replace function fn_check_teto_capital()
+returns trigger as $$
+declare
+    v_capital_atual         numeric(14,2);
+    v_comprometido_outras   numeric(14,2);
+    v_disponivel            numeric(14,2);
+    v_municipio_ok          boolean;
+begin
+    if new.status = 'ativa' and (tg_op = 'INSERT' or old.status is distinct from 'ativa') then
+        select municipio_autorizado into v_municipio_ok
+        from tomador where id = new.tomador_id;
+
+        if not v_municipio_ok then
+            raise exception
+                'Tomador fora da área de atuação autorizada (Art. 1º, LC 167/2019). Operação % bloqueada.',
+                new.id
+                using errcode = 'OC002';
+        end if;
+
+        select capital_atual into v_capital_atual from v_capital_atual;
+
+        select coalesce(sum(valor_principal), 0) into v_comprometido_outras
+        from operacao_credito
+        where status = 'ativa' and id <> new.id;
+
+        v_disponivel := v_capital_atual - v_comprometido_outras;
+
+        if new.valor_principal > v_disponivel then
+            raise exception
+                'Teto de capital excedido (Art. 5º, LC 167/2019). Capital disponível: %, valor solicitado: %. Operação % bloqueada.',
+                v_disponivel, new.valor_principal, new.id
+                using errcode = 'OC001';
+        end if;
+
+        insert into capital_ledger (evento_tipo, valor, operacao_id, saldo_disponivel_pos)
+        values ('ativacao_operacao', new.valor_principal, new.id, v_disponivel - new.valor_principal);
+    end if;
+
+    new.updated_at := now();
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger trg_check_teto_capital
+    before insert or update on operacao_credito
+    for each row execute function fn_check_teto_capital();
+
 -- Comentários de documentação
 comment on table tomador is 'Tomadores de crédito: pessoas jurídicas enquadráveis em ESC (ME/EPP)';
 comment on table operacao_credito is 'Operações de crédito: ciclo de vida (proposta → ativa → liquidada/inadimplente)';
