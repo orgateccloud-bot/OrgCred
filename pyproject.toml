@@ -25,6 +25,7 @@ dependencies = [
     "slowapi==0.1.9",
     # Logging & Observability
     "structlog==24.4.0",
+    "prometheus-client==0.20.0",
 ]
 
 [project.optional-dependencies]

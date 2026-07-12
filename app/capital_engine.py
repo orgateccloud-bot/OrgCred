@@ -32,6 +32,7 @@ from app.core.exceptions import (
     TetoCapitalExcedido,
     TransicaoInvalida,
 )
+from app.core.metrics import registrar_ativacao
 from app.models import OperacaoCredito
 
 
@@ -90,4 +91,5 @@ def ativar_operacao(db: Session, operacao_id: UUID) -> OperacaoCredito:
         raise _traduz_erro_banco(exc) from exc
 
     db.refresh(op)
+    registrar_ativacao()
     return op
