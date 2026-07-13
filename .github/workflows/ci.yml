@@ -122,10 +122,18 @@ jobs:
           ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_alembic_ci
         run: uv run alembic upgrade head
 
-      - name: alembic current aponta para 0003
+      - name: alembic current aponta para o head
         env:
           ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_alembic_ci
-        run: uv run alembic current | grep -q "0003 (head)"
+        # Compara dinamicamente com `alembic heads` em vez de hardcodar um
+        # número de revisão — um valor fixo (ex. "0003") fica desatualizado
+        # a cada nova migration e falha silenciosamente até alguém notar
+        # (foi exatamente isso que quebrou o CI depois das Fases 6/7).
+        run: |
+          CURRENT=$(uv run alembic current | grep "(head)" | awk '{print $1}')
+          HEAD=$(uv run alembic heads | grep "(head)" | awk '{print $1}')
+          echo "current=$CURRENT head=$HEAD"
+          [ "$CURRENT" = "$HEAD" ] && [ -n "$CURRENT" ]
 
       - name: alembic downgrade base (rollback completo)
         env:
@@ -175,4 +183,8 @@ jobs:
           ./tests/test_capital_invariant.sh orgcred_regression
 
       - name: Run concurrency tests (Python)
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
         run: python tests/test_concorrencia.py orgcred_conc_test
