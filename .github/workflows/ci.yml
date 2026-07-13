@@ -75,7 +75,7 @@ jobs:
       # servidor admin) — não há migration para aplicar manualmente aqui.
       - name: Run pytest
         env:
-          ORGCRED_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          ORGCRED_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
           SUPABASE_JWT_SECRET: ci-test-secret-not-for-production
         run: uv run pytest tests/ -v --cov=app --cov-report=xml
 
@@ -119,17 +119,17 @@ jobs:
 
       - name: alembic upgrade head
         env:
-          ORGCRED_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orgcred_alembic_ci
+          ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_alembic_ci
         run: uv run alembic upgrade head
 
       - name: alembic current aponta para 0003
         env:
-          ORGCRED_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orgcred_alembic_ci
+          ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_alembic_ci
         run: uv run alembic current | grep -q "0003 (head)"
 
       - name: alembic downgrade base (rollback completo)
         env:
-          ORGCRED_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orgcred_alembic_ci
+          ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_alembic_ci
         run: uv run alembic downgrade base
 
   integration:
@@ -166,6 +166,10 @@ jobs:
           PGPASSWORD: postgres
 
       - name: Run regression tests (bash)
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
         run: |
           chmod +x tests/test_capital_invariant.sh
           ./tests/test_capital_invariant.sh orgcred_regression
