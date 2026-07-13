@@ -1,6 +1,6 @@
 # OrgCred — estrutura do projeto
 
-M�dulo de microcrédito (ESC) da ORGATEC. **Single-tenant** — uma única
+Módulo de microcrédito (ESC) da ORGATEC. **Single-tenant** — uma única
 ESC, controle de acesso por papel (`admin`/`operador`), sem `org_id`
 multi-tenant como OrgConc/OrgAudi. Essa é uma decisão confirmada, não
 um esquecimento: o OrgCred é a operação de crédito da própria ORGATEC,
