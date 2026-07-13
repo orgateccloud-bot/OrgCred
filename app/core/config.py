@@ -19,7 +19,7 @@ class ConfigError(RuntimeError):
 class Settings(BaseSettings):
     """Configurações centralizadas."""
 
-    database_url: str = "postgresql://localhost/orgcred_dev"
+    database_url: str = "postgresql+psycopg://localhost/orgcred_dev"
     environment: str = "development"
     debug: bool = False
     supabase_jwt_secret: str = "dev-secret-key-change-in-prod"
