@@ -9,13 +9,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.capital_engine import ativar_operacao
-from app.core.auth import require_operador
-from app.core.exceptions import (
-    OperacaoNaoEncontrada,
-    RegraNegocioViolada,
-)
-from app.core.security import CurrentUser
+from app.core.exceptions import OperacaoNaoEncontrada, RegraNegocioViolada
+from app.core.security import get_operador_user
 from app.db import get_db
+from app.models import Usuario
 
 
 router = APIRouter(prefix="/operacoes", tags=["operacoes"])
@@ -38,7 +35,7 @@ class ErrorResponse(BaseModel):
 def post_ativar_operacao(
     operacao_id: UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_operador),
+    user: Usuario = Depends(get_operador_user),
 ) -> AtivarOperacaoOut:
     """
     Ativar operação de crédito (transição para status 'ativa').
@@ -53,7 +50,7 @@ def post_ativar_operacao(
       - 422: Regra de negócio violada (teto, município, registro, capital)
     """
     try:
-        op = ativar_operacao(db, operacao_id, usuario_id=user.user_id)
+        op = ativar_operacao(db, operacao_id, usuario_id=str(user.id))
     except OperacaoNaoEncontrada as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RegraNegocioViolada as exc:

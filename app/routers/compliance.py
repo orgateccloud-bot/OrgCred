@@ -15,14 +15,13 @@ Escopo pendente após a confirmação regulatória:
   Pessoa Exposta Politicamente (PEP) e listas restritivas.
 - Comunicação de operações suspeitas ou acima de limiar ao COAF, se aplicável.
 - Retenção de registros conforme prazo legal (5 anos é o padrão do setor).
-- Trilha de auditoria com autor: capital_ledger.usuario_id já existe no
-  schema (migration 002) e o pipeline de autenticação (app/core/auth.py,
-  Fase 2) já extrai o usuário do JWT — falta propagar esse user_id para o
-  trigger via `SET LOCAL app.user_id` antes de cada commit em
-  app.capital_engine.ativar_operacao, e o trigger ler via
-  `current_setting('app.user_id', true)` ao inserir em capital_ledger.
-  Essa parte NÃO depende de decisão externa — é puramente técnica e pode
-  ser implementada a qualquer momento.
+
+Trilha de auditoria com autor: JÁ IMPLEMENTADA (Fase 6, migration 004) —
+app.core.security.get_current_user resolve o usuário autenticado a partir
+do JWT (Zero-Trust: papel/ativo vêm do banco, não de claims do token),
+app.capital_engine.ativar_operacao propaga usuario_id via
+`SET LOCAL app.user_id`, e o trigger lê via
+`current_setting('app.user_id', true)` ao inserir em capital_ledger.
 """
 
 from fastapi import APIRouter

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://localhost/orgcred_dev"
     environment: str = "development"
     debug: bool = False
+    supabase_jwt_secret: str = "dev-secret-key-change-in-prod"
 
     class Config:
         env_prefix = "ORGCRED_"

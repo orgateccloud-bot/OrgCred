@@ -8,7 +8,7 @@ Integra: autenticação (JWT), rate limiting, CORS, logging estruturado, excepti
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Dict
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -26,6 +26,7 @@ from app.core.exceptions import (
 )
 from app.core.logging import configure_logging, get_logger
 from app.core.metrics import registrar_bloqueio, registrar_falha_auth
+from app.core.security import get_current_user
 from app.db import engine
 from app.routers import capital, cobranca, compliance, contratos, fiscal, operacoes, tomadores
 
@@ -78,15 +79,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registra routers
-app.include_router(capital.router)
-app.include_router(operacoes.router)
-# Stubs — ver docstring de cada módulo para o bloqueador ou escopo pendente
-app.include_router(tomadores.router)
-app.include_router(contratos.router)
-app.include_router(fiscal.router)
-app.include_router(compliance.router)
-app.include_router(cobranca.router)
+# Registra routers com segurança Zero-Trust
+app.include_router(capital.router, dependencies=[Depends(get_current_user)])
+app.include_router(operacoes.router, dependencies=[Depends(get_current_user)])
+app.include_router(tomadores.router, dependencies=[Depends(get_current_user)])
+app.include_router(contratos.router, dependencies=[Depends(get_current_user)])
+app.include_router(fiscal.router, dependencies=[Depends(get_current_user)])
+app.include_router(compliance.router, dependencies=[Depends(get_current_user)])
+app.include_router(cobranca.router, dependencies=[Depends(get_current_user)])
 
 
 @app.get("/health")

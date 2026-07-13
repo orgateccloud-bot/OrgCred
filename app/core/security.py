@@ -1,63 +1,74 @@
 """
-Autenticação e segurança — Supabase Auth + JWT validation.
+Autenticação e segurança — Supabase Auth + JWT validation (Zero-Trust).
 
-Esperado que o frontend (painel de operadores) faça login via Supabase Auth,
-obtenha um JWT, e o inclua em Authorization: Bearer <jwt> em cada requisição.
-A API valida o JWT e extrai user_id (ou sub do JWT) para contexto de auditoria.
+O frontend faz login via Supabase Auth, obtém um JWT, e o inclui em Authorization: Bearer <jwt> em cada requisição.
+A API valida o JWT e fornece a dependência get_current_user.
 """
 
-import os
-from typing import Any, Optional
+from typing import Optional
 
 import jwt
-from pydantic import BaseModel
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.exceptions import PermissaoNegada, TokenAusente, TokenInvalido
+from app.db import get_db
+from app.models import Usuario
 
 
-class JWTConfig:
-    """Configuração de JWT/Supabase Auth."""
-
-    # Em produção, puxar da variável SUPABASE_JWT_SECRET
-    # Para dev, usar uma secret comum (não-segura!)
-    jwt_secret: str = os.environ.get("SUPABASE_JWT_SECRET", "dev-secret-key-change-in-prod")
-    jwt_algorithm: str = "HS256"
-    jwt_audience: Optional[str] = os.environ.get("SUPABASE_JWT_AUDIENCE", None)
+security = HTTPBearer(auto_error=False)
 
 
-class CurrentUser(BaseModel):
-    """Usuário autenticado extraído do JWT."""
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> Usuario:
+    """Dependency para extrair e validar o usuário do JWT (Zero-Trust)."""
+    if not credentials:
+        raise TokenAusente()
 
-    user_id: str  # sub do JWT (UUID do usuário no Supabase Auth)
-    email: Optional[str] = None
-    papel: Optional[str] = None  # admin, operador (custom claim)
-
-
-def decode_jwt(token: str) -> dict[str, Any]:
-    """Decodifica e valida JWT."""
+    token = credentials.credentials
     try:
+        # Supabase utiliza HS256 por padrão
         payload = jwt.decode(
             token,
-            JWTConfig.jwt_secret,
-            algorithms=[JWTConfig.jwt_algorithm],
-            audience=JWTConfig.jwt_audience,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
         )
-        return payload
     except jwt.ExpiredSignatureError:
-        raise ValueError("Token expirado")
-    except jwt.InvalidTokenError as e:
-        raise ValueError(f"Token inválido: {e}")
+        raise TokenInvalido("Token expirado")
+    except jwt.PyJWTError:
+        raise TokenInvalido("Assinatura inválida")
 
-
-def extract_user_from_jwt(token: str) -> CurrentUser:
-    """Extrai CurrentUser do JWT."""
-    payload = decode_jwt(token)
-
-    # Supabase padrão: sub é o user_id
-    user_id: str = payload.get("sub", "")
+    user_id = payload.get("sub")
     if not user_id:
-        raise ValueError("Token sem 'sub' (user_id)")
+        raise TokenInvalido("Token sem 'sub'")
 
-    email: Optional[str] = payload.get("email")
-    # Papel pode ser custom claim no JWT, ex: {"papel": "operador"}
-    papel: Optional[str] = payload.get("papel")
+    # Convert str sub to UUID for querying the Usuario table
+    usuario = db.query(Usuario).filter(Usuario.id == user_id).first()
 
-    return CurrentUser(user_id=user_id, email=email, papel=papel)
+    if not usuario:
+        raise PermissaoNegada("Usuário não encontrado")
+    if not usuario.ativo:
+        raise PermissaoNegada("Usuário inativo")
+
+    return usuario
+
+
+def get_admin_user(current_user: Usuario = Depends(get_current_user)) -> Usuario:
+    """Dependency para restringir rotas apenas a administradores."""
+    if current_user.papel != "admin":
+        raise PermissaoNegada("Ação restrita a administradores")
+    return current_user
+
+
+def get_operador_user(current_user: Usuario = Depends(get_current_user)) -> Usuario:
+    """Dependency para restringir rotas a operadores ou administradores."""
+    if current_user.papel not in ("operador", "admin"):
+        raise PermissaoNegada(
+            f"Operação requer papel 'operador' ou 'admin', você tem '{current_user.papel}'"
+        )
+    return current_user

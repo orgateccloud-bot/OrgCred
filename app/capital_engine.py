@@ -81,8 +81,8 @@ def ativar_operacao(
     """
     Tenta 'registrada' -> 'ativa'; o banco valida tudo que importa.
 
-    `usuario_id` (tipicamente CurrentUser.user_id do JWT autenticado, ver
-    app/core/auth.py) é propagado ao trigger via `SET LOCAL app.user_id`,
+    `usuario_id` (tipicamente str(Usuario.id), ver app/core/security.py)
+    é propagado ao trigger via `SET LOCAL app.user_id`,
     válido só nesta transação — a migration 004 usa
     `current_setting('app.user_id', true)` para registrar o autor no
     capital_ledger. Sem isso, a trilha de auditoria segue funcionando, só
