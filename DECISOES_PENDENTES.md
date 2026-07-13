@@ -1,10 +1,20 @@
 # OrgCred — Decisões de negócio pendentes (Fase 6)
 
-**Data:** 2026-07-12 · Bloqueadores identificados na revisão de arquitetura
-(ver `RELATORIO_MODERNIZACAO_2026-07-12.md`) que **não podem ser resolvidos
-por implementação técnica** — exigem decisão do dono do negócio, parecer
+**Data original:** 2026-07-12 · **Revisado em:** 2026-07-13 · Bloqueadores
+identificados na revisão de arquitetura (ver
+`RELATORIO_MODERNIZACAO_2026-07-12.md`) que **não podem ser resolvidos por
+implementação técnica** — exigem decisão do dono do negócio, parecer
 jurídico-tributário ou negociação comercial. Este documento existe para que
 a próxima sessão de trabalho comece direto na decisão, não na investigação.
+
+**Status da revisão de 2026-07-13:** os 5 bloqueadores abaixo continuam
+**todos em aberto** — nenhum foi resolvido nesta janela, porque todos
+dependem de ação externa (negociação comercial, parecer jurídico ou decisão
+dos sócios) que não é algo que se resolve escrevendo código. O que avançou
+foi o lastro técnico: a base do backend (Fases 0–7 da modernização, CI/CD,
+autenticação Zero-Trust) está agora 100% estável e com o pipeline de CI
+verde — quando cada decisão abaixo sair, a implementação correspondente
+pode começar imediatamente, sem retrabalho técnico pendente na frente.
 
 ---
 
@@ -70,6 +80,19 @@ roadmap de suporte a webhook) antes de fechar — a pesquisa web reduziu de
 6 candidatas a 4 finalistas com sinal de adequação confirmado, mas não
 substitui contato comercial direto.
 
+**Atualização 2026-07-13 — contato comercial ainda NÃO foi feito:**
+localizei e preenchi (sem enviar) os formulários de contato da CRDC
+("Solicitar Proposta" em `crdc.com.br/solicitar-proposta`) e da SPC
+Grafeno ("Contato" em `spcgrafeno.com.br/contato`), mapeando exatamente os
+campos exigidos por cada um (CNPJ, empresa, responsável, telefone/e-mail,
+e para a SPC Grafeno também um dropdown de "setor" sem opção "ESC" — mais
+próximo é "SCD" ou "Outro"). Explicitamente **não enviei** nenhum dos
+dois — essa é uma ação comercial que representa a ORGATEC perante
+terceiros e requer os dados reais da empresa (CNPJ, nome do responsável,
+contato), que não tenho e não devo inventar. Para retomar: forneça esses
+dados e confirme o envio; os campos e o texto sugerido já estão mapeados,
+não é preciso redescobrir os formulários.
+
 **Depois da decisão:** implementar `app/routers/contratos.py` — geração de
 CCB, chamada à API da entidade, callback de confirmação que preenche
 `registro_entidade_ref`.
@@ -127,6 +150,19 @@ stub. Nota: a propagação de `usuario_id` para a trilha de auditoria (quem
 executou cada ativação) **já foi implementada** (migration 004,
 independente desta decisão) — o que falta é especificamente a integração
 com comunicações regulatórias externas.
+
+**Atualização 2026-07-13:** essa propagação foi ainda **corrigida e
+endurecida**. Um bug real foi encontrado em produção (via CI, não em
+teste manual): a implementação original usava `SET LOCAL app.user_id =
+:usuario_id` com bind parameter — o Postgres não aceita parâmetro bind
+dentro do comando `SET`, só literais. Isso funcionava por acidente com o
+driver antigo (psycopg2) mas quebrou com a migração para psycopg3 (SQLSTATE
+de sintaxe, `syntax error at or near "$1"`). Corrigido trocando para
+`select set_config('app.user_id', :usuario_id, true)` (função regular,
+aceita bind parameter normalmente). Validado com 44/44 testes contra
+Postgres 16 real e CI verde. Ou seja: a trilha de auditoria com autor não
+só está implementada, está agora comprovadamente funcional — não é mais
+um risco técnico latente por trás desta decisão de compliance.
 
 ---
 
