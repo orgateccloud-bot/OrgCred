@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user, require_operador
-from app.core.security import CurrentUser
+from app.core.security import get_current_user, get_operador_user
 from app.db import get_db
 from app.main import app
+from app.models import Usuario
 
 
 @pytest.fixture()
@@ -31,10 +31,31 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
 @pytest.fixture()
 def authed_client(client: TestClient) -> TestClient:
-    """Client com autenticação mockada (papel operador)."""
-    operador = CurrentUser(user_id="test-user", email="op@orgatec.com", papel="operador")
+    """Client com autenticação mockada (papel operador) — overrides as duas
+    dependencies que exigem usuário: get_current_user (aplicada a nível de
+    router em app.main) e get_operador_user (aplicada no endpoint de
+    ativação)."""
+    operador = Usuario(
+        id=uuid.uuid4(), email="op@orgatec.com", nome="Operador Teste", papel="operador", ativo=True
+    )
     app.dependency_overrides[get_current_user] = lambda: operador
-    app.dependency_overrides[require_operador] = lambda: operador
+    app.dependency_overrides[get_operador_user] = lambda: operador
+    return client
+
+
+@pytest.fixture()
+def client_sem_papel_operador(client: TestClient) -> TestClient:
+    """Client autenticado, mas com papel que não é operador nem admin — só
+    sobrescreve get_current_user (a checagem de papel em get_operador_user
+    roda de verdade, para provar que a autorização por papel é enforced)."""
+    convidado = Usuario(
+        id=uuid.uuid4(),
+        email="convidado@orgatec.com",
+        nome="Convidado",
+        papel="convidado",
+        ativo=True,
+    )
+    app.dependency_overrides[get_current_user] = lambda: convidado
     return client
 
 
@@ -45,6 +66,13 @@ class TestAtivarOperacaoSemAutenticacao:
         response = client.post(f"/operacoes/{uuid.uuid4()}/ativar")
         assert response.status_code == 401
         assert response.json()["codigo"] == "TOKEN_AUSENTE"
+
+
+class TestAtivarOperacaoSemPapelAdequado:
+    def test_papel_sem_permissao_retorna_403(self, client_sem_papel_operador: TestClient) -> None:
+        response = client_sem_papel_operador.post(f"/operacoes/{uuid.uuid4()}/ativar")
+        assert response.status_code == 403
+        assert response.json()["codigo"] == "PERMISSAO_NEGADA"
 
 
 class TestAtivarOperacaoComPermissao:
