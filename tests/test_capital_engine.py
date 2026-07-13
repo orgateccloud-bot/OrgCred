@@ -1,7 +1,7 @@
 """
 Suite pytest do motor de capital — porta os 7 cenários de
 test_capital_invariant.sh + idempotência para a camada Python,
-provando a tradução pgcode -> exceção -> HTTP (RegraNegocioViolada).
+provando a tradução SQLSTATE -> exceção -> HTTP (RegraNegocioViolada).
 """
 
 import uuid
@@ -18,6 +18,7 @@ from app.core.exceptions import (
     TetoCapitalExcedido,
     TransicaoInvalida,
 )
+from tests.conftest import sqlstate_de
 
 
 def _criar_operacao(
@@ -165,8 +166,7 @@ class TestReducaoCapitalVigiada:
             db_session.commit()
 
         db_session.rollback()
-        pgcode = getattr(getattr(exc_info.value, "orig", None), "pgcode", None)
-        assert pgcode == "OC005"
+        assert sqlstate_de(exc_info.value) == "OC005"
 
 
 class TestMaquinaDeEstados:

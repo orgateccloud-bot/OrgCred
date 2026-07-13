@@ -45,9 +45,23 @@ _PGCODE_MAP = {
 }
 
 
+def _extrair_sqlstate(exc: DBAPIError) -> Optional[str]:
+    """
+    Extrai o código SQLSTATE da exceção original do driver.
+
+    psycopg3 (psycopg, o driver em uso — ver pyproject.toml) expõe o código
+    via `.sqlstate`; psycopg2 expunha via `.pgcode`. Checa ambos para não
+    quebrar silenciosamente se o driver mudar de novo — um bug real desta
+    natureza (só `.pgcode`) já vazou para produção quando o projeto migrou
+    de psycopg2 para psycopg3 sem atualizar este ponto.
+    """
+    orig = getattr(exc, "orig", None)
+    return getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+
+
 def _traduz_erro_banco(exc: DBAPIError) -> Exception:
-    pgcode: Optional[str] = getattr(getattr(exc, "orig", None), "pgcode", None)
-    exc_cls = _PGCODE_MAP.get(pgcode) if pgcode else None
+    sqlstate = _extrair_sqlstate(exc)
+    exc_cls = _PGCODE_MAP.get(sqlstate) if sqlstate else None
     msg = str(getattr(exc, "orig", exc)).splitlines()[0]
     if exc_cls:
         return exc_cls(msg)
@@ -82,21 +96,29 @@ def ativar_operacao(
     Tenta 'registrada' -> 'ativa'; o banco valida tudo que importa.
 
     `usuario_id` (tipicamente str(Usuario.id), ver app/core/security.py)
-    é propagado ao trigger via `SET LOCAL app.user_id`,
-    válido só nesta transação — a migration 004 usa
-    `current_setting('app.user_id', true)` para registrar o autor no
-    capital_ledger. Sem isso, a trilha de auditoria segue funcionando, só
-    sem autor (equivalente ao comportamento antes da Fase 6).
+    é propagado ao trigger via `set_config('app.user_id', ..., true)`
+    (equivalente a `SET LOCAL`, válido só nesta transação) — a migration
+    004 usa `current_setting('app.user_id', true)` para registrar o autor
+    no capital_ledger. Sem isso, a trilha de auditoria segue funcionando,
+    só sem autor (equivalente ao comportamento antes da Fase 6).
 
-    Sempre executa o SET LOCAL (com o valor ou com DEFAULT) para não
+    Usa `set_config()` (função regular) em vez do comando `SET LOCAL var =
+    :valor` porque o Postgres não aceita parâmetro bind ($1) dentro de um
+    comando SET — só literais. Com psycopg2 isso passava despercebido
+    (driver antigo enviava os parâmetros já interpolados client-side); com
+    psycopg3 (driver atual) o protocolo extended query manda um bind real,
+    e o Postgres rejeita com "syntax error at or near $1". `set_config` é
+    uma função normal, aceita bind parameter sem esse problema.
+
+    Sempre executa o set_config (com o valor ou com NULL) para não
     depender do estado anterior da conexão física: como as conexões vêm de
     um pool, uma sessão sem usuario_id poderia herdar o valor setado por uma
     ativação anterior na mesma conexão se o guard fosse condicional.
     """
-    if usuario_id:
-        db.execute(text("SET LOCAL app.user_id = :usuario_id"), {"usuario_id": usuario_id})
-    else:
-        db.execute(text("SET LOCAL app.user_id TO DEFAULT"))
+    db.execute(
+        text("select set_config('app.user_id', :usuario_id, true)"),
+        {"usuario_id": usuario_id},
+    )
 
     op: Optional[OperacaoCredito] = (
         db.query(OperacaoCredito).filter(OperacaoCredito.id == operacao_id).one_or_none()

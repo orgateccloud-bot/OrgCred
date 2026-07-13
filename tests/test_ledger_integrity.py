@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.capital_engine import ativar_operacao
 from app.core.ledger_integrity import verificar_integridade_ledger
+from tests.conftest import sqlstate_de
 
 
 def _criar_operacao(db_session: Session, tomador_id: uuid.UUID, valor: int) -> uuid.UUID:
@@ -47,8 +48,7 @@ class TestProtecaoAppendOnly:
             db_session.commit()
 
         db_session.rollback()
-        pgcode = getattr(getattr(exc_info.value, "orig", None), "pgcode", None)
-        assert pgcode == "OC007"
+        assert sqlstate_de(exc_info.value) == "OC007"
 
     def test_bloqueia_delete_no_ledger(
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
@@ -63,8 +63,7 @@ class TestProtecaoAppendOnly:
             db_session.commit()
 
         db_session.rollback()
-        pgcode = getattr(getattr(exc_info.value, "orig", None), "pgcode", None)
-        assert pgcode == "OC007"
+        assert sqlstate_de(exc_info.value) == "OC007"
 
 
 class TestCadeiaDeHash:

@@ -11,12 +11,27 @@ usam engines próprias.
 import os
 import uuid
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Optional
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+
+
+def sqlstate_de(exc: BaseException) -> Optional[str]:
+    """
+    Extrai o SQLSTATE de uma exceção de driver, independente do driver.
+
+    psycopg3 (em uso — ver pyproject.toml) expõe `.sqlstate`; psycopg2
+    expunha `.pgcode`. Testes que provocam erro via SQL cru (fora de
+    app.capital_engine, que já usa app.capital_engine._extrair_sqlstate)
+    devem usar este helper em vez de acessar `.pgcode` direto — foi
+    exatamente esse acesso direto que quebrou silenciosamente quando o
+    projeto migrou de psycopg2 para psycopg3.
+    """
+    orig = getattr(exc, "orig", exc)
+    return getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
 
 
 MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
