@@ -8,18 +8,40 @@ mas violando o teto juntas. Com a migration 003 (advisory lock), exatamente
 uma deve ativar e a outra deve ser bloqueada com SQLSTATE OC001.
 
 Uso: python3 tests/test_concorrencia.py [dbname]
-Requer: psycopg2, acesso peer/local ao Postgres.
+Requer: psycopg2, acesso ao Postgres via PGHOST/PGUSER/PGPASSWORD (variáveis
+padrão do libpq). Sem PGHOST definido, cai no comportamento padrão do
+psycopg2/libpq — socket Unix local (peer auth), útil em dev Linux; em CI
+(GitHub Actions, container de serviço Postgres) defina PGHOST=localhost.
 """
 
+import os
 import sys
 import threading
 
 import psycopg2
 
 
+def _dsn(dbname: str) -> str:
+    """Monta a DSN a partir de variáveis de ambiente padrão do libpq.
+
+    Não hardcoda host: se PGHOST não estiver definida, o psycopg2 usa o
+    comportamento padrão da libpq (socket Unix local) — isso é o que
+    quebrava silenciosamente antes, pois o host vinha fixo no código e
+    ignorava qualquer PGHOST setada pelo CI.
+    """
+    parts = [f"dbname={dbname}", f"user={os.environ.get('PGUSER', 'postgres')}"]
+    host = os.environ.get("PGHOST")
+    if host:
+        parts.append(f"host={host}")
+    password = os.environ.get("PGPASSWORD")
+    if password:
+        parts.append(f"password={password}")
+    return " ".join(parts)
+
+
 DB = sys.argv[1] if len(sys.argv) > 1 else "orgcred_conc_test"
-ADMIN_DSN = "dbname=postgres user=postgres host=/var/run/postgresql"
-DSN = f"dbname={DB} user=postgres host=/var/run/postgresql"
+ADMIN_DSN = _dsn("postgres")
+DSN = _dsn(DB)
 
 
 def run_sql(dsn, sql, autocommit=True):
