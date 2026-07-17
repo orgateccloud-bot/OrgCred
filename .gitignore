@@ -53,3 +53,7 @@ dist/
 # Misc
 .tmp/
 *.bak
+
+# Claude Code — estado local/pessoal, não compartilhado (launch.json fica versionado)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
