@@ -19,6 +19,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.exceptions import (
+    OperacaoNaoEncontrada,
     PermissaoNegada,
     RegraNegocioViolada,
     TokenAusente,
@@ -175,6 +176,16 @@ async def regra_negocio_handler(request: Request, exc: RegraNegocioViolada) -> J
     return JSONResponse(
         status_code=exc.http_status,
         content={"detail": exc.message, "codigo": exc.sqlstate},
+    )
+
+
+@app.exception_handler(OperacaoNaoEncontrada)
+async def operacao_nao_encontrada_handler(
+    request: Request, exc: OperacaoNaoEncontrada
+) -> JSONResponse:
+    """Operação inexistente -> 404."""
+    return JSONResponse(
+        status_code=404, content={"detail": str(exc), "codigo": "OPERACAO_NAO_ENCONTRADA"}
     )
 
 

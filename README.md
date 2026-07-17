@@ -13,7 +13,10 @@ orgcred/
 ├── migrations/
 │   ├── 001_initial_schema.sql      # schema completo + trigger do teto de capital
 │   ├── 002_usuarios_papeis.sql     # usuário/papel (admin/operador)
-│   └── 003_hardening_capital.sql   # correções da revisão: lock, estados, capital
+│   ├── 003_hardening_capital.sql   # correções da revisão: lock, estados, capital
+│   ├── 004_auditoria_autor.sql     # autor (usuario_id) nos eventos do ledger
+│   ├── 005_ledger_imutavel.sql     # append-only + hash-chain do ledger
+│   └── 006_capital_comprometido_renegociacao.sql  # inadimplente compromete; novação
 ├── app/
 │   ├── main.py                     # monta a API, registra todos os routers
 │   ├── db.py                       # sessão SQLAlchemy real
@@ -28,7 +31,7 @@ orgcred/
 │       ├── contratos.py            # ⛔ stub — BLOQUEADO (entidade registradora)
 │       ├── fiscal.py               # ⛔ stub — parcialmente bloqueado (IOF)
 │       ├── compliance.py           # ⛔ stub — PLD/COAF
-│       └── cobranca.py             # ⛔ stub — régua de cobrança
+│       └── cobranca.py             # ✅ inadimplência/regularização/renegociação (novação atômica)
 └── tests/
     ├── test_capital_invariant.sh   # regressão: 7 cenários contra Postgres real
     └── test_concorrencia.py        # prova do teto sob transações simultâneas

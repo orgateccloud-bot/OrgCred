@@ -20,6 +20,16 @@ operacoes_bloqueadas_total = Counter(
     labelnames=["sqlstate"],
 )
 
+operacoes_liquidadas_total = Counter(
+    "orgcred_operacoes_liquidadas_total",
+    "Total de operações de crédito liquidadas",
+)
+
+operacoes_renegociadas_total = Counter(
+    "orgcred_operacoes_renegociadas_total",
+    "Total de renegociações (novações) concluídas",
+)
+
 auth_falhas_total = Counter(
     "orgcred_auth_falhas_total",
     "Total de falhas de autenticação/autorização",
@@ -43,6 +53,16 @@ http_request_duration_seconds = Histogram(
 def registrar_ativacao() -> None:
     """Incrementa contador de ativação bem-sucedida."""
     operacoes_ativadas_total.inc()
+
+
+def registrar_liquidacao() -> None:
+    """Incrementa contador de liquidação bem-sucedida."""
+    operacoes_liquidadas_total.inc()
+
+
+def registrar_renegociacao() -> None:
+    """Incrementa contador de renegociação (novação) concluída."""
+    operacoes_renegociadas_total.inc()
 
 
 def registrar_bloqueio(sqlstate: str) -> None:

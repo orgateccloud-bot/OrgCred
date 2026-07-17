@@ -170,9 +170,22 @@ um risco técnico latente por trás desta decisão de compliance.
 
 Para não confundir bloqueio de decisão com trabalho técnico pendente:
 
-- **Renegociação sem dupla contagem** (`app/routers/cobranca.py`): precisa
-  de uma regra explícita de novação atômica, mas é decisão de design técnico,
-  não de negócio externo — pode ser feita a qualquer momento.
+- **Renegociação sem dupla contagem** (`app/routers/cobranca.py`):
+  **implementada** (2026-07-17, migration 006). A regra explícita de
+  novação atômica exigida pela REVISAO_2026-07-11 (item 3) agora existe:
+  em uma única transação sob o advisory lock do teto, a operação antiga
+  sai do conjunto comprometido (evento `renegociacao_liberacao` no
+  ledger) e a nova entra pelo gate completo (OC001/OC002/OC004) com
+  `registro_entidade_ref` próprio — nenhum estado commitado conta capital
+  em dobro, e se a nova não couber no teto, nada muda. A mesma migration
+  fechou dois furos correlatos: (G1) marcar `inadimplente` liberava teto
+  com o dinheiro ainda na rua — agora o comprometimento é
+  `status in ('ativa','inadimplente')`, via `fn_capital_comprometido()`
+  como fonte única usada por triggers e API; (G2) `-> renegociada` saía
+  do comprometido sem evento no ledger. O desempate da cadeia de hash do
+  ledger também foi corrigido (coluna `seq`) — dois eventos na mesma
+  transação (o caso da novação) quebravam a verificação de forma
+  intermitente.
 - **Amortização parcial libera capital**: interpretação conservadora atual
   (usa `valor_principal` integral até liquidação) é juridicamente segura;
   mudar para saldo devedor é decisão de interpretação contábil-jurídica

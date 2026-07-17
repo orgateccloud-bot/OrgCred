@@ -16,9 +16,10 @@ silenciosamente se a mensagem do trigger mudar. Códigos:
   OC005 redução de capital abaixo do comprometido
 """
 
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -32,7 +33,7 @@ from app.core.exceptions import (
     TetoCapitalExcedido,
     TransicaoInvalida,
 )
-from app.core.metrics import registrar_ativacao
+from app.core.metrics import registrar_ativacao, registrar_liquidacao, registrar_renegociacao
 from app.models import OperacaoCredito
 
 
@@ -71,6 +72,10 @@ def _traduz_erro_banco(exc: DBAPIError) -> Exception:
 def consultar_capital_disponivel(db: Session) -> Decimal:
     """Leitura informativa para UX — a validação real é o trigger.
 
+    Usa fn_capital_comprometido() (migration 006) — a MESMA definição de
+    comprometimento dos triggers (status ativa OU inadimplente), para a
+    leitura nunca divergir do que o gate de ativação vai decidir.
+
     Nota de revisão: entre esta leitura e a ativação, outra transação
     pode consumir o capital exibido. O advisory lock garante que o teto
     nunca é violado, mas NÃO garante que o valor mostrado ao usuário
@@ -80,8 +85,7 @@ def consultar_capital_disponivel(db: Session) -> Decimal:
     row = db.execute(
         text("""
         select (select capital_atual from v_capital_atual)
-             - coalesce((select sum(valor_principal) from operacao_credito
-                         where status = 'ativa'), 0) as disponivel
+             - fn_capital_comprometido() as disponivel
     """)
     ).first()
     if row is None:
@@ -89,18 +93,13 @@ def consultar_capital_disponivel(db: Session) -> Decimal:
     return Decimal(row.disponivel)
 
 
-def ativar_operacao(
-    db: Session, operacao_id: UUID, usuario_id: Optional[str] = None
-) -> OperacaoCredito:
+def _propagar_usuario(db: Session, usuario_id: Optional[str]) -> None:
     """
-    Tenta 'registrada' -> 'ativa'; o banco valida tudo que importa.
-
-    `usuario_id` (tipicamente str(Usuario.id), ver app/core/security.py)
-    é propagado ao trigger via `set_config('app.user_id', ..., true)`
-    (equivalente a `SET LOCAL`, válido só nesta transação) — a migration
-    004 usa `current_setting('app.user_id', true)` para registrar o autor
-    no capital_ledger. Sem isso, a trilha de auditoria segue funcionando,
-    só sem autor (equivalente ao comportamento antes da Fase 6).
+    Propaga o autor da ação ao trigger via `set_config('app.user_id', ...,
+    true)` (equivalente a `SET LOCAL`, válido só nesta transação) — a
+    migration 004 usa `current_setting('app.user_id', true)` para registrar
+    o autor no capital_ledger. Sem isso, a trilha de auditoria segue
+    funcionando, só sem autor.
 
     Usa `set_config()` (função regular) em vez do comando `SET LOCAL var =
     :valor` porque o Postgres não aceita parâmetro bind ($1) dentro de um
@@ -120,13 +119,23 @@ def ativar_operacao(
         {"usuario_id": usuario_id},
     )
 
+
+def _transicionar_status(
+    db: Session, operacao_id: UUID, novo_status: str, usuario_id: Optional[str] = None
+) -> OperacaoCredito:
+    """
+    Executa uma transição de status e DEIXA O BANCO decidir — a máquina de
+    estados (OC003) e os gates de capital vivem no trigger, não aqui.
+    """
+    _propagar_usuario(db, usuario_id)
+
     op: Optional[OperacaoCredito] = (
         db.query(OperacaoCredito).filter(OperacaoCredito.id == operacao_id).one_or_none()
     )
     if op is None:
         raise OperacaoNaoEncontrada(f"Operação {operacao_id} não existe.")
 
-    op.status = "ativa"  # type: ignore[assignment]
+    op.status = novo_status  # type: ignore[assignment]
     try:
         db.commit()
     except DBAPIError as exc:
@@ -134,5 +143,134 @@ def ativar_operacao(
         raise _traduz_erro_banco(exc) from exc
 
     db.refresh(op)
+    return op
+
+
+def ativar_operacao(
+    db: Session, operacao_id: UUID, usuario_id: Optional[str] = None
+) -> OperacaoCredito:
+    """
+    Tenta 'registrada' -> 'ativa'; o banco valida tudo que importa
+    (teto OC001, município OC002, estado OC003, registro OC004).
+
+    `usuario_id` (tipicamente str(Usuario.id), ver app/core/security.py)
+    vai para a trilha de auditoria — ver _propagar_usuario.
+    """
+    op = _transicionar_status(db, operacao_id, "ativa", usuario_id)
     registrar_ativacao()
     return op
+
+
+def liquidar_operacao(
+    db: Session, operacao_id: UUID, usuario_id: Optional[str] = None
+) -> OperacaoCredito:
+    """
+    'ativa'|'inadimplente' -> 'liquidada'. Libera o capital comprometido;
+    o trigger grava o evento 'liquidacao' no ledger sob o lock do teto.
+    """
+    op = _transicionar_status(db, operacao_id, "liquidada", usuario_id)
+    registrar_liquidacao()
+    return op
+
+
+def marcar_inadimplente(
+    db: Session, operacao_id: UUID, usuario_id: Optional[str] = None
+) -> OperacaoCredito:
+    """
+    'ativa' -> 'inadimplente'. NÃO libera capital (migration 006): a
+    operação em atraso continua comprometendo o teto até liquidação ou
+    renegociação — interpretação conservadora do Art. 5º.
+    """
+    return _transicionar_status(db, operacao_id, "inadimplente", usuario_id)
+
+
+def regularizar_operacao(
+    db: Session, operacao_id: UUID, usuario_id: Optional[str] = None
+) -> OperacaoCredito:
+    """
+    'inadimplente' -> 'ativa' (cura do atraso). Movimento interno ao
+    conjunto comprometido: nenhum gate re-executa e nenhum evento de
+    capital é gravado — não há capital novo.
+    """
+    return _transicionar_status(db, operacao_id, "ativa", usuario_id)
+
+
+@dataclass(frozen=True)
+class TermosRenegociacao:
+    """Termos negociados da nova operação criada pela novação."""
+
+    valor_principal: Decimal
+    taxa_juros_mensal: Decimal
+    numero_parcelas: int
+    sistema_amortizacao: str
+    registro_entidade_ref: str
+
+
+def renegociar_operacao(
+    db: Session,
+    operacao_id: UUID,
+    termos: TermosRenegociacao,
+    usuario_id: Optional[str] = None,
+) -> tuple[OperacaoCredito, OperacaoCredito]:
+    """
+    Novação atômica — a regra explícita exigida pela REVISAO_2026-07-11
+    (item 3) para o capital nunca ser contado em dobro:
+
+      1. antiga ('ativa'|'inadimplente') -> 'renegociada'
+         O trigger toma o advisory lock do teto AQUI e grava
+         'renegociacao_liberacao' no ledger — a partir deste ponto a
+         novação inteira está serializada contra qualquer outra
+         movimentação de capital.
+      2. nova operação criada como 'registrada' (mesmo tomador/tipo,
+         termos negociados, registro_entidade_ref PRÓPRIO — novação é
+         contrato novo, o Art. 5º §3º exige registro novo).
+      3. nova -> 'ativa': o gate completo re-executa (OC001/OC002/OC004)
+         já enxergando a antiga fora do conjunto comprometido.
+
+    Tudo em UMA transação: se qualquer passo falhar (ex. OC001 porque os
+    novos termos excedem o disponível), o rollback restaura a antiga —
+    nenhum estado commitado jamais tem as duas operações comprometendo
+    capital ao mesmo tempo, e nenhum capital é liberado sem a nova ativa.
+    """
+    _propagar_usuario(db, usuario_id)
+
+    antiga: Optional[OperacaoCredito] = (
+        db.query(OperacaoCredito).filter(OperacaoCredito.id == operacao_id).one_or_none()
+    )
+    if antiga is None:
+        raise OperacaoNaoEncontrada(f"Operação {operacao_id} não existe.")
+
+    nova = OperacaoCredito(
+        id=uuid4(),
+        tomador_id=antiga.tomador_id,
+        tipo=antiga.tipo,
+        valor_principal=termos.valor_principal,
+        taxa_juros_mensal=termos.taxa_juros_mensal,
+        sistema_amortizacao=termos.sistema_amortizacao,
+        numero_parcelas=termos.numero_parcelas,
+        status="registrada",
+        registro_entidade_ref=termos.registro_entidade_ref,
+    )
+
+    try:
+        # Passo 1: libera a antiga (falha rápido com OC003 se o estado
+        # atual não permite renegociar — ex. proposta, liquidada).
+        antiga.status = "renegociada"  # type: ignore[assignment]
+        db.flush()
+
+        # Passo 2: cria a nova como 'registrada' (INSERT só é aceito em
+        # proposta/registrada pela máquina de estados).
+        db.add(nova)
+        db.flush()
+
+        # Passo 3: ativa a nova — gate completo, sob o mesmo lock.
+        nova.status = "ativa"  # type: ignore[assignment]
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+
+    db.refresh(antiga)
+    db.refresh(nova)
+    registrar_renegociacao()
+    return antiga, nova

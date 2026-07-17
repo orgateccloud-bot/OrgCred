@@ -156,5 +156,5 @@ class TestAtivarOperacaoComPermissao:
 
         assert response.status_code == 422
         body = response.json()
-        # HTTPException(detail=<dict>) aninha o payload sob "detail"
-        assert body["detail"]["codigo"] == "OC001"
+        # Envelope unificado dos handlers centrais: {"detail": ..., "codigo": ...}
+        assert body["codigo"] == "OC001"

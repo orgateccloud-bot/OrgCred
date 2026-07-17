@@ -41,6 +41,7 @@ MIGRATIONS = [
     "003_hardening_capital",
     "004_auditoria_autor",
     "005_ledger_imutavel",
+    "006_capital_comprometido_renegociacao",
 ]
 
 
