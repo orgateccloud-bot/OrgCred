@@ -3,21 +3,21 @@
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client'
 import { client } from './client.gen'
 import type {
-  GetAuditoriaAuditoriaGetData,
-  GetAuditoriaAuditoriaGetResponses,
-  GetCapitalDisponivelCapitalDisponivelGetData,
-  GetCapitalDisponivelCapitalDisponivelGetResponses,
-  GetCapitalSnapshotCapitalSnapshotGetData,
-  GetCapitalSnapshotCapitalSnapshotGetResponses,
-  GetOperacoesOperacoesGetData,
-  GetOperacoesOperacoesGetResponses,
+  GetAuditoriaApiAuditoriaGetData,
+  GetAuditoriaApiAuditoriaGetResponses,
+  GetCapitalDisponivelApiCapitalDisponivelGetData,
+  GetCapitalDisponivelApiCapitalDisponivelGetResponses,
+  GetCapitalSnapshotApiCapitalSnapshotGetData,
+  GetCapitalSnapshotApiCapitalSnapshotGetResponses,
+  GetOperacoesApiOperacoesGetData,
+  GetOperacoesApiOperacoesGetResponses,
   HealthCheckHealthGetData,
   HealthCheckHealthGetResponses,
   MetricsMetricsGetData,
   MetricsMetricsGetResponses,
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostData,
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostErrors,
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponses,
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData,
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostErrors,
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponses,
   ReadinessCheckHealthReadyGetData,
   ReadinessCheckHealthReadyGetResponses,
   RootGetData,
@@ -50,16 +50,16 @@ export type Options<
  * outra transação pode consumir o capital exibido; o cliente deve tratar
  * o código OC001 como resultado normal, não como erro inesperado.
  */
-export const getCapitalDisponivelCapitalDisponivelGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GetCapitalDisponivelCapitalDisponivelGetData, ThrowOnError>,
-): RequestResult<GetCapitalDisponivelCapitalDisponivelGetResponses, unknown, ThrowOnError> =>
+export const getCapitalDisponivelApiCapitalDisponivelGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetCapitalDisponivelApiCapitalDisponivelGetData, ThrowOnError>,
+): RequestResult<GetCapitalDisponivelApiCapitalDisponivelGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
-    GetCapitalDisponivelCapitalDisponivelGetResponses,
+    GetCapitalDisponivelApiCapitalDisponivelGetResponses,
     unknown,
     ThrowOnError
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/capital/disponivel',
+    url: '/api/capital/disponivel',
     ...options,
   })
 
@@ -69,16 +69,16 @@ export const getCapitalDisponivelCapitalDisponivelGet = <ThrowOnError extends bo
  * Total/comprometido/disponível para a barra de utilização do teto no
  * dashboard. Mesma ressalva de leitura informativa que /disponivel.
  */
-export const getCapitalSnapshotCapitalSnapshotGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GetCapitalSnapshotCapitalSnapshotGetData, ThrowOnError>,
-): RequestResult<GetCapitalSnapshotCapitalSnapshotGetResponses, unknown, ThrowOnError> =>
+export const getCapitalSnapshotApiCapitalSnapshotGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetCapitalSnapshotApiCapitalSnapshotGetData, ThrowOnError>,
+): RequestResult<GetCapitalSnapshotApiCapitalSnapshotGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
-    GetCapitalSnapshotCapitalSnapshotGetResponses,
+    GetCapitalSnapshotApiCapitalSnapshotGetResponses,
     unknown,
     ThrowOnError
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/capital/snapshot',
+    url: '/api/capital/snapshot',
     ...options,
   })
 
@@ -90,12 +90,12 @@ export const getCapitalSnapshotCapitalSnapshotGet = <ThrowOnError extends boolea
  * Sem paginação: o volume real (dezenas de operações, não milhares) não
  * justifica a complexidade — reavaliar se o volume crescer muito.
  */
-export const getOperacoesOperacoesGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GetOperacoesOperacoesGetData, ThrowOnError>,
-): RequestResult<GetOperacoesOperacoesGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<GetOperacoesOperacoesGetResponses, unknown, ThrowOnError>({
+export const getOperacoesApiOperacoesGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetOperacoesApiOperacoesGetData, ThrowOnError>,
+): RequestResult<GetOperacoesApiOperacoesGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<GetOperacoesApiOperacoesGetResponses, unknown, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/operacoes',
+    url: '/api/operacoes',
     ...options,
   })
 
@@ -111,24 +111,32 @@ export const getOperacoesOperacoesGet = <ThrowOnError extends boolean = false>(
  * - 403: Usuário sem permissão (não é operador)
  * - 404: Operação não existe
  * - 409: Transição de estado inválida
- * - 422: Regra de negócio violada (teto, município, registro, capital)
+ * - 422: Regra de negócio violada (teto, município, registro, capital) —
+ * RegraNegocioViolada não é capturada aqui de propósito: propaga para
+ * o exception_handler global (app/main.py), que produz o mesmo
+ * formato {"detail": "...", "codigo": "..."} usado por todo o resto
+ * da API. Uma versão anterior capturava localmente e aninhava o
+ * payload sob "detail" (formato diferente, só neste endpoint) — bug
+ * real encontrado via teste E2E (frontend/e2e/ativacao.spec.ts): o
+ * dicionário de erro do cliente esperava o formato plano e exibia
+ * "[object Object]" em vez da mensagem traduzida.
  */
-export const postAtivarOperacaoOperacoesOperacaoIdAtivarPost = <
+export const postAtivarOperacaoApiOperacoesOperacaoIdAtivarPost = <
   ThrowOnError extends boolean = false,
 >(
-  options: Options<PostAtivarOperacaoOperacoesOperacaoIdAtivarPostData, ThrowOnError>,
+  options: Options<PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData, ThrowOnError>,
 ): RequestResult<
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponses,
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostErrors,
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponses,
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostErrors,
   ThrowOnError
 > =>
   (options.client ?? client).post<
-    PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponses,
-    PostAtivarOperacaoOperacoesOperacaoIdAtivarPostErrors,
+    PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponses,
+    PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostErrors,
     ThrowOnError
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/operacoes/{operacao_id}/ativar',
+    url: '/api/operacoes/{operacao_id}/ativar',
     ...options,
   })
 
@@ -140,12 +148,12 @@ export const postAtivarOperacaoOperacoesOperacaoIdAtivarPost = <
  * hash (`fn_verificar_cadeia_ledger()`, migration 005) — 0 quebras
  * significa cadeia íntegra.
  */
-export const getAuditoriaAuditoriaGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GetAuditoriaAuditoriaGetData, ThrowOnError>,
-): RequestResult<GetAuditoriaAuditoriaGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<GetAuditoriaAuditoriaGetResponses, unknown, ThrowOnError>({
+export const getAuditoriaApiAuditoriaGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAuditoriaApiAuditoriaGetData, ThrowOnError>,
+): RequestResult<GetAuditoriaApiAuditoriaGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<GetAuditoriaApiAuditoriaGetResponses, unknown, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/auditoria',
+    url: '/api/auditoria',
     ...options,
   })
 
@@ -193,7 +201,7 @@ export const metricsMetricsGet = <ThrowOnError extends boolean = false>(
 /**
  * Root
  *
- * Raiz da API.
+ * Raiz da API (dev/CI — sem build do frontend disponível).
  */
 export const rootGet = <ThrowOnError extends boolean = false>(
   options?: Options<RootGetData, ThrowOnError>,

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.capital_engine import ativar_operacao
-from app.core.exceptions import OperacaoNaoEncontrada, RegraNegocioViolada
+from app.core.exceptions import OperacaoNaoEncontrada
 from app.core.security import get_current_user, get_operador_user
 from app.db import get_db
 from app.models import Usuario
@@ -24,13 +24,6 @@ class AtivarOperacaoOut(BaseModel):
     id: UUID
     status: str
     valor_principal: Decimal
-
-
-class ErrorResponse(BaseModel):
-    """Resposta de erro estruturada com código SQLSTATE."""
-
-    codigo: Optional[str] = None
-    detalhe: str
 
 
 class OperacaoListItemOut(BaseModel):
@@ -94,17 +87,20 @@ def post_ativar_operacao(
       - 403: Usuário sem permissão (não é operador)
       - 404: Operação não existe
       - 409: Transição de estado inválida
-      - 422: Regra de negócio violada (teto, município, registro, capital)
+      - 422: Regra de negócio violada (teto, município, registro, capital) —
+        RegraNegocioViolada não é capturada aqui de propósito: propaga para
+        o exception_handler global (app/main.py), que produz o mesmo
+        formato {"detail": "...", "codigo": "..."} usado por todo o resto
+        da API. Uma versão anterior capturava localmente e aninhava o
+        payload sob "detail" (formato diferente, só neste endpoint) — bug
+        real encontrado via teste E2E (frontend/e2e/ativacao.spec.ts): o
+        dicionário de erro do cliente esperava o formato plano e exibia
+        "[object Object]" em vez da mensagem traduzida.
     """
     try:
         op = ativar_operacao(db, operacao_id, usuario_id=str(user.id))
     except OperacaoNaoEncontrada as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except RegraNegocioViolada as exc:
-        raise HTTPException(
-            status_code=exc.http_status,
-            detail=ErrorResponse(codigo=exc.sqlstate, detalhe=exc.message).model_dump(),
-        )
 
     return AtivarOperacaoOut(
         id=op.id,  # type: ignore[arg-type]

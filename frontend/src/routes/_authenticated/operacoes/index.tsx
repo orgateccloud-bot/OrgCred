@@ -9,7 +9,7 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import { useState } from 'react'
-import { getOperacoesOperacoesGetOptions } from '@/api/generated/@tanstack/react-query.gen'
+import { getOperacoesApiOperacoesGetOptions } from '@/api/generated/@tanstack/react-query.gen'
 import type { OperacaoListItemOut } from '@/api/generated/types.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
@@ -60,7 +60,7 @@ const columns = [
 ]
 
 function OperacoesListPage() {
-  const { data, error, isPending } = useQuery(getOperacoesOperacoesGetOptions())
+  const { data, error, isPending } = useQuery(getOperacoesApiOperacoesGetOptions())
   const [sorting, setSorting] = useState<SortingState>([{ id: 'created_at', desc: true }])
 
   const table = useReactTable({

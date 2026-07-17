@@ -186,60 +186,60 @@ export type ValidationError = {
   type: string
 }
 
-export type GetCapitalDisponivelCapitalDisponivelGetData = {
+export type GetCapitalDisponivelApiCapitalDisponivelGetData = {
   body?: never
   path?: never
   query?: never
-  url: '/capital/disponivel'
+  url: '/api/capital/disponivel'
 }
 
-export type GetCapitalDisponivelCapitalDisponivelGetResponses = {
+export type GetCapitalDisponivelApiCapitalDisponivelGetResponses = {
   /**
    * Successful Response
    */
   200: CapitalDisponivelOut
 }
 
-export type GetCapitalDisponivelCapitalDisponivelGetResponse =
-  GetCapitalDisponivelCapitalDisponivelGetResponses[keyof GetCapitalDisponivelCapitalDisponivelGetResponses]
+export type GetCapitalDisponivelApiCapitalDisponivelGetResponse =
+  GetCapitalDisponivelApiCapitalDisponivelGetResponses[keyof GetCapitalDisponivelApiCapitalDisponivelGetResponses]
 
-export type GetCapitalSnapshotCapitalSnapshotGetData = {
+export type GetCapitalSnapshotApiCapitalSnapshotGetData = {
   body?: never
   path?: never
   query?: never
-  url: '/capital/snapshot'
+  url: '/api/capital/snapshot'
 }
 
-export type GetCapitalSnapshotCapitalSnapshotGetResponses = {
+export type GetCapitalSnapshotApiCapitalSnapshotGetResponses = {
   /**
    * Successful Response
    */
   200: CapitalSnapshotOut
 }
 
-export type GetCapitalSnapshotCapitalSnapshotGetResponse =
-  GetCapitalSnapshotCapitalSnapshotGetResponses[keyof GetCapitalSnapshotCapitalSnapshotGetResponses]
+export type GetCapitalSnapshotApiCapitalSnapshotGetResponse =
+  GetCapitalSnapshotApiCapitalSnapshotGetResponses[keyof GetCapitalSnapshotApiCapitalSnapshotGetResponses]
 
-export type GetOperacoesOperacoesGetData = {
+export type GetOperacoesApiOperacoesGetData = {
   body?: never
   path?: never
   query?: never
-  url: '/operacoes'
+  url: '/api/operacoes'
 }
 
-export type GetOperacoesOperacoesGetResponses = {
+export type GetOperacoesApiOperacoesGetResponses = {
   /**
-   * Response Get Operacoes Operacoes Get
+   * Response Get Operacoes Api Operacoes Get
    *
    * Successful Response
    */
   200: Array<OperacaoListItemOut>
 }
 
-export type GetOperacoesOperacoesGetResponse =
-  GetOperacoesOperacoesGetResponses[keyof GetOperacoesOperacoesGetResponses]
+export type GetOperacoesApiOperacoesGetResponse =
+  GetOperacoesApiOperacoesGetResponses[keyof GetOperacoesApiOperacoesGetResponses]
 
-export type PostAtivarOperacaoOperacoesOperacaoIdAtivarPostData = {
+export type PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData = {
   body?: never
   path: {
     /**
@@ -248,45 +248,45 @@ export type PostAtivarOperacaoOperacoesOperacaoIdAtivarPostData = {
     operacao_id: string
   }
   query?: never
-  url: '/operacoes/{operacao_id}/ativar'
+  url: '/api/operacoes/{operacao_id}/ativar'
 }
 
-export type PostAtivarOperacaoOperacoesOperacaoIdAtivarPostErrors = {
+export type PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError
 }
 
-export type PostAtivarOperacaoOperacoesOperacaoIdAtivarPostError =
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostErrors[keyof PostAtivarOperacaoOperacoesOperacaoIdAtivarPostErrors]
+export type PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostError =
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostErrors[keyof PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostErrors]
 
-export type PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponses = {
+export type PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponses = {
   /**
    * Successful Response
    */
   200: AtivarOperacaoOut
 }
 
-export type PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponse =
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponses[keyof PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponses]
+export type PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponse =
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponses[keyof PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponses]
 
-export type GetAuditoriaAuditoriaGetData = {
+export type GetAuditoriaApiAuditoriaGetData = {
   body?: never
   path?: never
   query?: never
-  url: '/auditoria'
+  url: '/api/auditoria'
 }
 
-export type GetAuditoriaAuditoriaGetResponses = {
+export type GetAuditoriaApiAuditoriaGetResponses = {
   /**
    * Successful Response
    */
   200: AuditoriaOut
 }
 
-export type GetAuditoriaAuditoriaGetResponse =
-  GetAuditoriaAuditoriaGetResponses[keyof GetAuditoriaAuditoriaGetResponses]
+export type GetAuditoriaApiAuditoriaGetResponse =
+  GetAuditoriaApiAuditoriaGetResponses[keyof GetAuditoriaApiAuditoriaGetResponses]
 
 export type HealthCheckHealthGetData = {
   body?: never

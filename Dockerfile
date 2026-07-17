@@ -1,4 +1,14 @@
-# OrgCred — imagem multi-stage com uv
+# OrgCred — imagem multi-stage: build do frontend (Vite) + backend (uv),
+# servidos por um único processo FastAPI (Fase F4 — ver app/main.py,
+# StaticFiles com fallback de SPA).
+FROM node:24-slim AS frontend-builder
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.12-slim AS builder
 
 RUN pip install --no-cache-dir uv
@@ -19,6 +29,7 @@ COPY app/ ./app/
 COPY migrations/ ./migrations/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
+COPY --from=frontend-builder /frontend/dist ./static/
 
 USER orgcred
 
