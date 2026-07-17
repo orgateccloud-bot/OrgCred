@@ -77,7 +77,12 @@ class OperacaoCredito(Base):
 
 
 class CapitalLedger(Base):
-    """Ledger imutável de movimentações de capital."""
+    """Ledger imutável de movimentações de capital.
+
+    `prev_hash`/`current_hash`: cadeia SHA-256 adicionada na migration 005
+    (append-only enforced por trigger) — calculadas pelo banco em cada
+    INSERT, nunca escritas pela aplicação.
+    """
 
     __tablename__ = "capital_ledger"
 
@@ -88,6 +93,8 @@ class CapitalLedger(Base):
     saldo_disponivel_pos = Column(Numeric(14, 2), nullable=False)
     usuario_id = Column(String(255), nullable=True)  # preenchido em autenticação
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    prev_hash = Column(String(64), nullable=True)
+    current_hash = Column(String(64), nullable=True)
 
 
 class EscCapitalSocial(Base):

@@ -17,7 +17,7 @@ silenciosamente se a mensagem do trigger mudar. Códigos:
 """
 
 from decimal import Decimal
-from typing import Optional
+from typing import NamedTuple, Optional
 from uuid import UUID
 
 from sqlalchemy import text
@@ -87,6 +87,35 @@ def consultar_capital_disponivel(db: Session) -> Decimal:
     if row is None:
         return Decimal("0")
     return Decimal(row.disponivel)
+
+
+class CapitalSnapshot(NamedTuple):
+    """Leitura informativa para UX (dashboard) — mesma ressalva de
+    `consultar_capital_disponivel`: pode ficar desatualizada entre a
+    leitura e uma ativação concorrente."""
+
+    total: Decimal
+    comprometido: Decimal
+    disponivel: Decimal
+
+
+def consultar_capital_snapshot(db: Session) -> CapitalSnapshot:
+    """Total (capital social), comprometido (operações ativas) e
+    disponível (total - comprometido) — usado pelo dashboard para a
+    barra de utilização do teto."""
+    row = db.execute(
+        text("""
+        select
+            (select capital_atual from v_capital_atual) as total,
+            coalesce((select sum(valor_principal) from operacao_credito
+                      where status = 'ativa'), 0) as comprometido
+    """)
+    ).first()
+    if row is None:
+        return CapitalSnapshot(Decimal("0"), Decimal("0"), Decimal("0"))
+    total = Decimal(row.total)
+    comprometido = Decimal(row.comprometido)
+    return CapitalSnapshot(total=total, comprometido=comprometido, disponivel=total - comprometido)
 
 
 def ativar_operacao(

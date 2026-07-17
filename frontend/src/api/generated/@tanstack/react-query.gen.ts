@@ -4,7 +4,10 @@ import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanst
 
 import { client } from '../client.gen'
 import {
+  getAuditoriaAuditoriaGet,
   getCapitalDisponivelCapitalDisponivelGet,
+  getCapitalSnapshotCapitalSnapshotGet,
+  getOperacoesOperacoesGet,
   healthCheckHealthGet,
   metricsMetricsGet,
   type Options,
@@ -13,8 +16,14 @@ import {
   rootGet,
 } from '../sdk.gen'
 import type {
+  GetAuditoriaAuditoriaGetData,
+  GetAuditoriaAuditoriaGetResponse,
   GetCapitalDisponivelCapitalDisponivelGetData,
   GetCapitalDisponivelCapitalDisponivelGetResponse,
+  GetCapitalSnapshotCapitalSnapshotGetData,
+  GetCapitalSnapshotCapitalSnapshotGetResponse,
+  GetOperacoesOperacoesGetData,
+  GetOperacoesOperacoesGetResponse,
   HealthCheckHealthGetData,
   HealthCheckHealthGetResponse,
   MetricsMetricsGetData,
@@ -98,6 +107,67 @@ export const getCapitalDisponivelCapitalDisponivelGetOptions = (
     queryKey: getCapitalDisponivelCapitalDisponivelGetQueryKey(options),
   })
 
+export const getCapitalSnapshotCapitalSnapshotGetQueryKey = (
+  options?: Options<GetCapitalSnapshotCapitalSnapshotGetData>,
+) => createQueryKey('getCapitalSnapshotCapitalSnapshotGet', options)
+
+/**
+ * Get Capital Snapshot
+ *
+ * Total/comprometido/disponível para a barra de utilização do teto no
+ * dashboard. Mesma ressalva de leitura informativa que /disponivel.
+ */
+export const getCapitalSnapshotCapitalSnapshotGetOptions = (
+  options?: Options<GetCapitalSnapshotCapitalSnapshotGetData>,
+) =>
+  queryOptions<
+    GetCapitalSnapshotCapitalSnapshotGetResponse,
+    DefaultError,
+    GetCapitalSnapshotCapitalSnapshotGetResponse,
+    ReturnType<typeof getCapitalSnapshotCapitalSnapshotGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getCapitalSnapshotCapitalSnapshotGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getCapitalSnapshotCapitalSnapshotGetQueryKey(options),
+  })
+
+export const getOperacoesOperacoesGetQueryKey = (options?: Options<GetOperacoesOperacoesGetData>) =>
+  createQueryKey('getOperacoesOperacoesGet', options)
+
+/**
+ * Get Operacoes
+ *
+ * Lista operações de crédito, mais recentes primeiro.
+ *
+ * Sem paginação: o volume real (dezenas de operações, não milhares) não
+ * justifica a complexidade — reavaliar se o volume crescer muito.
+ */
+export const getOperacoesOperacoesGetOptions = (options?: Options<GetOperacoesOperacoesGetData>) =>
+  queryOptions<
+    GetOperacoesOperacoesGetResponse,
+    DefaultError,
+    GetOperacoesOperacoesGetResponse,
+    ReturnType<typeof getOperacoesOperacoesGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getOperacoesOperacoesGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getOperacoesOperacoesGetQueryKey(options),
+  })
+
 /**
  * Post Ativar Operacao
  *
@@ -135,6 +205,36 @@ export const postAtivarOperacaoOperacoesOperacaoIdAtivarPostMutation = (
   }
   return mutationOptions
 }
+
+export const getAuditoriaAuditoriaGetQueryKey = (options?: Options<GetAuditoriaAuditoriaGetData>) =>
+  createQueryKey('getAuditoriaAuditoriaGet', options)
+
+/**
+ * Get Auditoria
+ *
+ * Trilha de auditoria em duas camadas: eventos legíveis (com nome do
+ * usuário quando disponível) e o resultado da verificação da cadeia de
+ * hash (`fn_verificar_cadeia_ledger()`, migration 005) — 0 quebras
+ * significa cadeia íntegra.
+ */
+export const getAuditoriaAuditoriaGetOptions = (options?: Options<GetAuditoriaAuditoriaGetData>) =>
+  queryOptions<
+    GetAuditoriaAuditoriaGetResponse,
+    DefaultError,
+    GetAuditoriaAuditoriaGetResponse,
+    ReturnType<typeof getAuditoriaAuditoriaGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getAuditoriaAuditoriaGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getAuditoriaAuditoriaGetQueryKey(options),
+  })
 
 export const healthCheckHealthGetQueryKey = (options?: Options<HealthCheckHealthGetData>) =>
   createQueryKey('healthCheckHealthGet', options)
