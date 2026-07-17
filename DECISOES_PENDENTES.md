@@ -16,6 +16,33 @@ autenticação Zero-Trust) está agora 100% estável e com o pipeline de CI
 verde — quando cada decisão abaixo sair, a implementação correspondente
 pode começar imediatamente, sem retrabalho técnico pendente na frente.
 
+**Status do deploy — 2026-07-17:** o sistema está **no ar em produção**:
+`https://orgcred-api-production.up.railway.app` (Railway, projeto
+"OrgCred" — Postgres + serviço `orgcred-api`, build via Dockerfile a
+partir do GitHub, CI verde nos dois workflows — backend e frontend).
+Confirmado via curl real: `/` serve o painel (SPA), `/health` e
+`/health/ready` respondem, rotas de negócio exigem autenticação (401
+sem token). Isso é 100% lastro técnico — **nenhum dos 5 bloqueadores
+abaixo foi resolvido pelo deploy**; na verdade, ir ao ar tornou dois deles
+concretos, não só teóricos:
+
+- **Item 3 (capital social inicial)**: em produção o teto ainda é
+  R$ 0,00 — não existe nenhum evento `constituicao` no banco de produção.
+  O sistema está no ar, mas **nenhuma operação de crédito pode ser
+  ativada** até essa decisão sair e o insert de constituição ser feito.
+- **Login real ainda não funciona em produção** — gap técnico-operacional
+  (não é um dos 5 itens de negócio abaixo, mas bloqueia uso real do
+  painel): não existe projeto Supabase real ainda, então
+  `ORGCRED_SUPABASE_JWT_SECRET` em produção é um valor aleatório gerado
+  nesta sessão só para a aplicação não subir com a secret de
+  desenvolvimento pública. Quando o projeto Supabase existir, essa
+  secret precisa ser trocada pela real (Project Settings → API → JWT
+  Secret) e as variáveis `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`
+  precisam ser configuradas no build do frontend. Também é necessário
+  criar pelo menos um registro em `usuario` (papel `admin` ou
+  `operador`) com o mesmo UUID do usuário criado no Supabase Auth —
+  sem isso a API responde `PERMISSAO_NEGADA` mesmo com login válido.
+
 ---
 
 ## 1. Entidade registradora (bloqueia `app/routers/contratos.py`)
@@ -125,6 +152,12 @@ efetivamente integralizado (não apenas subscrito).
 
 **Depois da decisão:** `insert into esc_capital_social (valor, tipo_evento)
 values (<valor>, 'constituicao')` — uma linha, sem mudança de código.
+
+**Atualização 2026-07-17:** o sistema já está no ar em produção (ver
+"Status do deploy" no topo deste documento) rodando contra o Postgres
+real do Railway — essa decisão agora bloqueia uso real, não só
+implantação. O insert acima pode ser feito a qualquer momento assim que
+o valor for definido, direto no Postgres de produção.
 
 ---
 
