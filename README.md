@@ -24,7 +24,7 @@ orgcred/
 │   └── routers/
 │       ├── capital.py              # ✅ implementado e testado
 │       ├── operacoes.py            # ✅ implementado e testado
-│       ├── tomadores.py            # ⛔ stub — onboarding/KYC
+│       ├── tomadores.py            # ✅ cadastro implementado (KYC externo pendente)
 │       ├── contratos.py            # ⛔ stub — BLOQUEADO (entidade registradora)
 │       ├── fiscal.py               # ⛔ stub — parcialmente bloqueado (IOF)
 │       ├── compliance.py           # ⛔ stub — PLD/COAF

@@ -12,6 +12,17 @@ from sqlalchemy.orm import declarative_base, relationship
 Base: Any = declarative_base()
 
 
+class PorteTomador(str, enum.Enum):
+    """
+    Portes de tomador elegíveis para operações de uma ESC (LC 167/2019):
+    microempreendedor individual, microempresa e empresa de pequeno porte.
+    """
+
+    MEI = "MEI"
+    ME = "ME"
+    EPP = "EPP"
+
+
 class TipoOperacao(str, enum.Enum):
     """Tipos de operação de crédito."""
 

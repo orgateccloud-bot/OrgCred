@@ -177,5 +177,14 @@ Para não confundir bloqueio de decisão com trabalho técnico pendente:
   (usa `valor_principal` integral até liquidação) é juridicamente segura;
   mudar para saldo devedor é decisão de interpretação contábil-jurídica
   interna, não depende de terceiros.
-- **Onboarding/KYC de tomadores** (`app/routers/tomadores.py`): escopo
-  técnico normal, sem bloqueador externo identificado.
+- **Onboarding/KYC de tomadores** (`app/routers/tomadores.py`): **cadastro
+  implementado** (2026-07-17). O router agora expõe `POST /tomadores`
+  (validando CNPJ com dígito verificador, porte MEI/ME/EPP e unicidade),
+  `GET /tomadores`, `GET /tomadores/{id}` e `PATCH
+  /tomadores/{id}/municipio-autorizado` (gate geográfico do Art. 5º,
+  restrito a admin — substitui o `UPDATE` manual via SQL). Coberto por 22
+  testes (validação de CNPJ + integração HTTP), CI verde. O que **ainda
+  falta** é o KYC externo — consulta de situação cadastral na Receita
+  Federal e verificação de listas restritivas (COAF/OFAC) — que é
+  integração com terceiros e se sobrepõe à decisão 5 (PLD/COAF), não ao
+  CRUD de tomador.

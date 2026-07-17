@@ -23,6 +23,7 @@ from app.core.exceptions import (
     RegraNegocioViolada,
     TokenAusente,
     TokenInvalido,
+    TomadorNaoEncontrado,
 )
 from app.core.logging import configure_logging, get_logger
 from app.core.metrics import registrar_bloqueio, registrar_falha_auth
@@ -174,6 +175,16 @@ async def regra_negocio_handler(request: Request, exc: RegraNegocioViolada) -> J
     return JSONResponse(
         status_code=exc.http_status,
         content={"detail": exc.message, "codigo": exc.sqlstate},
+    )
+
+
+@app.exception_handler(TomadorNaoEncontrado)
+async def tomador_nao_encontrado_handler(
+    request: Request, exc: TomadorNaoEncontrado
+) -> JSONResponse:
+    """Tomador inexistente -> 404."""
+    return JSONResponse(
+        status_code=404, content={"detail": str(exc), "codigo": "TOMADOR_NAO_ENCONTRADO"}
     )
 
 

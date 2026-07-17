@@ -58,8 +58,35 @@ class ReducaoCapitalBloqueada(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC005", http_status=422)
 
 
+class CnpjInvalido(RegraNegocioViolada):
+    """TM001: CNPJ malformado ou com dígito verificador inválido."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="TM001", http_status=422)
+
+
+class PorteInvalido(RegraNegocioViolada):
+    """TM002: Porte fora do enquadramento da ESC (MEI/ME/EPP, LC 167/2019)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="TM002", http_status=422)
+
+
+class TomadorDuplicado(RegraNegocioViolada):
+    """TM003: Já existe um tomador com o mesmo CNPJ."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="TM003", http_status=409)
+
+
 class OperacaoNaoEncontrada(Exception):
     """Operação não existe."""
+
+    pass
+
+
+class TomadorNaoEncontrado(Exception):
+    """Tomador não existe."""
 
     pass
 
