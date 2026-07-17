@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator, Dict
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +19,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
 from app.core.config import settings
 from app.core.exceptions import (
@@ -216,7 +217,7 @@ class _SPAStaticFiles(StaticFiles):
     """Qualquer caminho sem arquivo correspondente cai para index.html —
     o roteamento real (TanStack Router) acontece no cliente."""
 
-    async def get_response(self, path: str, scope) -> JSONResponse:  # type: ignore[override]
+    async def get_response(self, path: str, scope: Scope) -> Response:
         try:
             return await super().get_response(path, scope)
         except StarletteHTTPException as exc:
