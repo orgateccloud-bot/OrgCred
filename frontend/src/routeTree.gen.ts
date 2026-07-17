@@ -10,79 +10,85 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as AuditoriaRouteImport } from './routes/auditoria'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as OperacoesIndexRouteImport } from './routes/operacoes/index'
-import { Route as OperacoesIdRouteImport } from './routes/operacoes/$id'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
+import { Route as AuthenticatedOperacoesIndexRouteImport } from './routes/_authenticated/operacoes/index'
+import { Route as AuthenticatedOperacoesIdRouteImport } from './routes/_authenticated/operacoes/$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuditoriaRoute = AuditoriaRouteImport.update({
-  id: '/auditoria',
-  path: '/auditoria',
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
+const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
-const OperacoesIndexRoute = OperacoesIndexRouteImport.update({
-  id: '/operacoes/',
-  path: '/operacoes/',
-  getParentRoute: () => rootRouteImport,
+const AuthenticatedAuditoriaRoute = AuthenticatedAuditoriaRouteImport.update({
+  id: '/auditoria',
+  path: '/auditoria',
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
-const OperacoesIdRoute = OperacoesIdRouteImport.update({
-  id: '/operacoes/$id',
-  path: '/operacoes/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
+const AuthenticatedOperacoesIndexRoute =
+  AuthenticatedOperacoesIndexRouteImport.update({
+    id: '/operacoes/',
+    path: '/operacoes/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedOperacoesIdRoute =
+  AuthenticatedOperacoesIdRouteImport.update({
+    id: '/operacoes/$id',
+    path: '/operacoes/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/auditoria': typeof AuditoriaRoute
+  '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
-  '/operacoes/$id': typeof OperacoesIdRoute
-  '/operacoes/': typeof OperacoesIndexRoute
+  '/auditoria': typeof AuthenticatedAuditoriaRoute
+  '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
+  '/operacoes/': typeof AuthenticatedOperacoesIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/auditoria': typeof AuditoriaRoute
   '/login': typeof LoginRoute
-  '/operacoes/$id': typeof OperacoesIdRoute
-  '/operacoes': typeof OperacoesIndexRoute
+  '/auditoria': typeof AuthenticatedAuditoriaRoute
+  '/': typeof AuthenticatedIndexRoute
+  '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
+  '/operacoes': typeof AuthenticatedOperacoesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/auditoria': typeof AuditoriaRoute
+  '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
-  '/operacoes/$id': typeof OperacoesIdRoute
-  '/operacoes/': typeof OperacoesIndexRoute
+  '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
+  '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
+  '/_authenticated/operacoes/': typeof AuthenticatedOperacoesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auditoria' | '/login' | '/operacoes/$id' | '/operacoes/'
+  fullPaths: '/' | '/login' | '/auditoria' | '/operacoes/$id' | '/operacoes/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auditoria' | '/login' | '/operacoes/$id' | '/operacoes'
+  to: '/login' | '/auditoria' | '/' | '/operacoes/$id' | '/operacoes'
   id:
     | '__root__'
-    | '/'
-    | '/auditoria'
+    | '/_authenticated'
     | '/login'
-    | '/operacoes/$id'
-    | '/operacoes/'
+    | '/_authenticated/auditoria'
+    | '/_authenticated/'
+    | '/_authenticated/operacoes/$id'
+    | '/_authenticated/operacoes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AuditoriaRoute: typeof AuditoriaRoute
+  AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
-  OperacoesIdRoute: typeof OperacoesIdRoute
-  OperacoesIndexRoute: typeof OperacoesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -94,43 +100,65 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/auditoria': {
-      id: '/auditoria'
-      path: '/auditoria'
-      fullPath: '/auditoria'
-      preLoaderRoute: typeof AuditoriaRouteImport
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
+    '/_authenticated/': {
+      id: '/_authenticated/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
-    '/operacoes/': {
-      id: '/operacoes/'
+    '/_authenticated/auditoria': {
+      id: '/_authenticated/auditoria'
+      path: '/auditoria'
+      fullPath: '/auditoria'
+      preLoaderRoute: typeof AuthenticatedAuditoriaRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/operacoes/': {
+      id: '/_authenticated/operacoes/'
       path: '/operacoes'
       fullPath: '/operacoes/'
-      preLoaderRoute: typeof OperacoesIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedOperacoesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
-    '/operacoes/$id': {
-      id: '/operacoes/$id'
+    '/_authenticated/operacoes/$id': {
+      id: '/_authenticated/operacoes/$id'
       path: '/operacoes/$id'
       fullPath: '/operacoes/$id'
-      preLoaderRoute: typeof OperacoesIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedOperacoesIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
   }
 }
 
+interface AuthenticatedRouteChildren {
+  AuthenticatedAuditoriaRoute: typeof AuthenticatedAuditoriaRoute
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedOperacoesIdRoute: typeof AuthenticatedOperacoesIdRoute
+  AuthenticatedOperacoesIndexRoute: typeof AuthenticatedOperacoesIndexRoute
+}
+
+const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAuditoriaRoute: AuthenticatedAuditoriaRoute,
+  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedOperacoesIdRoute: AuthenticatedOperacoesIdRoute,
+  AuthenticatedOperacoesIndexRoute: AuthenticatedOperacoesIndexRoute,
+}
+
+const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
+  AuthenticatedRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AuditoriaRoute: AuditoriaRoute,
+  AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
-  OperacoesIdRoute: OperacoesIdRoute,
-  OperacoesIndexRoute: OperacoesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
