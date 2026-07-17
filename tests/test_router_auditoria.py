@@ -36,11 +36,11 @@ def authed_client(client: TestClient) -> TestClient:
 
 class TestAuditoria:
     def test_sem_autenticacao_retorna_401(self, client: TestClient) -> None:
-        response = client.get("/auditoria")
+        response = client.get("/api/auditoria")
         assert response.status_code == 401
 
     def test_sem_eventos_cadeia_integra_e_vazia(self, authed_client: TestClient) -> None:
-        response = authed_client.get("/auditoria")
+        response = authed_client.get("/api/auditoria")
         assert response.status_code == 200
         body = response.json()
         assert body["integro"] is True
@@ -80,7 +80,7 @@ class TestAuditoria:
 
         ativar_operacao(db_session, op_id, usuario_id=str(uuid.UUID(int=1)))
 
-        response = authed_client.get("/auditoria")
+        response = authed_client.get("/api/auditoria")
 
         assert response.status_code == 200
         body = response.json()

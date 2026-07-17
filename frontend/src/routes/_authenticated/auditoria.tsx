@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { CheckCircle2, ShieldAlert } from 'lucide-react'
-import { getAuditoriaAuditoriaGetOptions } from '@/api/generated/@tanstack/react-query.gen'
+import { getAuditoriaApiAuditoriaGetOptions } from '@/api/generated/@tanstack/react-query.gen'
 import type { LedgerEventoOut } from '@/api/generated/types.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
@@ -34,7 +34,7 @@ function narrativa(evento: LedgerEventoOut): string {
 }
 
 function AuditoriaPage() {
-  const { data, error, isPending } = useQuery(getAuditoriaAuditoriaGetOptions())
+  const { data, error, isPending } = useQuery(getAuditoriaApiAuditoriaGetOptions())
   const [mostrarTecnico, setMostrarTecnico] = useState(false)
 
   return (

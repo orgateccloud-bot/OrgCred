@@ -1,0 +1,145 @@
+name: Frontend CI — Lint, Tests, E2E, Build
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main, develop]
+
+jobs:
+  lint-and-build:
+    name: Lint, Format & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run build
+
+  unit-tests:
+    name: Unit Tests (Vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run test
+
+  storybook-build:
+    name: Storybook build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run build-storybook
+
+  e2e:
+    name: E2E (Playwright, contra backend real)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: orgcred_e2e
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      - name: Instalar dependências do backend
+        run: uv sync --all-extras
+
+      # Sem ORGCRED_SUPABASE_JWT_SECRET explícita: usa o mesmo default
+      # ("dev-secret-key-change-in-prod", ver app/core/config.py) que
+      # frontend/e2e/fixtures/seed.ts usa para mintar o JWT de teste — os
+      # dois lados precisam concordar na mesma secret.
+      - name: Aplicar migrations
+        env:
+          ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_e2e
+        run: uv run alembic upgrade head
+
+      - name: Subir backend em background
+        env:
+          ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_e2e
+          ORGCRED_ENVIRONMENT: development
+        run: |
+          uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health/ready && exit 0
+            sleep 1
+          done
+          echo "Backend não respondeu a tempo" && exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependências do frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Instalar browsers do Playwright
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Rodar E2E
+        working-directory: frontend
+        env:
+          E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orgcred_e2e
+          CI: "true"
+        run: npm run test:e2e
+
+      - name: Upload relatório do Playwright em caso de falha
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  getCapitalSnapshotCapitalSnapshotGetOptions,
-  getOperacoesOperacoesGetQueryKey,
-  postAtivarOperacaoOperacoesOperacaoIdAtivarPostMutation,
+  getCapitalSnapshotApiCapitalSnapshotGetOptions,
+  getOperacoesApiOperacoesGetQueryKey,
+  postAtivarOperacaoApiOperacoesOperacaoIdAtivarPostMutation,
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
@@ -27,8 +27,8 @@ export function AtivarOperacaoDialog({
 }) {
   const [open, setOpen] = useState(false)
   const queryClient = useQueryClient()
-  const { data: snapshot } = useQuery(getCapitalSnapshotCapitalSnapshotGetOptions())
-  const mutation = useMutation(postAtivarOperacaoOperacoesOperacaoIdAtivarPostMutation())
+  const { data: snapshot } = useQuery(getCapitalSnapshotApiCapitalSnapshotGetOptions())
+  const mutation = useMutation(postAtivarOperacaoApiOperacoesOperacaoIdAtivarPostMutation())
 
   const totalTeto = snapshot ? Number(snapshot.total) : null
   const comprometidoAtual = snapshot ? Number(snapshot.comprometido) : null
@@ -42,9 +42,9 @@ export function AtivarOperacaoDialog({
       { path: { operacao_id: operacaoId } },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getOperacoesOperacoesGetQueryKey() })
+          queryClient.invalidateQueries({ queryKey: getOperacoesApiOperacoesGetQueryKey() })
           queryClient.invalidateQueries({
-            queryKey: getCapitalSnapshotCapitalSnapshotGetOptions().queryKey,
+            queryKey: getCapitalSnapshotApiCapitalSnapshotGetOptions().queryKey,
           })
           setOpen(false)
           mutation.reset()

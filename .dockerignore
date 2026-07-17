@@ -12,3 +12,11 @@ _legado
 .env
 .env.local
 tests
+
+# Frontend — reconstruído dentro da imagem (ver Dockerfile), não precisa
+# viajar no contexto de build.
+frontend/node_modules
+frontend/dist
+frontend/storybook-static
+frontend/test-results
+frontend/playwright-report

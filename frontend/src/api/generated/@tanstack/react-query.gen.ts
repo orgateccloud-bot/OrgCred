@@ -4,32 +4,32 @@ import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanst
 
 import { client } from '../client.gen'
 import {
-  getAuditoriaAuditoriaGet,
-  getCapitalDisponivelCapitalDisponivelGet,
-  getCapitalSnapshotCapitalSnapshotGet,
-  getOperacoesOperacoesGet,
+  getAuditoriaApiAuditoriaGet,
+  getCapitalDisponivelApiCapitalDisponivelGet,
+  getCapitalSnapshotApiCapitalSnapshotGet,
+  getOperacoesApiOperacoesGet,
   healthCheckHealthGet,
   metricsMetricsGet,
   type Options,
-  postAtivarOperacaoOperacoesOperacaoIdAtivarPost,
+  postAtivarOperacaoApiOperacoesOperacaoIdAtivarPost,
   readinessCheckHealthReadyGet,
   rootGet,
 } from '../sdk.gen'
 import type {
-  GetAuditoriaAuditoriaGetData,
-  GetAuditoriaAuditoriaGetResponse,
-  GetCapitalDisponivelCapitalDisponivelGetData,
-  GetCapitalDisponivelCapitalDisponivelGetResponse,
-  GetCapitalSnapshotCapitalSnapshotGetData,
-  GetCapitalSnapshotCapitalSnapshotGetResponse,
-  GetOperacoesOperacoesGetData,
-  GetOperacoesOperacoesGetResponse,
+  GetAuditoriaApiAuditoriaGetData,
+  GetAuditoriaApiAuditoriaGetResponse,
+  GetCapitalDisponivelApiCapitalDisponivelGetData,
+  GetCapitalDisponivelApiCapitalDisponivelGetResponse,
+  GetCapitalSnapshotApiCapitalSnapshotGetData,
+  GetCapitalSnapshotApiCapitalSnapshotGetResponse,
+  GetOperacoesApiOperacoesGetData,
+  GetOperacoesApiOperacoesGetResponse,
   HealthCheckHealthGetData,
   HealthCheckHealthGetResponse,
   MetricsMetricsGetData,
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostData,
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostError,
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponse,
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData,
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostError,
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponse,
   ReadinessCheckHealthReadyGetData,
   RootGetData,
   RootGetResponse,
@@ -74,9 +74,9 @@ const createQueryKey = <TOptions extends Options>(
   return [params]
 }
 
-export const getCapitalDisponivelCapitalDisponivelGetQueryKey = (
-  options?: Options<GetCapitalDisponivelCapitalDisponivelGetData>,
-) => createQueryKey('getCapitalDisponivelCapitalDisponivelGet', options)
+export const getCapitalDisponivelApiCapitalDisponivelGetQueryKey = (
+  options?: Options<GetCapitalDisponivelApiCapitalDisponivelGetData>,
+) => createQueryKey('getCapitalDisponivelApiCapitalDisponivelGet', options)
 
 /**
  * Get Capital Disponivel
@@ -86,17 +86,17 @@ export const getCapitalDisponivelCapitalDisponivelGetQueryKey = (
  * outra transação pode consumir o capital exibido; o cliente deve tratar
  * o código OC001 como resultado normal, não como erro inesperado.
  */
-export const getCapitalDisponivelCapitalDisponivelGetOptions = (
-  options?: Options<GetCapitalDisponivelCapitalDisponivelGetData>,
+export const getCapitalDisponivelApiCapitalDisponivelGetOptions = (
+  options?: Options<GetCapitalDisponivelApiCapitalDisponivelGetData>,
 ) =>
   queryOptions<
-    GetCapitalDisponivelCapitalDisponivelGetResponse,
+    GetCapitalDisponivelApiCapitalDisponivelGetResponse,
     DefaultError,
-    GetCapitalDisponivelCapitalDisponivelGetResponse,
-    ReturnType<typeof getCapitalDisponivelCapitalDisponivelGetQueryKey>
+    GetCapitalDisponivelApiCapitalDisponivelGetResponse,
+    ReturnType<typeof getCapitalDisponivelApiCapitalDisponivelGetQueryKey>
   >({
     queryFn: async ({ queryKey, signal }) => {
-      const { data } = await getCapitalDisponivelCapitalDisponivelGet({
+      const { data } = await getCapitalDisponivelApiCapitalDisponivelGet({
         ...options,
         ...queryKey[0],
         signal,
@@ -104,12 +104,12 @@ export const getCapitalDisponivelCapitalDisponivelGetOptions = (
       })
       return data
     },
-    queryKey: getCapitalDisponivelCapitalDisponivelGetQueryKey(options),
+    queryKey: getCapitalDisponivelApiCapitalDisponivelGetQueryKey(options),
   })
 
-export const getCapitalSnapshotCapitalSnapshotGetQueryKey = (
-  options?: Options<GetCapitalSnapshotCapitalSnapshotGetData>,
-) => createQueryKey('getCapitalSnapshotCapitalSnapshotGet', options)
+export const getCapitalSnapshotApiCapitalSnapshotGetQueryKey = (
+  options?: Options<GetCapitalSnapshotApiCapitalSnapshotGetData>,
+) => createQueryKey('getCapitalSnapshotApiCapitalSnapshotGet', options)
 
 /**
  * Get Capital Snapshot
@@ -117,17 +117,17 @@ export const getCapitalSnapshotCapitalSnapshotGetQueryKey = (
  * Total/comprometido/disponível para a barra de utilização do teto no
  * dashboard. Mesma ressalva de leitura informativa que /disponivel.
  */
-export const getCapitalSnapshotCapitalSnapshotGetOptions = (
-  options?: Options<GetCapitalSnapshotCapitalSnapshotGetData>,
+export const getCapitalSnapshotApiCapitalSnapshotGetOptions = (
+  options?: Options<GetCapitalSnapshotApiCapitalSnapshotGetData>,
 ) =>
   queryOptions<
-    GetCapitalSnapshotCapitalSnapshotGetResponse,
+    GetCapitalSnapshotApiCapitalSnapshotGetResponse,
     DefaultError,
-    GetCapitalSnapshotCapitalSnapshotGetResponse,
-    ReturnType<typeof getCapitalSnapshotCapitalSnapshotGetQueryKey>
+    GetCapitalSnapshotApiCapitalSnapshotGetResponse,
+    ReturnType<typeof getCapitalSnapshotApiCapitalSnapshotGetQueryKey>
   >({
     queryFn: async ({ queryKey, signal }) => {
-      const { data } = await getCapitalSnapshotCapitalSnapshotGet({
+      const { data } = await getCapitalSnapshotApiCapitalSnapshotGet({
         ...options,
         ...queryKey[0],
         signal,
@@ -135,11 +135,12 @@ export const getCapitalSnapshotCapitalSnapshotGetOptions = (
       })
       return data
     },
-    queryKey: getCapitalSnapshotCapitalSnapshotGetQueryKey(options),
+    queryKey: getCapitalSnapshotApiCapitalSnapshotGetQueryKey(options),
   })
 
-export const getOperacoesOperacoesGetQueryKey = (options?: Options<GetOperacoesOperacoesGetData>) =>
-  createQueryKey('getOperacoesOperacoesGet', options)
+export const getOperacoesApiOperacoesGetQueryKey = (
+  options?: Options<GetOperacoesApiOperacoesGetData>,
+) => createQueryKey('getOperacoesApiOperacoesGet', options)
 
 /**
  * Get Operacoes
@@ -149,15 +150,17 @@ export const getOperacoesOperacoesGetQueryKey = (options?: Options<GetOperacoesO
  * Sem paginação: o volume real (dezenas de operações, não milhares) não
  * justifica a complexidade — reavaliar se o volume crescer muito.
  */
-export const getOperacoesOperacoesGetOptions = (options?: Options<GetOperacoesOperacoesGetData>) =>
+export const getOperacoesApiOperacoesGetOptions = (
+  options?: Options<GetOperacoesApiOperacoesGetData>,
+) =>
   queryOptions<
-    GetOperacoesOperacoesGetResponse,
+    GetOperacoesApiOperacoesGetResponse,
     DefaultError,
-    GetOperacoesOperacoesGetResponse,
-    ReturnType<typeof getOperacoesOperacoesGetQueryKey>
+    GetOperacoesApiOperacoesGetResponse,
+    ReturnType<typeof getOperacoesApiOperacoesGetQueryKey>
   >({
     queryFn: async ({ queryKey, signal }) => {
-      const { data } = await getOperacoesOperacoesGet({
+      const { data } = await getOperacoesApiOperacoesGet({
         ...options,
         ...queryKey[0],
         signal,
@@ -165,7 +168,7 @@ export const getOperacoesOperacoesGetOptions = (options?: Options<GetOperacoesOp
       })
       return data
     },
-    queryKey: getOperacoesOperacoesGetQueryKey(options),
+    queryKey: getOperacoesApiOperacoesGetQueryKey(options),
   })
 
 /**
@@ -180,22 +183,30 @@ export const getOperacoesOperacoesGetOptions = (options?: Options<GetOperacoesOp
  * - 403: Usuário sem permissão (não é operador)
  * - 404: Operação não existe
  * - 409: Transição de estado inválida
- * - 422: Regra de negócio violada (teto, município, registro, capital)
+ * - 422: Regra de negócio violada (teto, município, registro, capital) —
+ * RegraNegocioViolada não é capturada aqui de propósito: propaga para
+ * o exception_handler global (app/main.py), que produz o mesmo
+ * formato {"detail": "...", "codigo": "..."} usado por todo o resto
+ * da API. Uma versão anterior capturava localmente e aninhava o
+ * payload sob "detail" (formato diferente, só neste endpoint) — bug
+ * real encontrado via teste E2E (frontend/e2e/ativacao.spec.ts): o
+ * dicionário de erro do cliente esperava o formato plano e exibia
+ * "[object Object]" em vez da mensagem traduzida.
  */
-export const postAtivarOperacaoOperacoesOperacaoIdAtivarPostMutation = (
-  options?: Partial<Options<PostAtivarOperacaoOperacoesOperacaoIdAtivarPostData>>,
+export const postAtivarOperacaoApiOperacoesOperacaoIdAtivarPostMutation = (
+  options?: Partial<Options<PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData>>,
 ): UseMutationOptions<
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponse,
-  PostAtivarOperacaoOperacoesOperacaoIdAtivarPostError,
-  Options<PostAtivarOperacaoOperacoesOperacaoIdAtivarPostData>
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponse,
+  PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostError,
+  Options<PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData>
 > => {
   const mutationOptions: UseMutationOptions<
-    PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponse,
-    PostAtivarOperacaoOperacoesOperacaoIdAtivarPostError,
-    Options<PostAtivarOperacaoOperacoesOperacaoIdAtivarPostData>
+    PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponse,
+    PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostError,
+    Options<PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData>
   > = {
     mutationFn: async (fnOptions) => {
-      const { data } = await postAtivarOperacaoOperacoesOperacaoIdAtivarPost({
+      const { data } = await postAtivarOperacaoApiOperacoesOperacaoIdAtivarPost({
         ...options,
         ...fnOptions,
         throwOnError: true,
@@ -206,8 +217,9 @@ export const postAtivarOperacaoOperacoesOperacaoIdAtivarPostMutation = (
   return mutationOptions
 }
 
-export const getAuditoriaAuditoriaGetQueryKey = (options?: Options<GetAuditoriaAuditoriaGetData>) =>
-  createQueryKey('getAuditoriaAuditoriaGet', options)
+export const getAuditoriaApiAuditoriaGetQueryKey = (
+  options?: Options<GetAuditoriaApiAuditoriaGetData>,
+) => createQueryKey('getAuditoriaApiAuditoriaGet', options)
 
 /**
  * Get Auditoria
@@ -217,15 +229,17 @@ export const getAuditoriaAuditoriaGetQueryKey = (options?: Options<GetAuditoriaA
  * hash (`fn_verificar_cadeia_ledger()`, migration 005) — 0 quebras
  * significa cadeia íntegra.
  */
-export const getAuditoriaAuditoriaGetOptions = (options?: Options<GetAuditoriaAuditoriaGetData>) =>
+export const getAuditoriaApiAuditoriaGetOptions = (
+  options?: Options<GetAuditoriaApiAuditoriaGetData>,
+) =>
   queryOptions<
-    GetAuditoriaAuditoriaGetResponse,
+    GetAuditoriaApiAuditoriaGetResponse,
     DefaultError,
-    GetAuditoriaAuditoriaGetResponse,
-    ReturnType<typeof getAuditoriaAuditoriaGetQueryKey>
+    GetAuditoriaApiAuditoriaGetResponse,
+    ReturnType<typeof getAuditoriaApiAuditoriaGetQueryKey>
   >({
     queryFn: async ({ queryKey, signal }) => {
-      const { data } = await getAuditoriaAuditoriaGet({
+      const { data } = await getAuditoriaApiAuditoriaGet({
         ...options,
         ...queryKey[0],
         signal,
@@ -233,7 +247,7 @@ export const getAuditoriaAuditoriaGetOptions = (options?: Options<GetAuditoriaAu
       })
       return data
     },
-    queryKey: getAuditoriaAuditoriaGetQueryKey(options),
+    queryKey: getAuditoriaApiAuditoriaGetQueryKey(options),
   })
 
 export const healthCheckHealthGetQueryKey = (options?: Options<HealthCheckHealthGetData>) =>
@@ -323,7 +337,7 @@ export const rootGetQueryKey = (options?: Options<RootGetData>) =>
 /**
  * Root
  *
- * Raiz da API.
+ * Raiz da API (dev/CI — sem build do frontend disponível).
  */
 export const rootGetOptions = (options?: Options<RootGetData>) =>
   queryOptions<RootGetResponse, DefaultError, RootGetResponse, ReturnType<typeof rootGetQueryKey>>({

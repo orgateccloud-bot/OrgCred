@@ -63,21 +63,21 @@ class TestAtivarOperacaoSemAutenticacao:
     def test_sem_authorization_header_retorna_401(
         self, client: TestClient, tomador_autorizado: uuid.UUID
     ) -> None:
-        response = client.post(f"/operacoes/{uuid.uuid4()}/ativar")
+        response = client.post(f"/api/operacoes/{uuid.uuid4()}/ativar")
         assert response.status_code == 401
         assert response.json()["codigo"] == "TOKEN_AUSENTE"
 
 
 class TestAtivarOperacaoSemPapelAdequado:
     def test_papel_sem_permissao_retorna_403(self, client_sem_papel_operador: TestClient) -> None:
-        response = client_sem_papel_operador.post(f"/operacoes/{uuid.uuid4()}/ativar")
+        response = client_sem_papel_operador.post(f"/api/operacoes/{uuid.uuid4()}/ativar")
         assert response.status_code == 403
         assert response.json()["codigo"] == "PERMISSAO_NEGADA"
 
 
 class TestAtivarOperacaoComPermissao:
     def test_operacao_inexistente_retorna_404(self, authed_client: TestClient) -> None:
-        response = authed_client.post(f"/operacoes/{uuid.uuid4()}/ativar")
+        response = authed_client.post(f"/api/operacoes/{uuid.uuid4()}/ativar")
         assert response.status_code == 404
 
     def test_operacao_dentro_do_teto_retorna_200(
@@ -103,7 +103,7 @@ class TestAtivarOperacaoComPermissao:
         db_session.commit()
         op_id = result.scalar_one()
 
-        response = authed_client.post(f"/operacoes/{op_id}/ativar")
+        response = authed_client.post(f"/api/operacoes/{op_id}/ativar")
 
         assert response.status_code == 200
         body = response.json()
@@ -152,21 +152,22 @@ class TestAtivarOperacaoComPermissao:
         db_session.commit()
         op_id = result.scalar_one()
 
-        response = authed_client.post(f"/operacoes/{op_id}/ativar")
+        response = authed_client.post(f"/api/operacoes/{op_id}/ativar")
 
         assert response.status_code == 422
         body = response.json()
-        # HTTPException(detail=<dict>) aninha o payload sob "detail"
-        assert body["detail"]["codigo"] == "OC001"
+        # RegraNegocioViolada propaga para o exception_handler global
+        # (app/main.py) — formato plano, igual ao resto da API.
+        assert body["codigo"] == "OC001"
 
 
 class TestListarOperacoes:
     def test_sem_autenticacao_retorna_401(self, client: TestClient) -> None:
-        response = client.get("/operacoes")
+        response = client.get("/api/operacoes")
         assert response.status_code == 401
 
     def test_sem_operacoes_retorna_lista_vazia(self, authed_client: TestClient) -> None:
-        response = authed_client.get("/operacoes")
+        response = authed_client.get("/api/operacoes")
         assert response.status_code == 200
         assert response.json() == []
 
@@ -194,7 +195,7 @@ class TestListarOperacoes:
         )
         db_session.commit()
 
-        response = authed_client.get("/operacoes")
+        response = authed_client.get("/api/operacoes")
 
         assert response.status_code == 200
         body = response.json()

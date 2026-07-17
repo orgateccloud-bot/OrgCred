@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { getCapitalSnapshotCapitalSnapshotGetOptions } from '@/api/generated/@tanstack/react-query.gen'
+import { getCapitalSnapshotApiCapitalSnapshotGetOptions } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 
@@ -10,7 +10,7 @@ export const Route = createFileRoute('/_authenticated/')({
 
 function DashboardPage() {
   const { data, error, isPending } = useQuery({
-    ...getCapitalSnapshotCapitalSnapshotGetOptions(),
+    ...getCapitalSnapshotApiCapitalSnapshotGetOptions(),
     refetchInterval: 20_000,
   })
 
