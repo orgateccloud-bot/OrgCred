@@ -3,8 +3,14 @@
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client'
 import { client } from './client.gen'
 import type {
+  GetAuditoriaAuditoriaGetData,
+  GetAuditoriaAuditoriaGetResponses,
   GetCapitalDisponivelCapitalDisponivelGetData,
   GetCapitalDisponivelCapitalDisponivelGetResponses,
+  GetCapitalSnapshotCapitalSnapshotGetData,
+  GetCapitalSnapshotCapitalSnapshotGetResponses,
+  GetOperacoesOperacoesGetData,
+  GetOperacoesOperacoesGetResponses,
   HealthCheckHealthGetData,
   HealthCheckHealthGetResponses,
   MetricsMetricsGetData,
@@ -58,6 +64,42 @@ export const getCapitalDisponivelCapitalDisponivelGet = <ThrowOnError extends bo
   })
 
 /**
+ * Get Capital Snapshot
+ *
+ * Total/comprometido/disponível para a barra de utilização do teto no
+ * dashboard. Mesma ressalva de leitura informativa que /disponivel.
+ */
+export const getCapitalSnapshotCapitalSnapshotGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetCapitalSnapshotCapitalSnapshotGetData, ThrowOnError>,
+): RequestResult<GetCapitalSnapshotCapitalSnapshotGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetCapitalSnapshotCapitalSnapshotGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/capital/snapshot',
+    ...options,
+  })
+
+/**
+ * Get Operacoes
+ *
+ * Lista operações de crédito, mais recentes primeiro.
+ *
+ * Sem paginação: o volume real (dezenas de operações, não milhares) não
+ * justifica a complexidade — reavaliar se o volume crescer muito.
+ */
+export const getOperacoesOperacoesGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetOperacoesOperacoesGetData, ThrowOnError>,
+): RequestResult<GetOperacoesOperacoesGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<GetOperacoesOperacoesGetResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/operacoes',
+    ...options,
+  })
+
+/**
  * Post Ativar Operacao
  *
  * Ativar operação de crédito (transição para status 'ativa').
@@ -87,6 +129,23 @@ export const postAtivarOperacaoOperacoesOperacaoIdAtivarPost = <
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/operacoes/{operacao_id}/ativar',
+    ...options,
+  })
+
+/**
+ * Get Auditoria
+ *
+ * Trilha de auditoria em duas camadas: eventos legíveis (com nome do
+ * usuário quando disponível) e o resultado da verificação da cadeia de
+ * hash (`fn_verificar_cadeia_ledger()`, migration 005) — 0 quebras
+ * significa cadeia íntegra.
+ */
+export const getAuditoriaAuditoriaGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAuditoriaAuditoriaGetData, ThrowOnError>,
+): RequestResult<GetAuditoriaAuditoriaGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<GetAuditoriaAuditoriaGetResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/auditoria',
     ...options,
   })
 

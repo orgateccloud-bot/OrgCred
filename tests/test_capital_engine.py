@@ -10,7 +10,11 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.capital_engine import ativar_operacao, consultar_capital_disponivel
+from app.capital_engine import (
+    ativar_operacao,
+    consultar_capital_disponivel,
+    consultar_capital_snapshot,
+)
 from app.core.exceptions import (
     MunicipioNaoAutorizado,
     OperacaoNaoEncontrada,
@@ -285,3 +289,22 @@ class TestConsultarCapitalDisponivel:
 
         disponivel = consultar_capital_disponivel(db_session)
         assert disponivel == 20_000
+
+
+class TestConsultarCapitalSnapshot:
+    def test_snapshot_sem_operacoes(self, db_session: Session, capital_constituido: None) -> None:
+        snapshot = consultar_capital_snapshot(db_session)
+        assert snapshot.total == 50_000
+        assert snapshot.comprometido == 0
+        assert snapshot.disponivel == 50_000
+
+    def test_snapshot_com_operacao_ativa(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+        ativar_operacao(db_session, op_id)
+
+        snapshot = consultar_capital_snapshot(db_session)
+        assert snapshot.total == 50_000
+        assert snapshot.comprometido == 30_000
+        assert snapshot.disponivel == 20_000

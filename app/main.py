@@ -28,7 +28,16 @@ from app.core.logging import configure_logging, get_logger
 from app.core.metrics import registrar_bloqueio, registrar_falha_auth
 from app.core.security import get_current_user
 from app.db import engine
-from app.routers import capital, cobranca, compliance, contratos, fiscal, operacoes, tomadores
+from app.routers import (
+    auditoria,
+    capital,
+    cobranca,
+    compliance,
+    contratos,
+    fiscal,
+    operacoes,
+    tomadores,
+)
 
 
 # Configurar logging estruturado
@@ -88,6 +97,7 @@ app.include_router(contratos.router, dependencies=[Depends(get_current_user)])
 app.include_router(fiscal.router, dependencies=[Depends(get_current_user)])
 app.include_router(compliance.router, dependencies=[Depends(get_current_user)])
 app.include_router(cobranca.router, dependencies=[Depends(get_current_user)])
+app.include_router(auditoria.router, dependencies=[Depends(get_current_user)])
 
 
 @app.get("/health")

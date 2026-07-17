@@ -23,9 +23,45 @@ export type AtivarOperacaoOut = {
 }
 
 /**
+ * AuditoriaOut
+ */
+export type AuditoriaOut = {
+  /**
+   * Integro
+   */
+  integro: boolean
+  /**
+   * Quebras
+   */
+  quebras: Array<QuebraCadeia>
+  /**
+   * Eventos
+   */
+  eventos: Array<LedgerEventoOut>
+}
+
+/**
  * CapitalDisponivelOut
  */
 export type CapitalDisponivelOut = {
+  /**
+   * Disponivel
+   */
+  disponivel: string
+}
+
+/**
+ * CapitalSnapshotOut
+ */
+export type CapitalSnapshotOut = {
+  /**
+   * Total
+   */
+  total: string
+  /**
+   * Comprometido
+   */
+  comprometido: string
   /**
    * Disponivel
    */
@@ -40,6 +76,96 @@ export type HttpValidationError = {
    * Detail
    */
   detail?: Array<ValidationError>
+}
+
+/**
+ * LedgerEventoOut
+ */
+export type LedgerEventoOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Evento Tipo
+   */
+  evento_tipo: string
+  /**
+   * Valor
+   */
+  valor: string
+  /**
+   * Operacao Id
+   */
+  operacao_id: string | null
+  /**
+   * Saldo Disponivel Pos
+   */
+  saldo_disponivel_pos: string
+  /**
+   * Usuario Nome
+   */
+  usuario_nome: string | null
+  /**
+   * Created At
+   */
+  created_at: string
+  /**
+   * Prev Hash
+   */
+  prev_hash: string | null
+  /**
+   * Current Hash
+   */
+  current_hash: string | null
+}
+
+/**
+ * OperacaoListItemOut
+ */
+export type OperacaoListItemOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Tomador Razao Social
+   */
+  tomador_razao_social: string
+  /**
+   * Tipo
+   */
+  tipo: string
+  /**
+   * Valor Principal
+   */
+  valor_principal: string
+  /**
+   * Numero Parcelas
+   */
+  numero_parcelas: number
+  /**
+   * Status
+   */
+  status: string
+  /**
+   * Created At
+   */
+  created_at: string
+}
+
+/**
+ * QuebraCadeia
+ */
+export type QuebraCadeia = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Motivo
+   */
+  motivo: string
 }
 
 /**
@@ -77,6 +203,42 @@ export type GetCapitalDisponivelCapitalDisponivelGetResponses = {
 export type GetCapitalDisponivelCapitalDisponivelGetResponse =
   GetCapitalDisponivelCapitalDisponivelGetResponses[keyof GetCapitalDisponivelCapitalDisponivelGetResponses]
 
+export type GetCapitalSnapshotCapitalSnapshotGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/capital/snapshot'
+}
+
+export type GetCapitalSnapshotCapitalSnapshotGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: CapitalSnapshotOut
+}
+
+export type GetCapitalSnapshotCapitalSnapshotGetResponse =
+  GetCapitalSnapshotCapitalSnapshotGetResponses[keyof GetCapitalSnapshotCapitalSnapshotGetResponses]
+
+export type GetOperacoesOperacoesGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/operacoes'
+}
+
+export type GetOperacoesOperacoesGetResponses = {
+  /**
+   * Response Get Operacoes Operacoes Get
+   *
+   * Successful Response
+   */
+  200: Array<OperacaoListItemOut>
+}
+
+export type GetOperacoesOperacoesGetResponse =
+  GetOperacoesOperacoesGetResponses[keyof GetOperacoesOperacoesGetResponses]
+
 export type PostAtivarOperacaoOperacoesOperacaoIdAtivarPostData = {
   body?: never
   path: {
@@ -108,6 +270,23 @@ export type PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponses = {
 
 export type PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponse =
   PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponses[keyof PostAtivarOperacaoOperacoesOperacaoIdAtivarPostResponses]
+
+export type GetAuditoriaAuditoriaGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/auditoria'
+}
+
+export type GetAuditoriaAuditoriaGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: AuditoriaOut
+}
+
+export type GetAuditoriaAuditoriaGetResponse =
+  GetAuditoriaAuditoriaGetResponses[keyof GetAuditoriaAuditoriaGetResponses]
 
 export type HealthCheckHealthGetData = {
   body?: never

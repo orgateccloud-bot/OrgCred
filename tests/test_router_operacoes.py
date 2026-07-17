@@ -158,3 +158,47 @@ class TestAtivarOperacaoComPermissao:
         body = response.json()
         # HTTPException(detail=<dict>) aninha o payload sob "detail"
         assert body["detail"]["codigo"] == "OC001"
+
+
+class TestListarOperacoes:
+    def test_sem_autenticacao_retorna_401(self, client: TestClient) -> None:
+        response = client.get("/operacoes")
+        assert response.status_code == 401
+
+    def test_sem_operacoes_retorna_lista_vazia(self, authed_client: TestClient) -> None:
+        response = authed_client.get("/operacoes")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_lista_operacoes_mais_recente_primeiro(
+        self,
+        authed_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+    ) -> None:
+        db_session.execute(
+            text(
+                """
+                insert into operacao_credito
+                    (tomador_id, tipo, valor_principal, taxa_juros_mensal,
+                     sistema_amortizacao, numero_parcelas, status, registro_entidade_ref,
+                     created_at)
+                values
+                    (:tomador_id, 'emprestimo', 10000, 2.5, 'PRICE', 12, 'proposta', null,
+                     now() - interval '1 day'),
+                    (:tomador_id, 'financiamento', 20000, 3.0, 'SAC', 24, 'registrada', 'REG-X',
+                     now())
+                """
+            ),
+            {"tomador_id": str(tomador_autorizado)},
+        )
+        db_session.commit()
+
+        response = authed_client.get("/operacoes")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 2
+        assert body[0]["tipo"] == "financiamento"
+        assert body[0]["tomador_razao_social"] == "Padaria Teste ME"
+        assert body[1]["tipo"] == "emprestimo"
