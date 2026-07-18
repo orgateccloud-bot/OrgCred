@@ -140,7 +140,7 @@ devido e não pago.
 
 ---
 
-## 3. Capital social inicial (bloqueia o teto operacional real)
+## 3. Capital social inicial — 🟡 AGUARDANDO VALOR (bloqueia o teto operacional real)
 
 **O que é:** sem o valor do capital social integralizado, o teto legal do
 Art. 5º (total de operações ativas ≤ capital social) é desconhecido — o
@@ -158,6 +158,12 @@ values (<valor>, 'constituicao')` — uma linha, sem mudança de código.
 real do Railway — essa decisão agora bloqueia uso real, não só
 implantação. O insert acima pode ser feito a qualquer momento assim que
 o valor for definido, direto no Postgres de produção.
+
+**Atualização 2026-07-18:** confirmado com o usuário — assim que o valor
+sair, o insert de constituição deve ser aplicado imediatamente no
+Postgres de produção (Railway, projeto "OrgCred"), sem esperar por outra
+sessão de trabalho. Até lá, o teto em produção permanece R$ 0,00 e
+nenhuma operação pode ser ativada.
 
 ---
 
