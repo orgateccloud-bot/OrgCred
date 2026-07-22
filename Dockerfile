@@ -18,6 +18,19 @@ FROM node:24-slim AS frontend-builder
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
 
+# O ENV não é redundante com o ARG acima. O valor de um ARG já chega ao `RUN`
+# como variável de ambiente, mas o Docker só invalida o cache de uma camada
+# quando a variável é *referenciada* textualmente na instrução — e
+# `RUN npm run build` não menciona $VITE_SUPABASE_URL. Resultado: trocar o
+# valor no Railway não invalidava nada e o build reaproveitava o bundle antigo,
+# com os placeholders assados dentro (observado em produção).
+#
+# A instrução ENV entra no histórico da imagem com o valor já resolvido, então
+# qualquer troca desses valores invalida esta camada e todas abaixo dela —
+# incluindo o `npm run build`.
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
