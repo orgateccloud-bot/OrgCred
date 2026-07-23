@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DefinirSenhaRouteImport } from './routes/definir-senha'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
@@ -19,6 +20,11 @@ import { Route as AuthenticatedOperacoesIdRouteImport } from './routes/_authenti
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DefinirSenhaRoute = DefinirSenhaRouteImport.update({
+  id: '/definir-senha',
+  path: '/definir-senha',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -50,12 +56,14 @@ const AuthenticatedOperacoesIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
   '/operacoes/': typeof AuthenticatedOperacoesIndexRoute
 }
 export interface FileRoutesByTo {
+  '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/': typeof AuthenticatedIndexRoute
@@ -65,6 +73,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
   '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
@@ -73,12 +82,25 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/auditoria' | '/operacoes/$id' | '/operacoes/'
+  fullPaths:
+    | '/'
+    | '/definir-senha'
+    | '/login'
+    | '/auditoria'
+    | '/operacoes/$id'
+    | '/operacoes/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/auditoria' | '/' | '/operacoes/$id' | '/operacoes'
+  to:
+    | '/definir-senha'
+    | '/login'
+    | '/auditoria'
+    | '/'
+    | '/operacoes/$id'
+    | '/operacoes'
   id:
     | '__root__'
     | '/_authenticated'
+    | '/definir-senha'
     | '/login'
     | '/_authenticated/auditoria'
     | '/_authenticated/'
@@ -88,6 +110,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  DefinirSenhaRoute: typeof DefinirSenhaRoute
   LoginRoute: typeof LoginRoute
 }
 
@@ -98,6 +121,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/definir-senha': {
+      id: '/definir-senha'
+      path: '/definir-senha'
+      fullPath: '/definir-senha'
+      preLoaderRoute: typeof DefinirSenhaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -158,6 +188,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  DefinirSenhaRoute: DefinirSenhaRoute,
   LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
