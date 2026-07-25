@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   getCapitalSnapshotApiCapitalSnapshotGetOptions,
   getOperacoesApiOperacoesGetQueryKey,
@@ -21,9 +22,11 @@ import {
 export function AtivarOperacaoDialog({
   operacaoId,
   valorPrincipal,
+  onSucesso,
 }: {
   operacaoId: string
   valorPrincipal: string
+  onSucesso?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const queryClient = useQueryClient()
@@ -48,6 +51,10 @@ export function AtivarOperacaoDialog({
           })
           setOpen(false)
           mutation.reset()
+          toast.success('Operação ativada', {
+            description: `${formatarMoeda(valorPrincipal)} passam a comprometer o capital da ESC.`,
+          })
+          onSucesso?.()
         },
       },
     )

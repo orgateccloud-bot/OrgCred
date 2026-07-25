@@ -13,8 +13,12 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DefinirSenhaRouteImport } from './routes/definir-senha'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedCapitalRouteImport } from './routes/_authenticated/capital'
 import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
+import { Route as AuthenticatedTomadoresIndexRouteImport } from './routes/_authenticated/tomadores/index'
 import { Route as AuthenticatedOperacoesIndexRouteImport } from './routes/_authenticated/operacoes/index'
+import { Route as AuthenticatedTomadoresIdRouteImport } from './routes/_authenticated/tomadores/$id'
+import { Route as AuthenticatedOperacoesNovaRouteImport } from './routes/_authenticated/operacoes/nova'
 import { Route as AuthenticatedOperacoesIdRouteImport } from './routes/_authenticated/operacoes/$id'
 
 const LoginRoute = LoginRouteImport.update({
@@ -36,15 +40,38 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCapitalRoute = AuthenticatedCapitalRouteImport.update({
+  id: '/capital',
+  path: '/capital',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedAuditoriaRoute = AuthenticatedAuditoriaRouteImport.update({
   id: '/auditoria',
   path: '/auditoria',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedTomadoresIndexRoute =
+  AuthenticatedTomadoresIndexRouteImport.update({
+    id: '/tomadores/',
+    path: '/tomadores/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedOperacoesIndexRoute =
   AuthenticatedOperacoesIndexRouteImport.update({
     id: '/operacoes/',
     path: '/operacoes/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedTomadoresIdRoute =
+  AuthenticatedTomadoresIdRouteImport.update({
+    id: '/tomadores/$id',
+    path: '/tomadores/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedOperacoesNovaRoute =
+  AuthenticatedOperacoesNovaRouteImport.update({
+    id: '/operacoes/nova',
+    path: '/operacoes/nova',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedOperacoesIdRoute =
@@ -59,16 +86,24 @@ export interface FileRoutesByFullPath {
   '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
+  '/capital': typeof AuthenticatedCapitalRoute
   '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
+  '/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
+  '/tomadores/$id': typeof AuthenticatedTomadoresIdRoute
   '/operacoes/': typeof AuthenticatedOperacoesIndexRoute
+  '/tomadores/': typeof AuthenticatedTomadoresIndexRoute
 }
 export interface FileRoutesByTo {
   '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
+  '/capital': typeof AuthenticatedCapitalRoute
   '/': typeof AuthenticatedIndexRoute
   '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
+  '/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
+  '/tomadores/$id': typeof AuthenticatedTomadoresIdRoute
   '/operacoes': typeof AuthenticatedOperacoesIndexRoute
+  '/tomadores': typeof AuthenticatedTomadoresIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -76,9 +111,13 @@ export interface FileRoutesById {
   '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
   '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
+  '/_authenticated/capital': typeof AuthenticatedCapitalRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
+  '/_authenticated/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
+  '/_authenticated/tomadores/$id': typeof AuthenticatedTomadoresIdRoute
   '/_authenticated/operacoes/': typeof AuthenticatedOperacoesIndexRoute
+  '/_authenticated/tomadores/': typeof AuthenticatedTomadoresIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -87,25 +126,37 @@ export interface FileRouteTypes {
     | '/definir-senha'
     | '/login'
     | '/auditoria'
+    | '/capital'
     | '/operacoes/$id'
+    | '/operacoes/nova'
+    | '/tomadores/$id'
     | '/operacoes/'
+    | '/tomadores/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/definir-senha'
     | '/login'
     | '/auditoria'
+    | '/capital'
     | '/'
     | '/operacoes/$id'
+    | '/operacoes/nova'
+    | '/tomadores/$id'
     | '/operacoes'
+    | '/tomadores'
   id:
     | '__root__'
     | '/_authenticated'
     | '/definir-senha'
     | '/login'
     | '/_authenticated/auditoria'
+    | '/_authenticated/capital'
     | '/_authenticated/'
     | '/_authenticated/operacoes/$id'
+    | '/_authenticated/operacoes/nova'
+    | '/_authenticated/tomadores/$id'
     | '/_authenticated/operacoes/'
+    | '/_authenticated/tomadores/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -144,6 +195,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/capital': {
+      id: '/_authenticated/capital'
+      path: '/capital'
+      fullPath: '/capital'
+      preLoaderRoute: typeof AuthenticatedCapitalRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/auditoria': {
       id: '/_authenticated/auditoria'
       path: '/auditoria'
@@ -151,11 +209,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAuditoriaRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/tomadores/': {
+      id: '/_authenticated/tomadores/'
+      path: '/tomadores'
+      fullPath: '/tomadores/'
+      preLoaderRoute: typeof AuthenticatedTomadoresIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/operacoes/': {
       id: '/_authenticated/operacoes/'
       path: '/operacoes'
       fullPath: '/operacoes/'
       preLoaderRoute: typeof AuthenticatedOperacoesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/tomadores/$id': {
+      id: '/_authenticated/tomadores/$id'
+      path: '/tomadores/$id'
+      fullPath: '/tomadores/$id'
+      preLoaderRoute: typeof AuthenticatedTomadoresIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/operacoes/nova': {
+      id: '/_authenticated/operacoes/nova'
+      path: '/operacoes/nova'
+      fullPath: '/operacoes/nova'
+      preLoaderRoute: typeof AuthenticatedOperacoesNovaRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/operacoes/$id': {
@@ -170,16 +249,24 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAuditoriaRoute: typeof AuthenticatedAuditoriaRoute
+  AuthenticatedCapitalRoute: typeof AuthenticatedCapitalRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedOperacoesIdRoute: typeof AuthenticatedOperacoesIdRoute
+  AuthenticatedOperacoesNovaRoute: typeof AuthenticatedOperacoesNovaRoute
+  AuthenticatedTomadoresIdRoute: typeof AuthenticatedTomadoresIdRoute
   AuthenticatedOperacoesIndexRoute: typeof AuthenticatedOperacoesIndexRoute
+  AuthenticatedTomadoresIndexRoute: typeof AuthenticatedTomadoresIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAuditoriaRoute: AuthenticatedAuditoriaRoute,
+  AuthenticatedCapitalRoute: AuthenticatedCapitalRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedOperacoesIdRoute: AuthenticatedOperacoesIdRoute,
+  AuthenticatedOperacoesNovaRoute: AuthenticatedOperacoesNovaRoute,
+  AuthenticatedTomadoresIdRoute: AuthenticatedTomadoresIdRoute,
   AuthenticatedOperacoesIndexRoute: AuthenticatedOperacoesIndexRoute,
+  AuthenticatedTomadoresIndexRoute: AuthenticatedTomadoresIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

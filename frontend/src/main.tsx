@@ -5,8 +5,11 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import './api/client'
 import './stores/useAppStore'
+import { initAuthSync } from './auth/sync'
 import { queryClient } from './api/queryClient'
 import { routeTree } from './routeTree.gen'
+
+initAuthSync()
 
 const router = createRouter({ routeTree })
 
