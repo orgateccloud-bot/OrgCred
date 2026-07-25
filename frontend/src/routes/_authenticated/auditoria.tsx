@@ -35,9 +35,7 @@ function AuditoriaPage() {
   const [mostrarTecnico, setMostrarTecnico] = useState(false)
   const [tipoFiltro, setTipoFiltro] = useState('todos')
 
-  const tiposDisponiveis = data
-    ? Array.from(new Set(data.eventos.map((e) => e.evento_tipo)))
-    : []
+  const tiposDisponiveis = data ? Array.from(new Set(data.eventos.map((e) => e.evento_tipo))) : []
   const eventosFiltrados = data
     ? tipoFiltro === 'todos'
       ? data.eventos

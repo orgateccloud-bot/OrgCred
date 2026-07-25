@@ -2,10 +2,8 @@
 
 from datetime import datetime
 from decimal import Decimal
-from typing import List
+from typing import List, Literal, Optional
 from uuid import UUID
-
-from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field

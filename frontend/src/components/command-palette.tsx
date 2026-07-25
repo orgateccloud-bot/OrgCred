@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Banknote,
-  Building2,
-  Coins,
-  LayoutDashboard,
-  ScrollText,
-} from 'lucide-react'
+import { Banknote, Building2, Coins, LayoutDashboard, ScrollText } from 'lucide-react'
 import {
   getOperacoesApiOperacoesGetOptions,
   getTomadoresApiTomadoresGetOptions,

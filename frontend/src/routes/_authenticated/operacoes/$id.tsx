@@ -19,13 +19,7 @@ import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { TransicaoOperacaoDialog } from '@/components/transicao-operacao-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export const Route = createFileRoute('/_authenticated/operacoes/$id')({
@@ -50,8 +44,7 @@ function OperacaoDetailPage() {
 
   function invalidar() {
     queryClient.invalidateQueries({
-      queryKey: getOperacaoApiOperacoesOperacaoIdGetOptions({ path: { operacao_id: id } })
-        .queryKey,
+      queryKey: getOperacaoApiOperacoesOperacaoIdGetOptions({ path: { operacao_id: id } }).queryKey,
     })
     queryClient.invalidateQueries({ queryKey: getOperacoesApiOperacoesGetQueryKey() })
     queryClient.invalidateQueries({

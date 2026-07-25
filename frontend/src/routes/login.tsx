@@ -3,13 +3,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Landmark } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { supabase, supabaseConfigurado } from '@/auth/supabaseClient'
 import { useAppStore } from '@/stores/useAppStore'
@@ -95,9 +89,7 @@ function LoginPage() {
             <Landmark className="size-6" aria-hidden />
           </div>
           <CardTitle className="text-2xl">OrgCred</CardTitle>
-          <CardDescription>
-            Painel de operações da ESC · ORGATEC
-          </CardDescription>
+          <CardDescription>Painel de operações da ESC · ORGATEC</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

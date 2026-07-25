@@ -13,13 +13,7 @@ import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { useAppStore } from '@/stores/useAppStore'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -158,7 +152,9 @@ function RegistrarEventoCard() {
       { body: { tipo_evento: tipo, valor } },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getCapitalEventosApiCapitalEventosGetQueryKey() })
+          queryClient.invalidateQueries({
+            queryKey: getCapitalEventosApiCapitalEventosGetQueryKey(),
+          })
           queryClient.invalidateQueries({
             queryKey: getCapitalSnapshotApiCapitalSnapshotGetOptions().queryKey,
           })
@@ -176,8 +172,8 @@ function RegistrarEventoCard() {
       <CardHeader>
         <CardTitle>Registrar evento</CardTitle>
         <CardDescription>
-          Aporte (constituição) aumenta o teto; redução diminui — o banco recusa reduções que
-          deixem o capital abaixo do comprometido (OC005).
+          Aporte (constituição) aumenta o teto; redução diminui — o banco recusa reduções que deixem
+          o capital abaixo do comprometido (OC005).
         </CardDescription>
       </CardHeader>
       <CardContent>

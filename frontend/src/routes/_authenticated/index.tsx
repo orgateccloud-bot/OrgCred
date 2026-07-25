@@ -10,13 +10,7 @@ import {
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa } from '@/lib/ledger'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   ChartContainer,
   ChartTooltip,
@@ -94,7 +88,11 @@ function DashboardPage() {
           detalhe={`${utilizacaoPct.toFixed(1)}% do teto`}
           progresso={utilizacaoPct}
         />
-        <KpiCard icone={Vault} rotulo="Teto de capital" valor={formatarMoeda(snapshot.data.total)} />
+        <KpiCard
+          icone={Vault}
+          rotulo="Teto de capital"
+          valor={formatarMoeda(snapshot.data.total)}
+        />
         <KpiCard
           icone={Banknote}
           rotulo="Operações ativas"
@@ -104,10 +102,7 @@ function DashboardPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <EvolucaoSaldoCard
-          eventos={auditoria.data.eventos}
-          className="xl:col-span-2"
-        />
+        <EvolucaoSaldoCard eventos={auditoria.data.eventos} className="xl:col-span-2" />
         <ComposicaoPorTipoCard operacoes={ativas} />
       </div>
 
@@ -232,14 +227,16 @@ function EvolucaoSaldoCard({
                 tickMargin={8}
                 width={80}
                 tickFormatter={(v: number) =>
-                  v.toLocaleString('pt-BR', { notation: 'compact', style: 'currency', currency: 'BRL' })
+                  v.toLocaleString('pt-BR', {
+                    notation: 'compact',
+                    style: 'currency',
+                    currency: 'BRL',
+                  })
                 }
               />
               <ChartTooltip
                 content={
-                  <ChartTooltipContent
-                    formatter={(value) => formatarMoeda(String(value))}
-                  />
+                  <ChartTooltipContent formatter={(value) => formatarMoeda(String(value))} />
                 }
               />
               <Area
@@ -258,7 +255,13 @@ function EvolucaoSaldoCard({
   )
 }
 
-const CORES_TIPO = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
+const CORES_TIPO = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+]
 
 function ComposicaoPorTipoCard({
   operacoes,
@@ -289,7 +292,9 @@ function ComposicaoPorTipoCard({
           <ChartContainer config={config} className="mx-auto h-64 w-full">
             <PieChart>
               <ChartTooltip
-                content={<ChartTooltipContent formatter={(value) => formatarMoeda(String(value))} />}
+                content={
+                  <ChartTooltipContent formatter={(value) => formatarMoeda(String(value))} />
+                }
               />
               <Pie data={dados} dataKey="valor" nameKey="tipo" innerRadius={55} strokeWidth={2}>
                 {dados.map((d, i) => (
@@ -304,14 +309,8 @@ function ComposicaoPorTipoCard({
   )
 }
 
-function AtividadeRecenteCard({
-  eventos,
-}: {
-  eventos: Array<Parameters<typeof narrativa>[0]>
-}) {
-  const recentes = [...eventos]
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, 5)
+function AtividadeRecenteCard({ eventos }: { eventos: Array<Parameters<typeof narrativa>[0]> }) {
+  const recentes = [...eventos].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5)
 
   return (
     <Card>

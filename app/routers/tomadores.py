@@ -75,9 +75,7 @@ def get_tomador(
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ) -> TomadorDetailOut:
-    tomador: Optional[Tomador] = (
-        db.query(Tomador).filter(Tomador.id == tomador_id).one_or_none()
-    )
+    tomador: Optional[Tomador] = db.query(Tomador).filter(Tomador.id == tomador_id).one_or_none()
     if tomador is None:
         raise HTTPException(status_code=404, detail=f"Tomador {tomador_id} não existe.")
 
@@ -142,9 +140,7 @@ def patch_autorizacao(
 ) -> TomadorOut:
     """Liga/desliga a autorização do município (gate OC002). Admin only:
     é a chave que permite ativar crédito para o tomador."""
-    tomador: Optional[Tomador] = (
-        db.query(Tomador).filter(Tomador.id == tomador_id).one_or_none()
-    )
+    tomador: Optional[Tomador] = db.query(Tomador).filter(Tomador.id == tomador_id).one_or_none()
     if tomador is None:
         raise HTTPException(status_code=404, detail=f"Tomador {tomador_id} não existe.")
     tomador.municipio_autorizado = body.municipio_autorizado  # type: ignore[assignment]

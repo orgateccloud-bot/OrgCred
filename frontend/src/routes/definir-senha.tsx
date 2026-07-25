@@ -81,9 +81,7 @@ function DefinirSenhaPage() {
             Senha definida. Redirecionando para o login…
           </p>
         ) : !pronto ? (
-          <p className="text-sm text-muted-foreground">
-            {erro ?? 'Validando o link de acesso…'}
-          </p>
+          <p className="text-sm text-muted-foreground">{erro ?? 'Validando o link de acesso…'}</p>
         ) : (
           <>
             <div className="space-y-1">
