@@ -1,6 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Landmark } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { supabase, supabaseConfigurado } from '@/auth/supabaseClient'
 import { useAppStore } from '@/stores/useAppStore'
 
@@ -15,6 +25,7 @@ function LoginPage() {
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
+  const [recuperando, setRecuperando] = useState(false)
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -40,47 +51,103 @@ function LoginPage() {
     navigate({ to: '/' })
   }
 
+  async function handleEsqueciSenha() {
+    setErro(null)
+    if (!supabaseConfigurado) {
+      setErro('Autenticação ainda não configurada neste ambiente.')
+      return
+    }
+    if (!email) {
+      setErro('Preencha o e-mail acima para receber o link de redefinição.')
+      return
+    }
+
+    setRecuperando(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/definir-senha`,
+    })
+    setRecuperando(false)
+
+    if (error) {
+      setErro(error.message)
+      return
+    }
+    toast.success('Link de redefinição enviado', {
+      description: `Confira a caixa de entrada de ${email}.`,
+    })
+  }
+
   return (
-    <div className="flex min-h-svh items-center justify-center p-6">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
-        <h1 className="text-2xl font-semibold">Entrar</h1>
+    <div className="relative flex min-h-svh items-center justify-center overflow-hidden p-6">
+      {/* Assinatura Aurora: o gradiente da marca aparece só aqui, como fundo
+          discreto — nunca em texto corrido ou elementos de dado. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 -top-40 h-80 opacity-20 blur-3xl"
+        style={{
+          background: 'linear-gradient(135deg, #0052FF 0%, #4D7CFF 52%, #0EA5E9 100%)',
+        }}
+      />
 
-        <div className="space-y-1">
-          <label htmlFor="email" className="text-sm text-muted-foreground">
-            E-mail
-          </label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          />
-        </div>
+      <Card className="w-full max-w-sm">
+        <CardHeader className="items-center text-center">
+          <div className="mb-2 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Landmark className="size-6" aria-hidden />
+          </div>
+          <CardTitle className="text-2xl">OrgCred</CardTitle>
+          <CardDescription>
+            Painel de operações da ESC · ORGATEC
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1">
+              <label htmlFor="email" className="text-sm text-muted-foreground">
+                E-mail
+              </label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </div>
 
-        <div className="space-y-1">
-          <label htmlFor="senha" className="text-sm text-muted-foreground">
-            Senha
-          </label>
-          <input
-            id="senha"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={senha}
-            onChange={(event) => setSenha(event.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          />
-        </div>
+            <div className="space-y-1">
+              <label htmlFor="senha" className="text-sm text-muted-foreground">
+                Senha
+              </label>
+              <Input
+                id="senha"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={senha}
+                onChange={(event) => setSenha(event.target.value)}
+              />
+            </div>
 
-        {erro && <p className="text-sm text-destructive">{erro}</p>}
+            {erro && <p className="text-sm text-destructive">{erro}</p>}
 
-        <Button type="submit" disabled={enviando} className="w-full">
-          {enviando ? 'Entrando…' : 'Entrar'}
-        </Button>
-      </form>
+            <Button type="submit" disabled={enviando} className="w-full">
+              {enviando ? 'Entrando…' : 'Entrar'}
+            </Button>
+
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="w-full text-muted-foreground"
+              disabled={recuperando}
+              onClick={handleEsqueciSenha}
+            >
+              {recuperando ? 'Enviando link…' : 'Esqueci minha senha'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }

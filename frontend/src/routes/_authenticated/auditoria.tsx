@@ -6,8 +6,17 @@ import { getAuditoriaApiAuditoriaGetOptions } from '@/api/generated/@tanstack/re
 import type { LedgerEventoOut } from '@/api/generated/types.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
+import { narrativa } from '@/lib/ledger'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -21,21 +30,19 @@ export const Route = createFileRoute('/_authenticated/auditoria')({
   component: AuditoriaPage,
 })
 
-const VERBO_POR_EVENTO: Record<string, string> = {
-  ativacao_operacao: 'ativou uma operação de crédito',
-  liquidacao: 'liquidou uma operação de crédito',
-}
-
-function narrativa(evento: LedgerEventoOut): string {
-  const autor = evento.usuario_nome ?? 'Sistema'
-  const verbo = VERBO_POR_EVENTO[evento.evento_tipo] ?? `registrou o evento "${evento.evento_tipo}"`
-  const quando = new Date(evento.created_at).toLocaleString('pt-BR')
-  return `${autor} ${verbo} em ${quando}, no valor de ${formatarMoeda(evento.valor)}.`
-}
-
 function AuditoriaPage() {
   const { data, error, isPending } = useQuery(getAuditoriaApiAuditoriaGetOptions())
   const [mostrarTecnico, setMostrarTecnico] = useState(false)
+  const [tipoFiltro, setTipoFiltro] = useState('todos')
+
+  const tiposDisponiveis = data
+    ? Array.from(new Set(data.eventos.map((e) => e.evento_tipo)))
+    : []
+  const eventosFiltrados = data
+    ? tipoFiltro === 'todos'
+      ? data.eventos
+      : data.eventos.filter((e) => e.evento_tipo === tipoFiltro)
+    : []
 
   return (
     <div className="p-6">
@@ -44,7 +51,13 @@ function AuditoriaPage() {
         {data && <IntegridadeBadge integro={data.integro} />}
       </div>
 
-      {isPending && <p className="mt-4 text-muted-foreground">Carregando…</p>}
+      {isPending && (
+        <div className="mt-4 space-y-2">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      )}
       {error && <p className="mt-4 text-destructive">{mensagemDeErro(error)}</p>}
 
       {data && data.eventos.length === 0 && (
@@ -53,8 +66,27 @@ function AuditoriaPage() {
 
       {data && data.eventos.length > 0 && (
         <>
+          <div className="mt-4 flex items-center gap-3">
+            <Select value={tipoFiltro} onValueChange={setTipoFiltro}>
+              <SelectTrigger className="w-56" aria-label="Filtrar por tipo de evento">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os tipos</SelectItem>
+                {tiposDisponiveis.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground">
+              {eventosFiltrados.length} de {data.eventos.length}
+            </span>
+          </div>
+
           <ul className="mt-4 space-y-2">
-            {data.eventos.map((evento) => (
+            {eventosFiltrados.map((evento) => (
               <li key={evento.id} className="rounded-lg border border-border p-3 text-sm">
                 {narrativa(evento)}
               </li>

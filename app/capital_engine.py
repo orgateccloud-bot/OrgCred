@@ -18,7 +18,7 @@ silenciosamente se a mensagem do trigger mudar. Códigos:
 
 from decimal import Decimal
 from typing import NamedTuple, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -33,7 +33,7 @@ from app.core.exceptions import (
     TransicaoInvalida,
 )
 from app.core.metrics import registrar_ativacao
-from app.models import OperacaoCredito
+from app.models import EscCapitalSocial, OperacaoCredito
 
 
 _PGCODE_MAP = {
@@ -165,3 +165,103 @@ def ativar_operacao(
     db.refresh(op)
     registrar_ativacao()
     return op
+
+
+def transicionar_operacao(
+    db: Session,
+    operacao_id: UUID,
+    novo_status: str,
+    usuario_id: Optional[str] = None,
+    registro_entidade_ref: Optional[str] = None,
+) -> OperacaoCredito:
+    """
+    Transição genérica de status — mesma disciplina de ativar_operacao:
+    a aplicação só escreve o status desejado; a máquina de estados real
+    (quais transições são válidas, OC003) vive no trigger. Não há lista
+    de status válidos aqui de propósito — duplicá-la criaria uma segunda
+    fonte de verdade que dessincroniza em silêncio.
+
+    `registro_entidade_ref` só faz sentido na transição para 'registrada'
+    (exigência do Art. 5º §3º para a futura ativação); é ignorado nas
+    demais.
+    """
+    db.execute(
+        text("select set_config('app.user_id', :usuario_id, true)"),
+        {"usuario_id": usuario_id},
+    )
+
+    op: Optional[OperacaoCredito] = (
+        db.query(OperacaoCredito).filter(OperacaoCredito.id == operacao_id).one_or_none()
+    )
+    if op is None:
+        raise OperacaoNaoEncontrada(f"Operação {operacao_id} não existe.")
+
+    if novo_status == "registrada" and registro_entidade_ref:
+        op.registro_entidade_ref = registro_entidade_ref  # type: ignore[assignment]
+    op.status = novo_status  # type: ignore[assignment]
+    try:
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+
+    db.refresh(op)
+    return op
+
+
+def criar_operacao(
+    db: Session,
+    *,
+    tomador_id: UUID,
+    tipo: str,
+    valor_principal: Decimal,
+    taxa_juros_mensal: Decimal,
+    sistema_amortizacao: str,
+    numero_parcelas: int,
+) -> OperacaoCredito:
+    """
+    Cria a operação no status inicial 'proposta'. O trigger valida que
+    INSERTs só nascem em proposta/registrada (OC003); teto e gate
+    geográfico só são checados na ativação — proposta não compromete
+    capital.
+    """
+    # id gerado client-side: o default uuid_generate_v4() existe só no DDL —
+    # o model não o declara, então o ORM enviaria NULL explícito e o default
+    # do banco não se aplicaria.
+    op = OperacaoCredito(
+        id=uuid4(),
+        tomador_id=tomador_id,
+        tipo=tipo,
+        valor_principal=valor_principal,
+        taxa_juros_mensal=taxa_juros_mensal,
+        sistema_amortizacao=sistema_amortizacao,
+        numero_parcelas=numero_parcelas,
+        status="proposta",
+    )
+    db.add(op)
+    try:
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+
+    db.refresh(op)
+    return op
+
+
+def registrar_evento_capital(db: Session, *, valor: Decimal, tipo_evento: str) -> EscCapitalSocial:
+    """
+    Insere evento no histórico de capital social. A proteção real (OC005:
+    redução não pode deixar o capital abaixo do comprometido) é o trigger
+    trg_check_reducao_capital — aqui só se traduz o erro.
+    """
+    evento = EscCapitalSocial(id=uuid4(), valor=valor, tipo_evento=tipo_evento)
+    db.add(evento)
+    try:
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+
+    db.refresh(evento)
+    return evento

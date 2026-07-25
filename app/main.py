@@ -39,6 +39,7 @@ from app.routers import (
     compliance,
     contratos,
     fiscal,
+    me,
     operacoes,
     tomadores,
 )
@@ -108,6 +109,7 @@ app.include_router(fiscal.router, prefix="/api", dependencies=[Depends(get_curre
 app.include_router(compliance.router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(cobranca.router, prefix="/api", dependencies=[Depends(get_current_user)])
 app.include_router(auditoria.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(me.router, prefix="/api", dependencies=[Depends(get_current_user)])
 
 
 @app.get("/health")
