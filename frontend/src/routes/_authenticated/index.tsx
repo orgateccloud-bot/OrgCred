@@ -1,6 +1,15 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Banknote, PiggyBank, ShieldAlert, Vault, Wallet } from 'lucide-react'
+import {
+  AlertTriangle,
+  Banknote,
+  FileClock,
+  LineChart,
+  PiggyBank,
+  ScrollText,
+  ShieldAlert,
+  Wallet,
+} from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from 'recharts'
 import {
   getAuditoriaApiAuditoriaGetOptions,
@@ -10,6 +19,8 @@ import {
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa, type EventoNarravel } from '@/lib/ledger'
+import { formatarPercentual } from '@/lib/rotulos'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   ChartContainer,
@@ -58,6 +69,10 @@ function DashboardPage() {
   const comprometido = Number(snapshot.data.comprometido)
   const utilizacaoPct = total > 0 ? Math.min(100, (comprometido / total) * 100) : 0
   const ativas = operacoes.data.filter((op) => op.status === 'ativa')
+  // "Registrada" é o estado imediatamente anterior à ativação: é o que o
+  // operador precisa ver para saber quanto capital está prestes a sair.
+  const aguardando = operacoes.data.filter((op) => op.status === 'registrada')
+  const valorAguardando = aguardando.reduce((soma, op) => soma + Number(op.valor_principal), 0)
 
   return (
     <div className="space-y-6 p-6">
@@ -90,23 +105,32 @@ function DashboardPage() {
           valor={formatarMoeda(snapshot.data.disponivel)}
           destaque
         />
+        {/* O teto entra como apoio aqui, e não como KPI próprio: quando nada
+            está comprometido ele repete literalmente o valor de "Capital
+            disponível", e dois números idênticos lado a lado forçam o
+            operador a reler para descobrir que são a mesma coisa. */}
         <KpiCard
           icone={PiggyBank}
           rotulo="Comprometido"
           valor={formatarMoeda(snapshot.data.comprometido)}
-          detalhe={`${utilizacaoPct.toFixed(1)}% do teto`}
+          detalhe={`${formatarPercentual(utilizacaoPct)} de ${formatarMoeda(snapshot.data.total)}`}
           progresso={utilizacaoPct}
-        />
-        <KpiCard
-          icone={Vault}
-          rotulo="Teto de capital"
-          valor={formatarMoeda(snapshot.data.total)}
         />
         <KpiCard
           icone={Banknote}
           rotulo="Operações ativas"
           valor={String(ativas.length)}
           detalhe={`${operacoes.data.length} no total`}
+        />
+        <KpiCard
+          icone={FileClock}
+          rotulo="Aguardando ativação"
+          valor={String(aguardando.length)}
+          detalhe={
+            aguardando.length > 0
+              ? `${formatarMoeda(String(valorAguardando))} a comprometer`
+              : 'nenhuma pendente'
+          }
         />
       </div>
 
@@ -141,6 +165,33 @@ function BannerCritico({
     </div>
   )
   return to ? <Link to={to}>{conteudo}</Link> : conteudo
+}
+
+/**
+ * Estado vazio único do dashboard. Antes cada card resolvia por conta
+ * própria com uma frase centralizada e sem saída — o operador via "não há
+ * dados" sem nada para fazer a respeito. Ícone + texto + ação.
+ */
+function EstadoVazio({
+  icone: Icone,
+  texto,
+  acao,
+}: {
+  icone: typeof Wallet
+  texto: string
+  acao?: { para: string; rotulo: string }
+}) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-8 text-center">
+      <Icone className="size-7 text-muted-foreground/60" aria-hidden />
+      <p className="max-w-xs text-sm text-muted-foreground">{texto}</p>
+      {acao && (
+        <Button asChild variant="outline" size="sm">
+          <Link to={acao.para}>{acao.rotulo}</Link>
+        </Button>
+      )}
+    </div>
+  )
 }
 
 function KpiCard({
@@ -222,9 +273,11 @@ function EvolucaoSaldoCard({
       </CardHeader>
       <CardContent>
         {serie.length < 2 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            Ainda não há eventos suficientes no ledger para desenhar a série.
-          </p>
+          <EstadoVazio
+            icone={LineChart}
+            texto="A série aparece a partir do segundo evento de capital."
+            acao={{ para: '/capital', rotulo: 'Registrar aporte' }}
+          />
         ) : (
           <ChartContainer config={configSaldo} className="h-64 w-full">
             <AreaChart data={serie} margin={{ left: 12, right: 12 }}>
@@ -294,9 +347,11 @@ function ComposicaoPorTipoCard({
       </CardHeader>
       <CardContent>
         {dados.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            Nenhuma operação ativa no momento.
-          </p>
+          <EstadoVazio
+            icone={Banknote}
+            texto="Nenhuma operação ativa no momento."
+            acao={{ para: '/operacoes', rotulo: 'Ver operações' }}
+          />
         ) : (
           <ChartContainer config={config} className="mx-auto h-64 w-full">
             <PieChart>
@@ -329,7 +384,11 @@ function AtividadeRecenteCard({ eventos }: { eventos: Array<EventoNarravel & { i
       </CardHeader>
       <CardContent>
         {recentes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhum evento registrado ainda.</p>
+          <EstadoVazio
+            icone={ScrollText}
+            texto="Nenhum evento no ledger ainda. Ativar uma operação cria o primeiro."
+            acao={{ para: '/operacoes', rotulo: 'Ir para operações' }}
+          />
         ) : (
           <ul className="space-y-2">
             {recentes.map((evento) => (

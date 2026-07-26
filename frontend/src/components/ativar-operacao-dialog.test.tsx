@@ -46,7 +46,9 @@ describe('AtivarOperacaoDialog', () => {
     // Intl.NumberFormat('pt-BR') usa espaço não separável (U+00A0) — regex evita depender do char exato.
     expect(screen.getByText(/R\$\s?30\.000,00/)).toBeInTheDocument()
     // (20000 comprometido + 30000 desta operação) / 100000 total = 50%
-    await waitFor(() => expect(screen.getByText('50.0%')).toBeInTheDocument())
+    // Vírgula decimal, não ponto: a asserção anterior ('50.0%') fixava o
+    // formato en-US que vazava do toFixed() e mascarava o bug.
+    await waitFor(() => expect(screen.getByText('50,0%')).toBeInTheDocument())
   })
 
   it('avisa explicitamente que a ação é irreversível', async () => {

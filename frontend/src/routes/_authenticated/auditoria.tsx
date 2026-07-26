@@ -6,6 +6,7 @@ import { getAuditoriaApiAuditoriaGetOptions } from '@/api/generated/@tanstack/re
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa } from '@/lib/ledger'
+import { rotuloEventoCapital } from '@/lib/rotulos'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -72,7 +73,7 @@ function AuditoriaPage() {
                 <SelectItem value="todos">Todos os tipos</SelectItem>
                 {tiposDisponiveis.map((t) => (
                   <SelectItem key={t} value={t}>
-                    {t}
+                    {rotuloEventoCapital(t)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -113,7 +114,9 @@ function AuditoriaPage() {
                 <TableBody>
                   {data.eventos.map((evento) => (
                     <TableRow key={evento.id}>
-                      <TableCell className="font-mono text-xs">{evento.evento_tipo}</TableCell>
+                      <TableCell className="text-xs">
+                        {rotuloEventoCapital(evento.evento_tipo)}
+                      </TableCell>
                       <TableCell className="font-mono text-xs">
                         {formatarMoeda(evento.saldo_disponivel_pos)}
                       </TableCell>

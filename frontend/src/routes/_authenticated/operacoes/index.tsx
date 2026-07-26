@@ -15,6 +15,7 @@ import { getOperacoesApiOperacoesGetOptions } from '@/api/generated/@tanstack/re
 import type { OperacaoListItemOut } from '@/api/generated/types.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
+import { rotuloStatus, rotuloTipo } from '@/lib/rotulos'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { AtivarOperacaoDialog } from '@/components/ativar-operacao-dialog'
 import { Button } from '@/components/ui/button'
@@ -54,7 +55,7 @@ const columnHelper = createColumnHelper<OperacaoListItemOut>()
 
 const columns = [
   columnHelper.accessor('tomador_razao_social', { header: 'Tomador' }),
-  columnHelper.accessor('tipo', { header: 'Tipo' }),
+  columnHelper.accessor('tipo', { header: 'Tipo', cell: (info) => rotuloTipo(info.getValue()) }),
   columnHelper.accessor('valor_principal', {
     header: 'Valor',
     cell: (info) => (
@@ -68,7 +69,16 @@ const columns = [
   }),
   columnHelper.accessor('created_at', {
     header: 'Criada em',
-    cell: (info) => new Date(info.getValue()).toLocaleString('pt-BR'),
+    // Sem segundos: em lista é ruído. O detalhe da operação mostra o instante
+    // completo, que é onde a precisão importa para auditoria.
+    cell: (info) =>
+      new Date(info.getValue()).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
   }),
   columnHelper.display({
     id: 'acoes',
@@ -143,7 +153,7 @@ function OperacoesListPage() {
             <SelectItem value="todos">Todos os status</SelectItem>
             {STATUS_OPCOES.map((s) => (
               <SelectItem key={s} value={s}>
-                {s}
+                {rotuloStatus(s)}
               </SelectItem>
             ))}
           </SelectContent>

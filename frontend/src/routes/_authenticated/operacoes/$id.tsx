@@ -13,6 +13,7 @@ import {
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa } from '@/lib/ledger'
+import { rotuloTipo } from '@/lib/rotulos'
 import { AtivarOperacaoDialog } from '@/components/ativar-operacao-dialog'
 import { RegistrarOperacaoDialog } from '@/components/registrar-operacao-dialog'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
@@ -191,7 +192,7 @@ function OperacaoDetailPage() {
                 {formatarMoeda(String(data.valor_principal))}
               </span>
             </LinhaDado>
-            <LinhaDado rotulo="Tipo">{data.tipo}</LinhaDado>
+            <LinhaDado rotulo="Tipo">{rotuloTipo(data.tipo)}</LinhaDado>
             <LinhaDado rotulo="Taxa de juros">
               <span className="font-mono tabular-nums">{String(data.taxa_juros_mensal)}% a.m.</span>
             </LinhaDado>

@@ -4,6 +4,7 @@ import { ArrowLeft, MapPin } from 'lucide-react'
 import { getTomadorApiTomadoresTomadorIdGetOptions } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
+import { rotuloTipo } from '@/lib/rotulos'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -109,7 +110,7 @@ function TomadorDetailPage() {
                         params={{ id: op.id }}
                         className="text-primary hover:underline"
                       >
-                        {op.tipo}
+                        {rotuloTipo(op.tipo)}
                       </Link>
                     </TableCell>
                     <TableCell className="font-mono tabular-nums">

@@ -8,6 +8,7 @@ import {
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
+import { formatarPercentual } from '@/lib/rotulos'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -91,7 +92,7 @@ export function AtivarOperacaoDialog({
           <div className="flex justify-between">
             <span className="text-muted-foreground">Teto comprometido após ativação</span>
             <span className="font-mono">
-              {percentualResultante !== null ? `${percentualResultante.toFixed(1)}%` : '—'}
+              {percentualResultante !== null ? formatarPercentual(percentualResultante) : '—'}
             </span>
           </div>
         </div>

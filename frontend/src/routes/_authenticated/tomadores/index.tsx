@@ -10,6 +10,7 @@ import {
   postCriarTomadorApiTomadoresPostMutation,
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
+import { rotuloPorte } from '@/lib/rotulos'
 import { useAppStore } from '@/stores/useAppStore'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -114,7 +115,7 @@ function TomadoresPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="font-mono tabular-nums">{t.cnpj}</TableCell>
-                  <TableCell>{t.porte}</TableCell>
+                  <TableCell>{rotuloPorte(t.porte)}</TableCell>
                   <TableCell>
                     {t.municipio}/{t.uf}
                   </TableCell>

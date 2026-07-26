@@ -9,42 +9,29 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { rotuloStatus } from '@/lib/rotulos'
 import { cn } from '@/lib/utils'
 
-const STATUS_CONFIG: Record<string, { label: string; icon: LucideIcon; className: string }> = {
-  proposta: { label: 'Proposta', icon: Circle, className: 'text-muted-foreground' },
-  registrada: { label: 'Registrada', icon: FileCheck, className: 'text-foreground' },
-  ativa: {
-    label: 'Ativa',
-    icon: CheckCircle2,
-    className: 'text-success',
-  },
-  liquidada: { label: 'Liquidada', icon: CheckCheck, className: 'text-muted-foreground' },
-  inadimplente: {
-    label: 'Inadimplente',
-    icon: AlertTriangle,
-    className: 'text-destructive',
-  },
-  renegociada: {
-    label: 'Renegociada',
-    icon: RefreshCw,
-    className: 'text-warning',
-  },
-  cancelada: { label: 'Cancelada', icon: XCircle, className: 'text-destructive' },
+// Só ícone e cor: o rótulo vem de lib/rotulos, fonte única compartilhada com
+// filtros, selects e tabelas — antes o texto vivia duplicado aqui.
+const STATUS_CONFIG: Record<string, { icon: LucideIcon; className: string }> = {
+  proposta: { icon: Circle, className: 'text-muted-foreground' },
+  registrada: { icon: FileCheck, className: 'text-foreground' },
+  ativa: { icon: CheckCircle2, className: 'text-success' },
+  liquidada: { icon: CheckCheck, className: 'text-muted-foreground' },
+  inadimplente: { icon: AlertTriangle, className: 'text-destructive' },
+  renegociada: { icon: RefreshCw, className: 'text-warning' },
+  cancelada: { icon: XCircle, className: 'text-destructive' },
 }
 
 export function StatusOperacaoBadge({ status }: { status: string }) {
-  const config = STATUS_CONFIG[status] ?? {
-    label: status,
-    icon: Circle,
-    className: 'text-muted-foreground',
-  }
+  const config = STATUS_CONFIG[status] ?? { icon: Circle, className: 'text-muted-foreground' }
   const Icon = config.icon
 
   return (
     <Badge variant="outline" className={cn('gap-1', config.className)}>
       <Icon />
-      {config.label}
+      {rotuloStatus(status)}
     </Badge>
   )
 }

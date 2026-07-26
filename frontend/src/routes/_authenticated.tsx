@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { createFileRoute, Outlet, redirect, useRouterState } from '@tanstack/react-router'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Search } from 'lucide-react'
 import { getSession } from '@/auth/supabaseClient'
 import { AppSidebar } from '@/components/app-sidebar'
 import { CommandPalette } from '@/components/command-palette'
@@ -49,10 +50,11 @@ function migalhas(pathname: string): Array<{ rotulo: string; to?: string }> {
 function AuthenticatedLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const trilha = migalhas(pathname)
+  const [paletaAberta, setPaletaAberta] = useState(false)
 
   return (
     <SidebarProvider>
-      <CommandPalette />
+      <CommandPalette open={paletaAberta} onOpenChange={setPaletaAberta} />
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
@@ -72,7 +74,20 @@ function AuthenticatedLayout() {
               ))}
             </BreadcrumbList>
           </Breadcrumb>
-          <div className="ml-auto">
+          {/* Gatilho visível da paleta: sem ele o ⌘K era invisível — recurso
+              que só existe para quem já sabe que existe não existe. */}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPaletaAberta(true)}
+              className="hidden items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex"
+            >
+              <Search className="size-3.5" aria-hidden />
+              <span>Buscar…</span>
+              <kbd className="ml-6 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+                Ctrl K
+              </kbd>
+            </button>
             <ThemeToggle />
           </div>
         </header>

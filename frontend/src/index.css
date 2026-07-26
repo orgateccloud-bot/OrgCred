@@ -112,8 +112,12 @@
   );
   --oc-grad-cyan: linear-gradient(135deg, #0078c0 0%, #00c0f0 50%, #18e0f8 100%);
 
-  /* Tema claro — superfícies brancas do DS */
-  --background: #ffffff;
+  /* Tema claro — superfícies do DS.
+     `--background` é o cinza (--bg-light-2) e `--card` o branco puro, e não
+     os dois brancos: com background === card os cards perdem superfície
+     própria e sobra só uma borda de 8% de opacidade, apagando toda a
+     estrutura de caixas da tela. A sidebar usa o mesmo cinza do fundo. */
+  --background: #f6f8fb;
   --foreground: #0a0e16;
   --card: #ffffff;
   --card-foreground: #0a0e16;
@@ -139,7 +143,7 @@
   --chart-4: #9a6206;
   --chart-5: #c1273a;
   --radius: 0.875rem; /* --r-md do DS = 14px */
-  --sidebar: #f6f8fb;
+  --sidebar: #ffffff;
   --sidebar-foreground: #0a0e16;
   --sidebar-primary: #006ba8;
   --sidebar-primary-foreground: #ffffff;
