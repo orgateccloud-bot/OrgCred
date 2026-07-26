@@ -2,13 +2,23 @@ import { createRootRoute, Link, Outlet } from '@tanstack/react-router'
 import { SearchX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
 
+/**
+ * TooltipProvider é obrigatório no topo: `SidebarMenuButton` com a prop
+ * `tooltip` monta um `Tooltip` do Radix, que lança
+ * "`Tooltip` must be used within `TooltipProvider`" sem este ancestral.
+ * `SidebarProvider` NÃO o embute nesta versão do shadcn — o que derrubava
+ * toda rota autenticada (o errorComponent de _authenticated capturava e
+ * a tela virava "Algo deu errado"). Fica na raiz, e não no layout
+ * autenticado, para valer também em tooltips fora da sidebar.
+ */
 export const Route = createRootRoute({
   component: () => (
-    <>
+    <TooltipProvider>
       <Outlet />
       <Toaster position="bottom-right" richColors />
-    </>
+    </TooltipProvider>
   ),
   notFoundComponent: PaginaNaoEncontrada,
 })

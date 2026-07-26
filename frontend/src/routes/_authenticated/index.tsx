@@ -9,7 +9,7 @@ import {
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
-import { narrativa } from '@/lib/ledger'
+import { narrativa, type EventoNarravel } from '@/lib/ledger'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   ChartContainer,
@@ -36,12 +36,15 @@ function DashboardPage() {
 
   if (carregando) {
     return (
-      <div className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-28 w-full" />
-        ))}
-        <Skeleton className="h-72 md:col-span-2 xl:col-span-3" />
-        <Skeleton className="h-72" />
+      <div className="space-y-6 p-6">
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Dashboard</h1>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-28 w-full" />
+          ))}
+          <Skeleton className="h-72 md:col-span-2 xl:col-span-3" />
+          <Skeleton className="h-72" />
+        </div>
       </div>
     )
   }
@@ -58,6 +61,12 @@ function DashboardPage() {
 
   return (
     <div className="space-y-6 p-6">
+      {/* Toda página do app tem um h1 — a F6 reescreveu esta tela e deixou o
+          dashboard como a única sem heading, o que o E2E pegou. Além do
+          teste, é o que dá à página um marco de navegação para leitor de
+          tela. */}
+      <h1 className="font-heading text-2xl font-bold tracking-tight">Dashboard</h1>
+
       {total === 0 && (
         <BannerCritico
           icone={AlertTriangle}
@@ -309,7 +318,7 @@ function ComposicaoPorTipoCard({
   )
 }
 
-function AtividadeRecenteCard({ eventos }: { eventos: Array<Parameters<typeof narrativa>[0]> }) {
+function AtividadeRecenteCard({ eventos }: { eventos: Array<EventoNarravel & { id: string }> }) {
   const recentes = [...eventos].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5)
 
   return (
