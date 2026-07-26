@@ -45,7 +45,7 @@ function AuditoriaPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Auditoria</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Auditoria</h1>
         {data && <IntegridadeBadge integro={data.integro} />}
       </div>
 
@@ -153,7 +153,7 @@ function AuditoriaPage() {
 
 function IntegridadeBadge({ integro }: { integro: boolean }) {
   return integro ? (
-    <Badge variant="outline" className="gap-1 text-emerald-600 dark:text-emerald-400">
+    <Badge variant="outline" className="gap-1 text-success">
       <CheckCircle2 />
       Cadeia íntegra
     </Badge>

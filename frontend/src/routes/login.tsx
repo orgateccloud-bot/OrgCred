@@ -73,14 +73,13 @@ function LoginPage() {
 
   return (
     <div className="relative flex min-h-svh items-center justify-center overflow-hidden p-6">
-      {/* Assinatura Aurora: o gradiente da marca aparece só aqui, como fundo
-          discreto — nunca em texto corrido ou elementos de dado. */}
+      {/* Gradiente-assinatura da ORGATEC (navy→ciano, --oc-grad-globe) aparece
+          só aqui, como fundo discreto — nunca em texto corrido ou em elemento
+          que carregue dado. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 -top-40 h-80 opacity-20 blur-3xl"
-        style={{
-          background: 'linear-gradient(135deg, #0052FF 0%, #4D7CFF 52%, #0EA5E9 100%)',
-        }}
+        className="pointer-events-none absolute inset-x-0 -top-40 h-80 opacity-25 blur-3xl"
+        style={{ background: 'var(--oc-grad-globe)' }}
       />
 
       <Card className="w-full max-w-sm">
@@ -88,7 +87,7 @@ function LoginPage() {
           <div className="mb-2 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Landmark className="size-6" aria-hidden />
           </div>
-          <CardTitle className="text-2xl">OrgCred</CardTitle>
+          <CardTitle className="font-heading text-2xl font-bold tracking-tight">OrgCred</CardTitle>
           <CardDescription>Painel de operações da ESC · ORGATEC</CardDescription>
         </CardHeader>
         <CardContent>

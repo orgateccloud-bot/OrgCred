@@ -17,7 +17,7 @@ const STATUS_CONFIG: Record<string, { label: string; icon: LucideIcon; className
   ativa: {
     label: 'Ativa',
     icon: CheckCircle2,
-    className: 'text-emerald-600 dark:text-emerald-400',
+    className: 'text-success',
   },
   liquidada: { label: 'Liquidada', icon: CheckCheck, className: 'text-muted-foreground' },
   inadimplente: {
@@ -28,7 +28,7 @@ const STATUS_CONFIG: Record<string, { label: string; icon: LucideIcon; className
   renegociada: {
     label: 'Renegociada',
     icon: RefreshCw,
-    className: 'text-amber-600 dark:text-amber-400',
+    className: 'text-warning',
   },
   cancelada: { label: 'Cancelada', icon: XCircle, className: 'text-destructive' },
 }

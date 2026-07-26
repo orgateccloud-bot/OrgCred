@@ -47,7 +47,7 @@ function CapitalPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center gap-3">
         <Landmark className="size-6 text-primary" aria-hidden />
-        <h1 className="text-2xl font-semibold">Capital social</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Capital social</h1>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

@@ -60,11 +60,14 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link to="/">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <div
+                  className="flex aspect-square size-8 items-center justify-center rounded-lg text-white"
+                  style={{ background: 'var(--oc-grad-globe)' }}
+                >
                   <Landmark className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">OrgCred</span>
+                  <span className="truncate font-heading font-bold">OrgCred</span>
                   <span className="truncate text-xs text-muted-foreground">ESC · ORGATEC</span>
                 </div>
               </Link>

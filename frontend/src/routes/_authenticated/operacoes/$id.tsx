@@ -77,7 +77,9 @@ function OperacaoDetailPage() {
             <ArrowLeft />
           </Link>
         </Button>
-        <h1 className="text-2xl font-semibold">{data.tomador.razao_social}</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">
+          {data.tomador.razao_social}
+        </h1>
         <StatusOperacaoBadge status={data.status} />
         <div className="ml-auto flex flex-wrap gap-2">
           {data.status === 'proposta' && (
@@ -229,7 +231,7 @@ function OperacaoDetailPage() {
             </LinhaDado>
             <LinhaDado rotulo="Gate geográfico">
               {data.tomador.municipio_autorizado ? (
-                <Badge variant="outline" className="text-emerald-600 dark:text-emerald-400">
+                <Badge variant="outline" className="text-success">
                   Município autorizado
                 </Badge>
               ) : (

@@ -112,7 +112,7 @@ function OperacoesListPage() {
   return (
     <div className="p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Operações</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Operações</h1>
         <Button asChild>
           <Link to="/operacoes/nova">
             <Plus />

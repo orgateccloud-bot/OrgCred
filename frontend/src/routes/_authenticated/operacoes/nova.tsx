@@ -73,7 +73,7 @@ function NovaOperacaoPage() {
             <ArrowLeft />
           </Link>
         </Button>
-        <h1 className="text-2xl font-semibold">Nova operação</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Nova operação</h1>
       </div>
 
       <Card className="max-w-2xl">
