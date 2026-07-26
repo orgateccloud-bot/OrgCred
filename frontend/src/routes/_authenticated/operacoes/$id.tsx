@@ -104,6 +104,7 @@ function OperacaoDetailPage() {
                 operacaoId={data.id}
                 valorPrincipal={String(data.valor_principal)}
                 onSucesso={invalidar}
+                variant="default"
               />
               <TransicaoOperacaoDialog
                 operacaoId={data.id}
@@ -156,6 +157,7 @@ function OperacaoDetailPage() {
                 operacaoId={data.id}
                 valorPrincipal={String(data.valor_principal)}
                 onSucesso={invalidar}
+                variant="default"
               />
               <TransicaoOperacaoDialog
                 operacaoId={data.id}

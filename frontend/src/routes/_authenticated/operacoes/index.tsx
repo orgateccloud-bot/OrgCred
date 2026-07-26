@@ -201,18 +201,26 @@ function OperacoesListPage() {
                         }
                       >
                         {podeOrdenar ? (
+                          // A seta neutra só aparece no hover/foco da própria
+                          // coluna. Antes ficava visível em todas ao mesmo
+                          // tempo, o que transformava o cabeçalho em ruído sem
+                          // informar nada — a coluna ordenada já se distingue
+                          // pela seta direcional, que permanece sempre visível.
                           <button
                             type="button"
-                            className="inline-flex items-center gap-1 select-none"
+                            className="group inline-flex items-center gap-1 select-none"
                             onClick={header.column.getToggleSortingHandler()}
                           >
                             {flexRender(header.column.columnDef.header, header.getContext())}
                             {dir === 'asc' ? (
-                              <ArrowUp className="size-3.5" aria-hidden />
+                              <ArrowUp className="size-3.5 text-primary" aria-hidden />
                             ) : dir === 'desc' ? (
-                              <ArrowDown className="size-3.5" aria-hidden />
+                              <ArrowDown className="size-3.5 text-primary" aria-hidden />
                             ) : (
-                              <ArrowUpDown className="size-3.5 opacity-40" aria-hidden />
+                              <ArrowUpDown
+                                className="size-3.5 opacity-0 transition-opacity group-hover:opacity-50 group-focus-visible:opacity-50"
+                                aria-hidden
+                              />
                             )}
                           </button>
                         ) : (
@@ -226,7 +234,11 @@ function OperacoesListPage() {
             </TableHeader>
             <TableBody>
               {table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                // O hover do TableRow base (bg-muted/50) rende 1.03:1 sobre a
+                // superfície quase-preta do tema — imperceptível. 6% do
+                // --foreground dá ~1.13:1 e funciona nos dois temas com uma
+                // regra só (branco no escuro, preto no claro).
+                <TableRow key={row.id} className="hover:bg-foreground/[0.06]">
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {cell.column.id === 'tomador_razao_social' ? (

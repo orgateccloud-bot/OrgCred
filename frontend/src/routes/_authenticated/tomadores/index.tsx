@@ -104,7 +104,7 @@ function TomadoresPage() {
             </TableHeader>
             <TableBody>
               {data.map((t) => (
-                <TableRow key={t.id}>
+                <TableRow key={t.id} className="hover:bg-foreground/[0.06]">
                   <TableCell>
                     <Link
                       to="/tomadores/$id"
