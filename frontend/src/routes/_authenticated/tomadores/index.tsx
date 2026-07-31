@@ -10,6 +10,7 @@ import {
   postCriarTomadorApiTomadoresPostMutation,
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
+import { rotuloPorte } from '@/lib/rotulos'
 import { useAppStore } from '@/stores/useAppStore'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -67,7 +68,7 @@ function TomadoresPage() {
   return (
     <div className="p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Tomadores</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Tomadores</h1>
         <CriarTomadorDialog />
       </div>
 
@@ -103,7 +104,7 @@ function TomadoresPage() {
             </TableHeader>
             <TableBody>
               {data.map((t) => (
-                <TableRow key={t.id}>
+                <TableRow key={t.id} className="hover:bg-foreground/[0.06]">
                   <TableCell>
                     <Link
                       to="/tomadores/$id"
@@ -114,13 +115,13 @@ function TomadoresPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="font-mono tabular-nums">{t.cnpj}</TableCell>
-                  <TableCell>{t.porte}</TableCell>
+                  <TableCell>{rotuloPorte(t.porte)}</TableCell>
                   <TableCell>
                     {t.municipio}/{t.uf}
                   </TableCell>
                   <TableCell>
                     {t.municipio_autorizado ? (
-                      <Badge variant="outline" className="text-emerald-600 dark:text-emerald-400">
+                      <Badge variant="outline" className="text-success">
                         Autorizado
                       </Badge>
                     ) : (

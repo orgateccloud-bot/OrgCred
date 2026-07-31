@@ -10,13 +10,7 @@ import {
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -69,8 +63,7 @@ function NovaOperacaoPage() {
     )
   }
 
-  const formValido =
-    tomadorId && Number(valor) > 0 && Number(taxa) >= 0 && Number(parcelas) > 0
+  const formValido = tomadorId && Number(valor) > 0 && Number(taxa) >= 0 && Number(parcelas) > 0
 
   return (
     <div className="space-y-6 p-6">
@@ -80,7 +73,7 @@ function NovaOperacaoPage() {
             <ArrowLeft />
           </Link>
         </Button>
-        <h1 className="text-2xl font-semibold">Nova operação</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Nova operação</h1>
       </div>
 
       <Card className="max-w-2xl">

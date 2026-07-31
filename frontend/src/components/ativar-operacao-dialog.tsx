@@ -8,6 +8,7 @@ import {
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
+import { formatarPercentual } from '@/lib/rotulos'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,10 +24,18 @@ export function AtivarOperacaoDialog({
   operacaoId,
   valorPrincipal,
   onSucesso,
+  variant = 'outline',
 }: {
   operacaoId: string
   valorPrincipal: string
   onSucesso?: () => void
+  /**
+   * `outline` na lista (o botão se repete por linha; cyan em todas seria
+   * ruído) e `default` no detalhe, onde é a ação principal da tela. O
+   * `secondary` anterior era cinza escuro e lia como desabilitado — grave
+   * numa ação que compromete capital.
+   */
+  variant?: 'default' | 'outline'
 }) {
   const [open, setOpen] = useState(false)
   const queryClient = useQueryClient()
@@ -69,7 +78,7 @@ export function AtivarOperacaoDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" variant="secondary">
+        <Button size="sm" variant={variant}>
           Ativar
         </Button>
       </DialogTrigger>
@@ -91,7 +100,7 @@ export function AtivarOperacaoDialog({
           <div className="flex justify-between">
             <span className="text-muted-foreground">Teto comprometido após ativação</span>
             <span className="font-mono">
-              {percentualResultante !== null ? `${percentualResultante.toFixed(1)}%` : '—'}
+              {percentualResultante !== null ? formatarPercentual(percentualResultante) : '—'}
             </span>
           </div>
         </div>

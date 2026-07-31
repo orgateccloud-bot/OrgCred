@@ -74,16 +74,14 @@ function DefinirSenhaPage() {
   return (
     <div className="flex min-h-svh items-center justify-center p-6">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
-        <h1 className="text-2xl font-semibold">Definir senha</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Definir senha</h1>
 
         {ok ? (
           <p className="text-sm text-muted-foreground">
             Senha definida. Redirecionando para o login…
           </p>
         ) : !pronto ? (
-          <p className="text-sm text-muted-foreground">
-            {erro ?? 'Validando o link de acesso…'}
-          </p>
+          <p className="text-sm text-muted-foreground">{erro ?? 'Validando o link de acesso…'}</p>
         ) : (
           <>
             <div className="space-y-1">

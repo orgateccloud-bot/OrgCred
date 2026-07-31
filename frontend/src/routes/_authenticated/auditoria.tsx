@@ -3,10 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { CheckCircle2, ShieldAlert } from 'lucide-react'
 import { getAuditoriaApiAuditoriaGetOptions } from '@/api/generated/@tanstack/react-query.gen'
-import type { LedgerEventoOut } from '@/api/generated/types.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa } from '@/lib/ledger'
+import { rotuloEventoCapital } from '@/lib/rotulos'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,9 +35,7 @@ function AuditoriaPage() {
   const [mostrarTecnico, setMostrarTecnico] = useState(false)
   const [tipoFiltro, setTipoFiltro] = useState('todos')
 
-  const tiposDisponiveis = data
-    ? Array.from(new Set(data.eventos.map((e) => e.evento_tipo)))
-    : []
+  const tiposDisponiveis = data ? Array.from(new Set(data.eventos.map((e) => e.evento_tipo))) : []
   const eventosFiltrados = data
     ? tipoFiltro === 'todos'
       ? data.eventos
@@ -47,7 +45,7 @@ function AuditoriaPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Auditoria</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Auditoria</h1>
         {data && <IntegridadeBadge integro={data.integro} />}
       </div>
 
@@ -75,7 +73,7 @@ function AuditoriaPage() {
                 <SelectItem value="todos">Todos os tipos</SelectItem>
                 {tiposDisponiveis.map((t) => (
                   <SelectItem key={t} value={t}>
-                    {t}
+                    {rotuloEventoCapital(t)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -116,7 +114,9 @@ function AuditoriaPage() {
                 <TableBody>
                   {data.eventos.map((evento) => (
                     <TableRow key={evento.id}>
-                      <TableCell className="font-mono text-xs">{evento.evento_tipo}</TableCell>
+                      <TableCell className="text-xs">
+                        {rotuloEventoCapital(evento.evento_tipo)}
+                      </TableCell>
                       <TableCell className="font-mono text-xs">
                         {formatarMoeda(evento.saldo_disponivel_pos)}
                       </TableCell>
@@ -155,7 +155,7 @@ function AuditoriaPage() {
 
 function IntegridadeBadge({ integro }: { integro: boolean }) {
   return integro ? (
-    <Badge variant="outline" className="gap-1 text-emerald-600 dark:text-emerald-400">
+    <Badge variant="outline" className="gap-1 text-success">
       <CheckCircle2 />
       Cadeia íntegra
     </Badge>

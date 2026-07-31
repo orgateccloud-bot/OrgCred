@@ -13,19 +13,14 @@ import {
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa } from '@/lib/ledger'
+import { rotuloTipo } from '@/lib/rotulos'
 import { AtivarOperacaoDialog } from '@/components/ativar-operacao-dialog'
 import { RegistrarOperacaoDialog } from '@/components/registrar-operacao-dialog'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { TransicaoOperacaoDialog } from '@/components/transicao-operacao-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export const Route = createFileRoute('/_authenticated/operacoes/$id')({
@@ -50,8 +45,7 @@ function OperacaoDetailPage() {
 
   function invalidar() {
     queryClient.invalidateQueries({
-      queryKey: getOperacaoApiOperacoesOperacaoIdGetOptions({ path: { operacao_id: id } })
-        .queryKey,
+      queryKey: getOperacaoApiOperacoesOperacaoIdGetOptions({ path: { operacao_id: id } }).queryKey,
     })
     queryClient.invalidateQueries({ queryKey: getOperacoesApiOperacoesGetQueryKey() })
     queryClient.invalidateQueries({
@@ -84,7 +78,9 @@ function OperacaoDetailPage() {
             <ArrowLeft />
           </Link>
         </Button>
-        <h1 className="text-2xl font-semibold">{data.tomador.razao_social}</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">
+          {data.tomador.razao_social}
+        </h1>
         <StatusOperacaoBadge status={data.status} />
         <div className="ml-auto flex flex-wrap gap-2">
           {data.status === 'proposta' && (
@@ -108,6 +104,7 @@ function OperacaoDetailPage() {
                 operacaoId={data.id}
                 valorPrincipal={String(data.valor_principal)}
                 onSucesso={invalidar}
+                variant="default"
               />
               <TransicaoOperacaoDialog
                 operacaoId={data.id}
@@ -160,6 +157,7 @@ function OperacaoDetailPage() {
                 operacaoId={data.id}
                 valorPrincipal={String(data.valor_principal)}
                 onSucesso={invalidar}
+                variant="default"
               />
               <TransicaoOperacaoDialog
                 operacaoId={data.id}
@@ -196,7 +194,7 @@ function OperacaoDetailPage() {
                 {formatarMoeda(String(data.valor_principal))}
               </span>
             </LinhaDado>
-            <LinhaDado rotulo="Tipo">{data.tipo}</LinhaDado>
+            <LinhaDado rotulo="Tipo">{rotuloTipo(data.tipo)}</LinhaDado>
             <LinhaDado rotulo="Taxa de juros">
               <span className="font-mono tabular-nums">{String(data.taxa_juros_mensal)}% a.m.</span>
             </LinhaDado>
@@ -236,7 +234,7 @@ function OperacaoDetailPage() {
             </LinhaDado>
             <LinhaDado rotulo="Gate geográfico">
               {data.tomador.municipio_autorizado ? (
-                <Badge variant="outline" className="text-emerald-600 dark:text-emerald-400">
+                <Badge variant="outline" className="text-success">
                   Município autorizado
                 </Badge>
               ) : (

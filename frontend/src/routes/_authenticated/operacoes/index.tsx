@@ -15,6 +15,7 @@ import { getOperacoesApiOperacoesGetOptions } from '@/api/generated/@tanstack/re
 import type { OperacaoListItemOut } from '@/api/generated/types.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
+import { rotuloStatus, rotuloTipo } from '@/lib/rotulos'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { AtivarOperacaoDialog } from '@/components/ativar-operacao-dialog'
 import { Button } from '@/components/ui/button'
@@ -54,7 +55,7 @@ const columnHelper = createColumnHelper<OperacaoListItemOut>()
 
 const columns = [
   columnHelper.accessor('tomador_razao_social', { header: 'Tomador' }),
-  columnHelper.accessor('tipo', { header: 'Tipo' }),
+  columnHelper.accessor('tipo', { header: 'Tipo', cell: (info) => rotuloTipo(info.getValue()) }),
   columnHelper.accessor('valor_principal', {
     header: 'Valor',
     cell: (info) => (
@@ -68,7 +69,16 @@ const columns = [
   }),
   columnHelper.accessor('created_at', {
     header: 'Criada em',
-    cell: (info) => new Date(info.getValue()).toLocaleString('pt-BR'),
+    // Sem segundos: em lista é ruído. O detalhe da operação mostra o instante
+    // completo, que é onde a precisão importa para auditoria.
+    cell: (info) =>
+      new Date(info.getValue()).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
   }),
   columnHelper.display({
     id: 'acoes',
@@ -112,7 +122,7 @@ function OperacoesListPage() {
   return (
     <div className="p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Operações</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Operações</h1>
         <Button asChild>
           <Link to="/operacoes/nova">
             <Plus />
@@ -143,7 +153,7 @@ function OperacoesListPage() {
             <SelectItem value="todos">Todos os status</SelectItem>
             {STATUS_OPCOES.map((s) => (
               <SelectItem key={s} value={s}>
-                {s}
+                {rotuloStatus(s)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -191,18 +201,26 @@ function OperacoesListPage() {
                         }
                       >
                         {podeOrdenar ? (
+                          // A seta neutra só aparece no hover/foco da própria
+                          // coluna. Antes ficava visível em todas ao mesmo
+                          // tempo, o que transformava o cabeçalho em ruído sem
+                          // informar nada — a coluna ordenada já se distingue
+                          // pela seta direcional, que permanece sempre visível.
                           <button
                             type="button"
-                            className="inline-flex items-center gap-1 select-none"
+                            className="group inline-flex items-center gap-1 select-none"
                             onClick={header.column.getToggleSortingHandler()}
                           >
                             {flexRender(header.column.columnDef.header, header.getContext())}
                             {dir === 'asc' ? (
-                              <ArrowUp className="size-3.5" aria-hidden />
+                              <ArrowUp className="size-3.5 text-primary" aria-hidden />
                             ) : dir === 'desc' ? (
-                              <ArrowDown className="size-3.5" aria-hidden />
+                              <ArrowDown className="size-3.5 text-primary" aria-hidden />
                             ) : (
-                              <ArrowUpDown className="size-3.5 opacity-40" aria-hidden />
+                              <ArrowUpDown
+                                className="size-3.5 opacity-0 transition-opacity group-hover:opacity-50 group-focus-visible:opacity-50"
+                                aria-hidden
+                              />
                             )}
                           </button>
                         ) : (
@@ -216,7 +234,11 @@ function OperacoesListPage() {
             </TableHeader>
             <TableBody>
               {table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                // O hover do TableRow base (bg-muted/50) rende 1.03:1 sobre a
+                // superfície quase-preta do tema — imperceptível. 6% do
+                // --foreground dá ~1.13:1 e funciona nos dois temas com uma
+                // regra só (branco no escuro, preto no claro).
+                <TableRow key={row.id} className="hover:bg-foreground/[0.06]">
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {cell.column.id === 'tomador_razao_social' ? (

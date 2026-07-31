@@ -4,6 +4,7 @@ import { ArrowLeft, MapPin } from 'lucide-react'
 import { getTomadorApiTomadoresTomadorIdGetOptions } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
+import { rotuloTipo } from '@/lib/rotulos'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -48,9 +49,9 @@ function TomadorDetailPage() {
             <ArrowLeft />
           </Link>
         </Button>
-        <h1 className="text-2xl font-semibold">{data.razao_social}</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">{data.razao_social}</h1>
         {data.municipio_autorizado ? (
-          <Badge variant="outline" className="text-emerald-600 dark:text-emerald-400">
+          <Badge variant="outline" className="text-success">
             Município autorizado
           </Badge>
         ) : (
@@ -109,7 +110,7 @@ function TomadorDetailPage() {
                         params={{ id: op.id }}
                         className="text-primary hover:underline"
                       >
-                        {op.tipo}
+                        {rotuloTipo(op.tipo)}
                       </Link>
                     </TableCell>
                     <TableCell className="font-mono tabular-nums">
