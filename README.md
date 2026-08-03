@@ -31,7 +31,7 @@ orgcred/
 │       ├── contratos.py            # ⛔ stub — BLOQUEADO (entidade registradora)
 │       ├── fiscal.py               # ⛔ stub — parcialmente bloqueado (IOF)
 │       ├── compliance.py           # ⛔ stub — PLD/COAF
-│       └── cobranca.py             # ✅ inadimplência/regularização/renegociação (novação atômica)
+│       └── cobranca.py             # ✅ renegociação por novação atômica (régua em operacoes.py)
 └── tests/
     ├── test_capital_invariant.sh   # regressão: 7 cenários contra Postgres real
     └── test_concorrencia.py        # prova do teto sob transações simultâneas

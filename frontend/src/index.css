@@ -1,0 +1,203 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+/* Fontes do design system ORGATEC, self-hosted via @fontsource (não CDN):
+   o bundle de produção é servido pelo próprio FastAPI e não deve depender
+   de rede externa para renderizar texto. */
+@import '@fontsource-variable/quicksand';
+@import '@fontsource-variable/manrope';
+@import '@fontsource-variable/jetbrains-mono';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* Quicksand (arredondada, voz da marca) só em display/títulos; Manrope no
+     corpo e na UI densa — divisão de papéis definida pelo próprio DS. */
+  --font-heading: 'Quicksand Variable', system-ui, sans-serif;
+  --font-sans: 'Manrope Variable', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', monospace;
+  /* Status semânticos do DS. Existem como token (e não como classe crua do
+     Tailwind, ex.: text-emerald-600) porque significado de negócio precisa
+     mudar em um lugar só, e porque cada tema tem um valor diferente: o DS
+     define os status para superfície escura e eles reprovam AA sobre branco. */
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Design system ORGATEC — tokens canônicos.
+ *
+ * Fonte: _ds/orgatec-design-system/colors_and_type.css no projeto Claude
+ * Design (13664857-fe29-4730-a283-cb675a2bc032). Substitui o tema "Aurora
+ * Blue" anterior, que vinha de uma spec apontando para um MASTER.md
+ * inexistente nesta máquina.
+ *
+ * Marca: gradiente navy→ciano (#021a4d → #0078c0 → #18e0f8), ciano #18e0f8
+ * como cor-assinatura. Escala completa da marca em --oc-* abaixo.
+ *
+ * Regra de ouro mantida: a marca NÃO carrega significado. Verde/âmbar/
+ * vermelho de status de operação e integridade de cadeia continuam
+ * semânticos e nunca são substituídos pelo ciano.
+ *
+ * Dois desvios deliberados do DS, ambos por contraste medido (conversão
+ * sRGB real, WCAG 2.1 AA = 4.5:1):
+ *
+ * 1. O DS define status para superfície ESCURA. Sobre branco todos
+ *    reprovam (verde #00a84a 3.13:1, âmbar #f5a524 2.04:1, vermelho
+ *    #e23b4e 4.23:1). O tema claro usa variantes escurecidas do mesmo
+ *    matiz (5.5–5.9:1).
+ * 2. O ciano é a cor de ação no escuro (12.01:1 sobre card), mas sobre
+ *    branco dá 1.61:1 — inutilizável. O tema claro usa --brand-strong
+ *    escurecido (#006ba8, 5.72:1 com texto branco) como primary.
+ *
+ * O vermelho do escuro também foi clareado de #e23b4e (4.57:1, margem
+ * apertada) para #ef5f6f (6.01:1).
+ */
+:root {
+  /* Escala da marca ORGATEC — referência, use os semânticos abaixo */
+  --oc-navy-900: #021a4d;
+  --oc-navy-800: #062a6b;
+  --oc-blue-700: #184890;
+  --oc-blue-600: #0078c0;
+  --oc-azure-500: #00a8d8;
+  --oc-cyan-400: #00c0f0;
+  --oc-cyan-200: #18e0f8;
+  --oc-cyan-100: #92f0ff;
+  --oc-grad-globe: linear-gradient(
+    105deg,
+    #021a4d 0%,
+    #0e3f86 28%,
+    #0078c0 52%,
+    #00c0f0 78%,
+    #18e0f8 100%
+  );
+  --oc-grad-cyan: linear-gradient(135deg, #0078c0 0%, #00c0f0 50%, #18e0f8 100%);
+
+  /* Tema claro — superfícies do DS.
+     `--background` é o cinza (--bg-light-2) e `--card` o branco puro, e não
+     os dois brancos: com background === card os cards perdem superfície
+     própria e sobra só uma borda de 8% de opacidade, apagando toda a
+     estrutura de caixas da tela. A sidebar usa o mesmo cinza do fundo. */
+  --background: #f6f8fb;
+  --foreground: #0a0e16;
+  --card: #ffffff;
+  --card-foreground: #0a0e16;
+  --popover: #ffffff;
+  --popover-foreground: #0a0e16;
+  --primary: #006ba8;
+  --primary-foreground: #ffffff;
+  --secondary: #f6f8fb;
+  --secondary-foreground: #0a0e16;
+  --muted: #f6f8fb;
+  --muted-foreground: #46506e;
+  --accent: #d6f8ff;
+  --accent-foreground: #0a6295;
+  --destructive: #c1273a;
+  --success: #067a30;
+  --warning: #9a6206;
+  --border: #0a0e1614;
+  --input: #0a0e1626;
+  --ring: #0078c0;
+  --chart-1: #0078c0;
+  --chart-2: #00a8d8;
+  --chart-3: #067a30;
+  --chart-4: #9a6206;
+  --chart-5: #c1273a;
+  --radius: 0.875rem; /* --r-md do DS = 14px */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0a0e16;
+  --sidebar-primary: #006ba8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #d6f8ff;
+  --sidebar-accent-foreground: #0a6295;
+  --sidebar-border: #0a0e1614;
+  --sidebar-ring: #0078c0;
+}
+
+.dark {
+  /* Tema escuro — superfície primária da ORGATEC é quase-preta */
+  --background: #04060b;
+  --foreground: #ffffff;
+  --card: #0a0e16;
+  --card-foreground: #ffffff;
+  --popover: #0a0e16;
+  --popover-foreground: #ffffff;
+  --primary: #18e0f8;
+  --primary-foreground: #021a4d;
+  --secondary: #11161f;
+  --secondary-foreground: #ffffff;
+  --muted: #11161f;
+  --muted-foreground: #8a97ab;
+  --accent: #11161f;
+  --accent-foreground: #92f0ff;
+  --destructive: #ef5f6f;
+  --success: #16c964;
+  --warning: #f5a524;
+  --border: #ffffff14;
+  --input: #ffffff26;
+  --ring: #18e0f8;
+  --chart-1: #18e0f8;
+  --chart-2: #0078c0;
+  --chart-3: #16c964;
+  --chart-4: #f5a524;
+  --chart-5: #ef5f6f;
+  --sidebar: #080b12;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #18e0f8;
+  --sidebar-primary-foreground: #021a4d;
+  --sidebar-accent: #11161f;
+  --sidebar-accent-foreground: #92f0ff;
+  --sidebar-border: #ffffff14;
+  --sidebar-ring: #18e0f8;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

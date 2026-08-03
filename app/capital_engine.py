@@ -2,7 +2,7 @@
 Camada de serviço para o ciclo de vida de uma operação de crédito.
 
 Princípio: a API executa a transição de status e DEIXA O BANCO decidir.
-Os triggers (migrations 001+003) são a fonte única de verdade sobre:
+Os triggers (migrations 001+003+006) são a fonte única de verdade sobre:
 teto de capital, gate geográfico, máquina de estados e exigência de
 registro na entidade registradora.
 
@@ -18,7 +18,7 @@ silenciosamente se a mensagem do trigger mudar. Códigos:
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
+from typing import NamedTuple, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -34,7 +34,7 @@ from app.core.exceptions import (
     TransicaoInvalida,
 )
 from app.core.metrics import registrar_ativacao, registrar_liquidacao, registrar_renegociacao
-from app.models import OperacaoCredito
+from app.models import EscCapitalSocial, OperacaoCredito
 
 
 _PGCODE_MAP = {
@@ -93,6 +93,35 @@ def consultar_capital_disponivel(db: Session) -> Decimal:
     return Decimal(row.disponivel)
 
 
+class CapitalSnapshot(NamedTuple):
+    """Leitura informativa para UX (dashboard) — mesma ressalva de
+    `consultar_capital_disponivel`: pode ficar desatualizada entre a
+    leitura e uma ativação concorrente."""
+
+    total: Decimal
+    comprometido: Decimal
+    disponivel: Decimal
+
+
+def consultar_capital_snapshot(db: Session) -> CapitalSnapshot:
+    """Total (capital social), comprometido (fn_capital_comprometido —
+    operações ativas E inadimplentes, migration 006) e disponível
+    (total - comprometido) — usado pelo dashboard para a barra de
+    utilização do teto."""
+    row = db.execute(
+        text("""
+        select
+            (select capital_atual from v_capital_atual) as total,
+            fn_capital_comprometido() as comprometido
+    """)
+    ).first()
+    if row is None:
+        return CapitalSnapshot(Decimal("0"), Decimal("0"), Decimal("0"))
+    total = Decimal(row.total)
+    comprometido = Decimal(row.comprometido)
+    return CapitalSnapshot(total=total, comprometido=comprometido, disponivel=total - comprometido)
+
+
 def _propagar_usuario(db: Session, usuario_id: Optional[str]) -> None:
     """
     Propaga o autor da ação ao trigger via `set_config('app.user_id', ...,
@@ -120,12 +149,23 @@ def _propagar_usuario(db: Session, usuario_id: Optional[str]) -> None:
     )
 
 
-def _transicionar_status(
-    db: Session, operacao_id: UUID, novo_status: str, usuario_id: Optional[str] = None
+def transicionar_operacao(
+    db: Session,
+    operacao_id: UUID,
+    novo_status: str,
+    usuario_id: Optional[str] = None,
+    registro_entidade_ref: Optional[str] = None,
 ) -> OperacaoCredito:
     """
-    Executa uma transição de status e DEIXA O BANCO decidir — a máquina de
-    estados (OC003) e os gates de capital vivem no trigger, não aqui.
+    Transição genérica de status — mesma disciplina de ativar_operacao:
+    a aplicação só escreve o status desejado; a máquina de estados real
+    (quais transições são válidas, OC003) vive no trigger. Não há lista
+    de status válidos aqui de propósito — duplicá-la criaria uma segunda
+    fonte de verdade que dessincroniza em silêncio.
+
+    `registro_entidade_ref` só faz sentido na transição para 'registrada'
+    (exigência do Art. 5º §3º para a futura ativação); é ignorado nas
+    demais.
     """
     _propagar_usuario(db, usuario_id)
 
@@ -135,6 +175,8 @@ def _transicionar_status(
     if op is None:
         raise OperacaoNaoEncontrada(f"Operação {operacao_id} não existe.")
 
+    if novo_status == "registrada" and registro_entidade_ref:
+        op.registro_entidade_ref = registro_entidade_ref  # type: ignore[assignment]
     op.status = novo_status  # type: ignore[assignment]
     try:
         db.commit()
@@ -143,6 +185,8 @@ def _transicionar_status(
         raise _traduz_erro_banco(exc) from exc
 
     db.refresh(op)
+    if novo_status == "liquidada":
+        registrar_liquidacao()
     return op
 
 
@@ -150,13 +194,14 @@ def ativar_operacao(
     db: Session, operacao_id: UUID, usuario_id: Optional[str] = None
 ) -> OperacaoCredito:
     """
-    Tenta 'registrada' -> 'ativa'; o banco valida tudo que importa
+    Tenta a transição para 'ativa'; o banco valida tudo que importa
     (teto OC001, município OC002, estado OC003, registro OC004).
 
-    `usuario_id` (tipicamente str(Usuario.id), ver app/core/security.py)
-    vai para a trilha de auditoria — ver _propagar_usuario.
+    Também é o caminho da regularização (inadimplente -> 'ativa'): nesse
+    caso o trigger não re-executa gates nem grava evento — o capital já
+    estava comprometido (migration 006).
     """
-    op = _transicionar_status(db, operacao_id, "ativa", usuario_id)
+    op = transicionar_operacao(db, operacao_id, "ativa", usuario_id)
     registrar_ativacao()
     return op
 
@@ -168,9 +213,7 @@ def liquidar_operacao(
     'ativa'|'inadimplente' -> 'liquidada'. Libera o capital comprometido;
     o trigger grava o evento 'liquidacao' no ledger sob o lock do teto.
     """
-    op = _transicionar_status(db, operacao_id, "liquidada", usuario_id)
-    registrar_liquidacao()
-    return op
+    return transicionar_operacao(db, operacao_id, "liquidada", usuario_id)
 
 
 def marcar_inadimplente(
@@ -181,7 +224,7 @@ def marcar_inadimplente(
     operação em atraso continua comprometendo o teto até liquidação ou
     renegociação — interpretação conservadora do Art. 5º.
     """
-    return _transicionar_status(db, operacao_id, "inadimplente", usuario_id)
+    return transicionar_operacao(db, operacao_id, "inadimplente", usuario_id)
 
 
 def regularizar_operacao(
@@ -192,7 +235,65 @@ def regularizar_operacao(
     conjunto comprometido: nenhum gate re-executa e nenhum evento de
     capital é gravado — não há capital novo.
     """
-    return _transicionar_status(db, operacao_id, "ativa", usuario_id)
+    return transicionar_operacao(db, operacao_id, "ativa", usuario_id)
+
+
+def criar_operacao(
+    db: Session,
+    *,
+    tomador_id: UUID,
+    tipo: str,
+    valor_principal: Decimal,
+    taxa_juros_mensal: Decimal,
+    sistema_amortizacao: str,
+    numero_parcelas: int,
+) -> OperacaoCredito:
+    """
+    Cria a operação no status inicial 'proposta'. O trigger valida que
+    INSERTs só nascem em proposta/registrada (OC003); teto e gate
+    geográfico só são checados na ativação — proposta não compromete
+    capital.
+    """
+    # id gerado client-side: o default uuid_generate_v4() existe só no DDL —
+    # o model não o declara, então o ORM enviaria NULL explícito e o default
+    # do banco não se aplicaria.
+    op = OperacaoCredito(
+        id=uuid4(),
+        tomador_id=tomador_id,
+        tipo=tipo,
+        valor_principal=valor_principal,
+        taxa_juros_mensal=taxa_juros_mensal,
+        sistema_amortizacao=sistema_amortizacao,
+        numero_parcelas=numero_parcelas,
+        status="proposta",
+    )
+    db.add(op)
+    try:
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+
+    db.refresh(op)
+    return op
+
+
+def registrar_evento_capital(db: Session, *, valor: Decimal, tipo_evento: str) -> EscCapitalSocial:
+    """
+    Insere evento no histórico de capital social. A proteção real (OC005:
+    redução não pode deixar o capital abaixo do comprometido) é o trigger
+    trg_check_reducao_capital — aqui só se traduz o erro.
+    """
+    evento = EscCapitalSocial(id=uuid4(), valor=valor, tipo_evento=tipo_evento)
+    db.add(evento)
+    try:
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+
+    db.refresh(evento)
+    return evento
 
 
 @dataclass(frozen=True)
@@ -231,6 +332,11 @@ def renegociar_operacao(
     novos termos excedem o disponível), o rollback restaura a antiga —
     nenhum estado commitado jamais tem as duas operações comprometendo
     capital ao mesmo tempo, e nenhum capital é liberado sem a nova ativa.
+
+    Nota: o endpoint POST /api/operacoes/{id}/renegociar (transição
+    simples, consumido pelo painel) apenas libera a antiga — o fluxo do
+    painel formaliza a nova operação em passos manuais. Esta função é o
+    caminho que garante a troca atômica em uma única chamada.
     """
     _propagar_usuario(db, usuario_id)
 

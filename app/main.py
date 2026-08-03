@@ -6,16 +6,20 @@ Integra: autenticação (JWT), rate limiting, CORS, logging estruturado, excepti
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator, Dict
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy import text
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
 from app.core.config import settings
 from app.core.exceptions import (
@@ -30,7 +34,17 @@ from app.core.logging import configure_logging, get_logger
 from app.core.metrics import registrar_bloqueio, registrar_falha_auth
 from app.core.security import get_current_user
 from app.db import engine
-from app.routers import capital, cobranca, compliance, contratos, fiscal, operacoes, tomadores
+from app.routers import (
+    auditoria,
+    capital,
+    cobranca,
+    compliance,
+    contratos,
+    fiscal,
+    me,
+    operacoes,
+    tomadores,
+)
 
 
 # Configurar logging estruturado
@@ -72,6 +86,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:8080",
+        "http://localhost:5173",  # Vite dev server (frontend/)
         # Em produção, adicionar URLs do painel aqui
     ]
     if settings.environment == "development"
@@ -81,14 +96,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registra routers com segurança Zero-Trust
-app.include_router(capital.router, dependencies=[Depends(get_current_user)])
-app.include_router(operacoes.router, dependencies=[Depends(get_current_user)])
-app.include_router(tomadores.router, dependencies=[Depends(get_current_user)])
-app.include_router(contratos.router, dependencies=[Depends(get_current_user)])
-app.include_router(fiscal.router, dependencies=[Depends(get_current_user)])
-app.include_router(compliance.router, dependencies=[Depends(get_current_user)])
-app.include_router(cobranca.router, dependencies=[Depends(get_current_user)])
+# Registra routers com segurança Zero-Trust, sob /api — necessário desde a
+# Fase F4: o frontend serve rotas client-side em caminhos que colidem
+# literalmente com endpoints da API (/operacoes, /auditoria). Sem o
+# prefixo, um refresh de página nessas rotas do SPA batia direto no
+# endpoint da API (JSON 401) em vez de cair no fallback do index.html.
+# /health, /health/ready e /metrics ficam fora do prefixo de propósito —
+# são endpoints de infraestrutura (probes, scraping), não do app.
+app.include_router(capital.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(operacoes.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(tomadores.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(contratos.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(fiscal.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(compliance.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(cobranca.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(auditoria.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(me.router, prefix="/api", dependencies=[Depends(get_current_user)])
 
 
 @app.get("/health")
@@ -121,16 +144,6 @@ def readiness_check() -> JSONResponse:
 def metrics() -> PlainTextResponse:
     """Métricas Prometheus para scraping."""
     return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-
-
-@app.get("/")
-def root() -> Dict[str, str]:
-    """Raiz da API."""
-    return {
-        "service": "OrgCred",
-        "environment": settings.environment,
-        "docs": "/docs",
-    }
 
 
 # Exception handlers para auth
@@ -210,3 +223,42 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         status_code=500,
         content={"detail": "Erro interno do servidor"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Frontend (Fase F4): serve o build do Vite (frontend/dist/, copiado para
+# static/ na imagem Docker — ver Dockerfile) num único serviço, sem CORS ou
+# domínio extra. Registrado por último de propósito: rotas de API já
+# declaradas acima (/health, /capital/..., etc.) sempre têm precedência
+# sobre o fallback do SPA, já que o Starlette casa rotas na ordem de
+# registro. Em dev/CI, static/ não existe — a raiz responde com um JSON
+# simples em vez de tentar servir um build que não foi gerado.
+# ---------------------------------------------------------------------------
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+class _SPAStaticFiles(StaticFiles):
+    """Qualquer caminho sem arquivo correspondente cai para index.html —
+    o roteamento real (TanStack Router) acontece no cliente."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
+
+
+if _STATIC_DIR.is_dir():
+    app.mount("/", _SPAStaticFiles(directory=str(_STATIC_DIR), html=True), name="spa")
+else:
+
+    @app.get("/")
+    def root() -> Dict[str, str]:
+        """Raiz da API (dev/CI — sem build do frontend disponível)."""
+        return {
+            "service": "OrgCred",
+            "environment": settings.environment,
+            "docs": "/docs",
+        }

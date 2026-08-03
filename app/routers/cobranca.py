@@ -1,16 +1,21 @@
 """
-Router: régua de cobrança — inadimplência, regularização e renegociação.
+Router: cobrança — renegociação por novação atômica.
 
-STATUS: transições de estado e novação atômica implementadas (migration
-006 define a regra de capital; app/capital_engine.py executa). A regra
-explícita de renegociação exigida pela REVISAO_2026-07-11 (item 3) é:
+A regra explícita de renegociação exigida pela REVISAO_2026-07-11 (item 3):
 novação em UMA transação sob o advisory lock do teto — a antiga sai do
-conjunto comprometido (evento 'renegociacao_liberacao' no ledger) e a
-nova entra pelo gate completo; nenhum estado commitado conta em dobro.
+conjunto comprometido (evento 'renegociacao_liberacao' no ledger, migration
+006) e a nova entra pelo gate completo; nenhum estado commitado conta
+capital em dobro, e nenhum capital é liberado sem a nova operação ativa.
+
+As demais transições da régua vivem em /operacoes (marcar-inadimplente,
+ativar para regularização, liquidar) — este router existe para o passo que
+NÃO pode ser composto por transições soltas sem perder atomicidade. O
+POST /operacoes/{id}/renegociar (usado pelo painel) apenas libera a
+antiga; o painel formaliza a nova operação em passos manuais — este
+endpoint é a alternativa que faz a troca inteira de uma vez.
 
 Pendências que continuam abertas (integrações externas, não bloqueiam):
-- Detecção automática de atraso: ainda não existe tabela de parcelas —
-  a marcação de inadimplência é decisão manual do operador por enquanto.
+- Detecção automática de atraso (não existe tabela de parcelas ainda).
 - Notificação automática ao tomador (email/SMS) por faixa de atraso.
 - Negativação em bureaus de crédito (Serasa/SPC) após prazo configurável.
 """
@@ -23,12 +28,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.capital_engine import (
-    TermosRenegociacao,
-    marcar_inadimplente,
-    regularizar_operacao,
-    renegociar_operacao,
-)
+from app.capital_engine import TermosRenegociacao, renegociar_operacao
 from app.core.security import get_operador_user
 from app.db import get_db
 from app.models import SistemaAmortizacao, Usuario
@@ -68,40 +68,6 @@ class RenegociacaoIn(BaseModel):
 class RenegociacaoOut(BaseModel):
     antiga: OperacaoResumo
     nova: OperacaoResumo
-
-
-@router.post("/operacoes/{operacao_id}/inadimplencia", response_model=OperacaoResumo)
-def post_marcar_inadimplente(
-    operacao_id: UUID,
-    db: Session = Depends(get_db),
-    user: Usuario = Depends(get_operador_user),
-) -> OperacaoResumo:
-    """
-    Marca operação em atraso: 'ativa' -> 'inadimplente'.
-
-    NÃO libera capital (migration 006): a operação em atraso continua
-    comprometendo o teto até liquidação ou renegociação.
-
-    Requires: operador ou admin. Erros: 404 inexistente; 409 OC003.
-    """
-    op = marcar_inadimplente(db, operacao_id, usuario_id=str(user.id))
-    return OperacaoResumo.model_validate(op)
-
-
-@router.post("/operacoes/{operacao_id}/regularizacao", response_model=OperacaoResumo)
-def post_regularizar_operacao(
-    operacao_id: UUID,
-    db: Session = Depends(get_db),
-    user: Usuario = Depends(get_operador_user),
-) -> OperacaoResumo:
-    """
-    Cura do atraso: 'inadimplente' -> 'ativa'. Movimento interno ao
-    conjunto comprometido — nenhum capital novo, nenhum gate re-executa.
-
-    Requires: operador ou admin. Erros: 404 inexistente; 409 OC003.
-    """
-    op = regularizar_operacao(db, operacao_id, usuario_id=str(user.id))
-    return OperacaoResumo.model_validate(op)
 
 
 @router.post("/operacoes/{operacao_id}/renegociacao", response_model=RenegociacaoOut)

@@ -16,6 +16,33 @@ autenticação Zero-Trust) está agora 100% estável e com o pipeline de CI
 verde — quando cada decisão abaixo sair, a implementação correspondente
 pode começar imediatamente, sem retrabalho técnico pendente na frente.
 
+**Status do deploy — 2026-07-17:** o sistema está **no ar em produção**:
+`https://orgcred-api-production.up.railway.app` (Railway, projeto
+"OrgCred" — Postgres + serviço `orgcred-api`, build via Dockerfile a
+partir do GitHub, CI verde nos dois workflows — backend e frontend).
+Confirmado via curl real: `/` serve o painel (SPA), `/health` e
+`/health/ready` respondem, rotas de negócio exigem autenticação (401
+sem token). Isso é 100% lastro técnico — **nenhum dos 5 bloqueadores
+abaixo foi resolvido pelo deploy**; na verdade, ir ao ar tornou dois deles
+concretos, não só teóricos:
+
+- **Item 3 (capital social inicial)**: em produção o teto ainda é
+  R$ 0,00 — não existe nenhum evento `constituicao` no banco de produção.
+  O sistema está no ar, mas **nenhuma operação de crédito pode ser
+  ativada** até essa decisão sair e o insert de constituição ser feito.
+- **Login real ainda não funciona em produção** — gap técnico-operacional
+  (não é um dos 5 itens de negócio abaixo, mas bloqueia uso real do
+  painel): não existe projeto Supabase real ainda, então
+  `ORGCRED_SUPABASE_JWT_SECRET` em produção é um valor aleatório gerado
+  nesta sessão só para a aplicação não subir com a secret de
+  desenvolvimento pública. Quando o projeto Supabase existir, essa
+  secret precisa ser trocada pela real (Project Settings → API → JWT
+  Secret) e as variáveis `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`
+  precisam ser configuradas no build do frontend. Também é necessário
+  criar pelo menos um registro em `usuario` (papel `admin` ou
+  `operador`) com o mesmo UUID do usuário criado no Supabase Auth —
+  sem isso a API responde `PERMISSAO_NEGADA` mesmo com login válido.
+
 ---
 
 ## 1. Entidade registradora (bloqueia `app/routers/contratos.py`)
@@ -113,7 +140,7 @@ devido e não pago.
 
 ---
 
-## 3. Capital social inicial (bloqueia o teto operacional real)
+## 3. Capital social inicial — 🟡 AGUARDANDO VALOR (bloqueia o teto operacional real)
 
 **O que é:** sem o valor do capital social integralizado, o teto legal do
 Art. 5º (total de operações ativas ≤ capital social) é desconhecido — o
@@ -125,6 +152,18 @@ efetivamente integralizado (não apenas subscrito).
 
 **Depois da decisão:** `insert into esc_capital_social (valor, tipo_evento)
 values (<valor>, 'constituicao')` — uma linha, sem mudança de código.
+
+**Atualização 2026-07-17:** o sistema já está no ar em produção (ver
+"Status do deploy" no topo deste documento) rodando contra o Postgres
+real do Railway — essa decisão agora bloqueia uso real, não só
+implantação. O insert acima pode ser feito a qualquer momento assim que
+o valor for definido, direto no Postgres de produção.
+
+**Atualização 2026-07-18:** confirmado com o usuário — assim que o valor
+sair, o insert de constituição deve ser aplicado imediatamente no
+Postgres de produção (Railway, projeto "OrgCred"), sem esperar por outra
+sessão de trabalho. Até lá, o teto em produção permanece R$ 0,00 e
+nenhuma operação pode ser ativada.
 
 ---
 
@@ -185,19 +224,26 @@ Para não confundir bloqueio de decisão com trabalho técnico pendente:
   do comprometido sem evento no ledger. O desempate da cadeia de hash do
   ledger também foi corrigido (coluna `seq`) — dois eventos na mesma
   transação (o caso da novação) quebravam a verificação de forma
-  intermitente.
+  intermitente. Nota pós-merge com o frontend: o painel usa o
+  `POST /api/operacoes/{id}/renegociar` (transição simples — apenas
+  libera a antiga, sob lock e com evento no ledger; a nova operação é
+  formalizada em passos manuais na UI); a troca atômica em uma chamada é
+  `POST /api/cobranca/operacoes/{id}/renegociacao`. Recomenda-se migrar o
+  painel para o endpoint atômico quando o fluxo de renegociação da UI for
+  revisitado — o fluxo em passos manuais pode ser abandonado no meio,
+  deixando capital liberado sem operação substituta.
 - **Amortização parcial libera capital**: interpretação conservadora atual
   (usa `valor_principal` integral até liquidação) é juridicamente segura;
   mudar para saldo devedor é decisão de interpretação contábil-jurídica
   interna, não depende de terceiros.
 - **Onboarding/KYC de tomadores** (`app/routers/tomadores.py`): **cadastro
-  implementado** (2026-07-17). O router agora expõe `POST /tomadores`
-  (validando CNPJ com dígito verificador, porte MEI/ME/EPP e unicidade),
-  `GET /tomadores`, `GET /tomadores/{id}` e `PATCH
-  /tomadores/{id}/municipio-autorizado` (gate geográfico do Art. 5º,
-  restrito a admin — substitui o `UPDATE` manual via SQL). Coberto por 22
-  testes (validação de CNPJ + integração HTTP), CI verde. O que **ainda
-  falta** é o KYC externo — consulta de situação cadastral na Receita
-  Federal e verificação de listas restritivas (COAF/OFAC) — que é
-  integração com terceiros e se sobrepõe à decisão 5 (PLD/COAF), não ao
-  CRUD de tomador.
+  implementado** (2026-07-17, unificado no merge com a frente do
+  frontend). O router expõe `POST /api/tomadores` (contrato do painel:
+  CNPJ 14 dígitos + **validação de dígito verificador módulo 11**, TM001;
+  porte MEI/ME/EPP; unicidade com TM003), `GET /api/tomadores`,
+  `GET /api/tomadores/{id}` (com resumo das operações) e `PATCH
+  /api/tomadores/{id}/autorizacao` (gate geográfico do Art. 5º, restrito
+  a admin — substitui o `UPDATE` manual via SQL). O que **ainda falta** é
+  o KYC externo — consulta de situação cadastral na Receita Federal e
+  verificação de listas restritivas (COAF/OFAC) — que é integração com
+  terceiros e se sobrepõe à decisão 5 (PLD/COAF), não ao CRUD de tomador.

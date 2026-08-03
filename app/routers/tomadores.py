@@ -1,53 +1,38 @@
 """
-Router: onboarding e cadastro de tomadores.
+Router: cadastro e consulta de tomadores.
 
-STATUS: cadastro implementado. KYC externo (Receita Federal, listas
-restritivas COAF/OFAC) permanece pendente — ver DECISOES_PENDENTES.md e
-app/routers/compliance.py; aquele acoplamento com terceiros é o que ainda
-não está resolvido, não o CRUD de tomador.
+O gate geográfico (OC002) é enforced pelo trigger na ativação da operação;
+`municipio_autorizado` aqui é dado cadastral — marcar como autorizado é
+decisão operacional (admin), não validação automática. KYC (Receita,
+listas restritivas) segue pendente — ver app/routers/compliance.py.
 
-Implementado aqui:
-- POST /tomadores           cadastra tomador (operador+), validando CNPJ
-                            (dígito verificador), porte (MEI/ME/EPP, LC
-                            167/2019) e unicidade do CNPJ.
-- GET  /tomadores           lista tomadores.
-- GET  /tomadores/{id}      lê um tomador.
-- PATCH /tomadores/{id}/municipio-autorizado
-                            gate geográfico (admin) — antes era feito
-                            manualmente via SQL, agora é uma decisão
-                            explícita e auditável de administrador.
-
-O tomador nasce SEMPRE com municipio_autorizado=false: liberar a área de
-atuação é uma decisão de administrador, não um efeito colateral do cadastro.
+Validações de negócio no cadastro:
+- CNPJ com dígito verificador válido (módulo 11, app/core/cnpj.py) —
+  TM001. O formato (14 dígitos, sem máscara) é contrato de entrada
+  (pydantic pattern); o dígito verificador é regra de negócio.
+- Unicidade do CNPJ — TM003 (pré-checagem amigável + IntegrityError como
+  rede de segurança contra corrida).
+- Porte MEI/ME/EPP (enquadramento da LC 167/2019) — contrato de entrada.
 """
 
+from datetime import datetime
+from typing import List, Literal, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.cnpj import cnpj_valido, normalizar_cnpj
-from app.core.exceptions import (
-    CnpjInvalido,
-    PorteInvalido,
-    TomadorDuplicado,
-    TomadorNaoEncontrado,
-)
-from app.core.security import get_admin_user, get_operador_user
+from app.core.cnpj import cnpj_valido
+from app.core.exceptions import CnpjInvalido, TomadorDuplicado, TomadorNaoEncontrado
+from app.core.security import get_admin_user, get_current_user, get_operador_user
 from app.db import get_db
-from app.models import PorteTomador, Tomador, Usuario
+from app.models import Tomador, Usuario
 
 
 router = APIRouter(prefix="/tomadores", tags=["tomadores"])
-
-
-class TomadorIn(BaseModel):
-    cnpj: str = Field(..., description="CNPJ, com ou sem máscara (14 dígitos)")
-    razao_social: str = Field(..., min_length=1, max_length=255)
-    porte: str = Field(..., description="MEI, ME ou EPP (LC 167/2019)")
-    municipio: str = Field(..., min_length=1, max_length=255)
-    uf: str = Field(..., min_length=2, max_length=2)
 
 
 class TomadorOut(BaseModel):
@@ -58,103 +43,127 @@ class TomadorOut(BaseModel):
     municipio: str
     uf: str
     municipio_autorizado: bool
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
 
 
-class MunicipioAutorizadoIn(BaseModel):
-    autorizado: bool = Field(..., description="Libera (true) ou revoga (false) a área de atuação")
+class TomadorOperacaoResumoOut(BaseModel):
+    id: UUID
+    tipo: str
+    valor_principal: str
+    status: str
+    created_at: datetime
+
+
+class TomadorDetailOut(TomadorOut):
+    operacoes: List[TomadorOperacaoResumoOut]
+
+
+class CriarTomadorIn(BaseModel):
+    cnpj: str = Field(pattern=r"^\d{14}$", description="Somente dígitos")
+    razao_social: str = Field(min_length=1, max_length=255)
+    porte: Literal["MEI", "ME", "EPP"]
+    municipio: str = Field(min_length=1, max_length=255)
+    uf: str = Field(pattern=r"^[A-Z]{2}$")
+
+
+class AtualizarAutorizacaoIn(BaseModel):
+    municipio_autorizado: bool
+
+
+@router.get("", response_model=List[TomadorOut])
+def get_tomadores(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+) -> List[TomadorOut]:
+    rows = db.query(Tomador).order_by(Tomador.razao_social).all()
+    return [TomadorOut.model_validate(t, from_attributes=True) for t in rows]
+
+
+@router.get("/{tomador_id}", response_model=TomadorDetailOut)
+def get_tomador(
+    tomador_id: UUID,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+) -> TomadorDetailOut:
+    tomador: Optional[Tomador] = db.query(Tomador).filter(Tomador.id == tomador_id).one_or_none()
+    if tomador is None:
+        raise TomadorNaoEncontrado(f"Tomador {tomador_id} não existe.")
+
+    operacoes = db.execute(
+        text("""
+        select id, tipo, valor_principal, status, created_at
+        from operacao_credito where tomador_id = :tomador_id
+        order by created_at desc
+    """),
+        {"tomador_id": str(tomador_id)},
+    ).all()
+
+    base = TomadorOut.model_validate(tomador, from_attributes=True)
+    return TomadorDetailOut(
+        **base.model_dump(),
+        operacoes=[
+            TomadorOperacaoResumoOut(
+                id=op.id,
+                tipo=op.tipo,
+                valor_principal=str(op.valor_principal),
+                status=op.status,
+                created_at=op.created_at,
+            )
+            for op in operacoes
+        ],
+    )
 
 
 @router.post("", response_model=TomadorOut, status_code=201)
-def cadastrar_tomador(
-    payload: TomadorIn,
+def post_criar_tomador(
+    body: CriarTomadorIn,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_operador_user),
 ) -> TomadorOut:
-    """
-    Cadastra um tomador. Requires: operador ou admin.
+    """Cadastro nasce com municipio_autorizado=false — a autorização do gate
+    geográfico é ato separado, restrito a admin (PATCH /autorizacao).
 
-    Validações de negócio:
-      - CNPJ bem-formado e com dígito verificador válido (TM001).
-      - Porte dentro do enquadramento da ESC — MEI/ME/EPP (TM002).
-      - CNPJ ainda não cadastrado (TM003).
+    Erros de negócio: 422 TM001 (dígito verificador inválido),
+    409 TM003 (CNPJ já cadastrado)."""
+    if not cnpj_valido(body.cnpj):
+        raise CnpjInvalido(f"CNPJ inválido (dígito verificador não confere): '{body.cnpj}'")
 
-    O tomador é criado com municipio_autorizado=false; a liberação da área
-    de atuação é feita separadamente via PATCH (admin).
-    """
-    cnpj = normalizar_cnpj(payload.cnpj)
-    if not cnpj_valido(cnpj):
-        raise CnpjInvalido(f"CNPJ inválido: '{payload.cnpj}'")
-
-    porte = payload.porte.strip().upper()
-    portes_validos = {p.value for p in PorteTomador}
-    if porte not in portes_validos:
-        raise PorteInvalido(
-            f"Porte '{payload.porte}' fora do enquadramento da ESC "
-            f"(esperado um de {sorted(portes_validos)}, LC 167/2019)"
-        )
-
-    if db.query(Tomador).filter(Tomador.cnpj == cnpj).first() is not None:
-        raise TomadorDuplicado(f"Já existe tomador com CNPJ {cnpj}")
+    if db.query(Tomador).filter(Tomador.cnpj == body.cnpj).first() is not None:
+        raise TomadorDuplicado(f"CNPJ {body.cnpj} já cadastrado.")
 
     tomador = Tomador(
         id=uuid4(),
-        cnpj=cnpj,
-        razao_social=payload.razao_social.strip(),
-        porte=porte,
-        municipio=payload.municipio.strip(),
-        uf=payload.uf.strip().upper(),
+        cnpj=body.cnpj,
+        razao_social=body.razao_social,
+        porte=body.porte,
+        municipio=body.municipio,
+        uf=body.uf,
         municipio_autorizado=False,
     )
     db.add(tomador)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Corrida entre a pré-checagem e o commit — mesmo contrato TM003.
+        db.rollback()
+        raise TomadorDuplicado(f"CNPJ {body.cnpj} já cadastrado.")
     db.refresh(tomador)
-    return TomadorOut.model_validate(tomador)
+    return TomadorOut.model_validate(tomador, from_attributes=True)
 
 
-@router.get("", response_model=list[TomadorOut])
-def listar_tomadores(
-    db: Session = Depends(get_db),
-    user: Usuario = Depends(get_operador_user),
-) -> list[TomadorOut]:
-    """Lista tomadores cadastrados. Requires: operador ou admin."""
-    tomadores = db.query(Tomador).order_by(Tomador.razao_social).all()
-    return [TomadorOut.model_validate(t) for t in tomadores]
-
-
-@router.get("/{tomador_id}", response_model=TomadorOut)
-def obter_tomador(
+@router.patch("/{tomador_id}/autorizacao", response_model=TomadorOut)
+def patch_autorizacao(
     tomador_id: UUID,
-    db: Session = Depends(get_db),
-    user: Usuario = Depends(get_operador_user),
-) -> TomadorOut:
-    """Lê um tomador pelo id. Requires: operador ou admin. 404 se não existir."""
-    tomador = db.query(Tomador).filter(Tomador.id == tomador_id).first()
-    if tomador is None:
-        raise TomadorNaoEncontrado(f"Tomador {tomador_id} não encontrado")
-    return TomadorOut.model_validate(tomador)
-
-
-@router.patch("/{tomador_id}/municipio-autorizado", response_model=TomadorOut)
-def definir_municipio_autorizado(
-    tomador_id: UUID,
-    payload: MunicipioAutorizadoIn,
+    body: AtualizarAutorizacaoIn,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_admin_user),
 ) -> TomadorOut:
-    """
-    Libera ou revoga a área de atuação de um tomador (gate geográfico do
-    Art. 5º). Requires: admin. Substitui o UPDATE manual via SQL por uma
-    decisão de administrador explícita e passível de auditoria.
-    """
-    tomador = db.query(Tomador).filter(Tomador.id == tomador_id).first()
+    """Liga/desliga a autorização do município (gate OC002). Admin only:
+    é a chave que permite ativar crédito para o tomador."""
+    tomador: Optional[Tomador] = db.query(Tomador).filter(Tomador.id == tomador_id).one_or_none()
     if tomador is None:
-        raise TomadorNaoEncontrado(f"Tomador {tomador_id} não encontrado")
-
-    # updated_at é atualizado automaticamente pelo onupdate do model.
-    tomador.municipio_autorizado = payload.autorizado  # type: ignore[assignment]
+        raise TomadorNaoEncontrado(f"Tomador {tomador_id} não existe.")
+    tomador.municipio_autorizado = body.municipio_autorizado  # type: ignore[assignment]
     db.commit()
     db.refresh(tomador)
-    return TomadorOut.model_validate(tomador)
+    return TomadorOut.model_validate(tomador, from_attributes=True)
