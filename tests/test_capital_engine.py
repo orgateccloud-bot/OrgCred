@@ -5,6 +5,7 @@ provando a tradução SQLSTATE -> exceção -> HTTP (RegraNegocioViolada).
 """
 
 import uuid
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
@@ -14,10 +15,14 @@ from app.capital_engine import (
     ativar_operacao,
     consultar_capital_disponivel,
     consultar_capital_snapshot,
+    criar_operacao,
+    registrar_evento_capital,
+    transicionar_operacao,
 )
 from app.core.exceptions import (
     MunicipioNaoAutorizado,
     OperacaoNaoEncontrada,
+    ReducaoCapitalBloqueada,
     RegistroEntidadeAusente,
     TetoCapitalExcedido,
     TransicaoInvalida,
@@ -308,3 +313,182 @@ class TestConsultarCapitalSnapshot:
         assert snapshot.total == 50_000
         assert snapshot.comprometido == 30_000
         assert snapshot.disponivel == 20_000
+
+
+# ---------------------------------------------------------------------------
+# criar_operacao / transicionar_operacao / registrar_evento_capital
+#
+# Adicionadas nas fases F7/F8 e até aqui sem nenhum teste direto — eram os
+# 35 statements que mantinham capital_engine.py em 58,8% de cobertura,
+# justamente no arquivo que carrega o peso legal do Art. 5º.
+# ---------------------------------------------------------------------------
+
+
+class TestCriarOperacao:
+    def test_cria_operacao_em_proposta(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Nasce em 'proposta' e NAO compromete capital — teto e gate
+        geografico so sao avaliados na ativacao."""
+        op = criar_operacao(
+            db_session,
+            tomador_id=tomador_autorizado,
+            tipo="emprestimo",
+            valor_principal=Decimal("10000.00"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=12,
+        )
+        assert op.status == "proposta"
+        assert op.id is not None
+        # Proposta nao entra no comprometido.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+
+    def test_operacao_criada_nao_gera_evento_no_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Criar nao movimenta capital — o ledger so registra ativacao e
+        liquidacao. Um evento aqui significaria capital comprometido cedo
+        demais."""
+        antes = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+        criar_operacao(
+            db_session,
+            tomador_id=tomador_autorizado,
+            tipo="financiamento",
+            valor_principal=Decimal("7500.00"),
+            taxa_juros_mensal=Decimal("1.9"),
+            sistema_amortizacao="SAC",
+            numero_parcelas=24,
+        )
+        depois = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+        assert depois == antes
+
+
+class TestTransicionarOperacao:
+    def test_registrar_grava_referencia_e_habilita_ativacao(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """proposta -> registrada gravando registro_entidade_ref (Art. 5o §3o):
+        sem ele a ativacao seria bloqueada por OC004."""
+        op = criar_operacao(
+            db_session,
+            tomador_id=tomador_autorizado,
+            tipo="emprestimo",
+            valor_principal=Decimal("5000.00"),
+            taxa_juros_mensal=Decimal("2.0"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=6,
+        )
+        registrada = transicionar_operacao(
+            db_session, op.id, "registrada", registro_entidade_ref="B3-REG-2026-0001"
+        )
+        assert registrada.status == "registrada"
+        assert registrada.registro_entidade_ref == "B3-REG-2026-0001"
+
+        # Prova que a referencia realmente destrava a ativacao.
+        ativa = ativar_operacao(db_session, op.id)
+        assert ativa.status == "ativa"
+
+    def test_liquidar_devolve_capital_e_grava_no_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """ativa -> liquidada libera o capital comprometido e deixa rastro."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("20000.00")
+
+        liquidada = transicionar_operacao(db_session, op_id, "liquidada")
+        assert liquidada.status == "liquidada"
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+
+        eventos = (
+            db_session.execute(
+                text(
+                    "select evento_tipo from capital_ledger "
+                    "where operacao_id = :i order by created_at"
+                ),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert eventos == ["ativacao_operacao", "liquidacao"]
+
+    def test_transicao_invalida_e_bloqueada_pelo_banco(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A maquina de estados vive no trigger (OC003), nao no Python —
+        'registrada' nao pode saltar direto para 'liquidada'."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 3000)
+        with pytest.raises(TransicaoInvalida) as exc:
+            transicionar_operacao(db_session, op_id, "liquidada")
+        assert sqlstate_de(exc.value) == "OC003"
+
+    def test_operacao_inexistente(self, db_session: Session) -> None:
+        with pytest.raises(OperacaoNaoEncontrada):
+            transicionar_operacao(db_session, uuid.uuid4(), "cancelada")
+
+    def test_cancelar_proposta_nao_toca_o_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Cancelar antes de ativar nao movimenta capital algum."""
+        op = criar_operacao(
+            db_session,
+            tomador_id=tomador_autorizado,
+            tipo="emprestimo",
+            valor_principal=Decimal("1000.00"),
+            taxa_juros_mensal=Decimal("3.0"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=3,
+        )
+        antes = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+        cancelada = transicionar_operacao(db_session, op.id, "cancelada")
+        assert cancelada.status == "cancelada"
+        depois = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+        assert depois == antes
+
+    def test_registro_ref_ignorado_fora_da_transicao_registrada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """registro_entidade_ref so se aplica ao virar 'registrada' — passa-lo
+        em outra transicao nao deve sobrescrever nada."""
+        op = criar_operacao(
+            db_session,
+            tomador_id=tomador_autorizado,
+            tipo="emprestimo",
+            valor_principal=Decimal("2000.00"),
+            taxa_juros_mensal=Decimal("2.0"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=4,
+        )
+        cancelada = transicionar_operacao(
+            db_session, op.id, "cancelada", registro_entidade_ref="NAO-DEVE-GRAVAR"
+        )
+        assert cancelada.registro_entidade_ref is None
+
+
+class TestRegistrarEventoCapital:
+    def test_aporte_eleva_o_teto(self, db_session: Session, capital_constituido: None) -> None:
+        assert consultar_capital_snapshot(db_session).total == Decimal("50000.00")
+        registrar_evento_capital(db_session, valor=Decimal("25000"), tipo_evento="constituicao")
+        assert consultar_capital_snapshot(db_session).total == Decimal("75000.00")
+
+    def test_reducao_abaixo_do_comprometido_e_bloqueada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """OC005: com 40.000 comprometidos de 50.000, reduzir 20.000 deixaria
+        o capital abaixo do ja emprestado — o trigger recusa."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
+        ativar_operacao(db_session, op_id)
+
+        with pytest.raises(ReducaoCapitalBloqueada) as exc:
+            registrar_evento_capital(db_session, valor=Decimal("20000"), tipo_evento="reducao")
+        assert sqlstate_de(exc.value) == "OC005"
+
+    def test_reducao_dentro_da_folga_e_permitida(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        op_id = _criar_operacao(db_session, tomador_autorizado, 10000)
+        ativar_operacao(db_session, op_id)
+        registrar_evento_capital(db_session, valor=Decimal("5000"), tipo_evento="reducao")
+        assert consultar_capital_snapshot(db_session).total == Decimal("45000.00")
