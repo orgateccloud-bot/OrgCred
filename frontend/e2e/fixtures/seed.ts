@@ -93,3 +93,72 @@ export async function semearCenarioAtivacao(): Promise<CenarioAtivacao> {
     await client.end()
   }
 }
+
+export interface CenarioGeografico {
+  usuarioId: string
+  accessToken: string
+  /** Registrada, com capital de sobra e registro presente — se for barrada,
+   *  só pode ser pelo município (OC002). */
+  operacaoForaDaAreaId: string
+}
+
+/**
+ * Cenário isolado para o gate geográfico do Art. 5º.
+ *
+ * Vive em função separada de propósito: `semearCenarioAtivacao` é usada por
+ * um teste que conta botões "Ativar" na tela, então acrescentar operações
+ * àquele cenário quebra a contagem. Cada cenário semeia seu próprio mundo —
+ * os testes rodam em série (ver playwright.config.ts) justamente porque o
+ * seed trunca as tabelas.
+ */
+export async function semearCenarioGeografico(): Promise<CenarioGeografico> {
+  const client = new Client({ connectionString: DB_URL })
+  await client.connect()
+
+  try {
+    await client.query('truncate capital_ledger, operacao_credito, esc_capital_social cascade')
+    await client.query("delete from tomador where cnpj like '9999%'")
+    await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
+
+    const usuarioId = randomUUID()
+    await client.query(
+      `insert into usuario (id, email, nome, papel, ativo) values ($1, $2, $3, $4, $5)`,
+      [usuarioId, 'e2e-operador@orgcred.test', 'Operador E2E', 'operador', true],
+    )
+
+    // Capital farto: garante que um eventual bloqueio NAO venha do teto.
+    await client.query(
+      `insert into esc_capital_social (valor, tipo_evento) values (50000, 'constituicao')`,
+    )
+
+    const tomadorFora = await client.query<{ id: string }>(
+      `insert into tomador (cnpj, razao_social, porte, municipio, uf, municipio_autorizado)
+       values ($1, 'Mercado Fora da Area ME', 'ME', 'Sao Paulo', 'SP', false) returning id`,
+      [`9999${String(Date.now()).slice(-10)}`],
+    )
+
+    const opFora = await client.query<{ id: string }>(
+      `insert into operacao_credito
+        (tomador_id, tipo, valor_principal, taxa_juros_mensal, sistema_amortizacao,
+         numero_parcelas, status, registro_entidade_ref)
+       values ($1, 'emprestimo', 1000, 2.0, 'PRICE', 6, 'registrada', 'REG-E2E-FORA')
+       returning id`,
+      [tomadorFora.rows[0].id],
+    )
+
+    const accessToken = jwt.sign(
+      {
+        sub: usuarioId,
+        email: 'e2e-operador@orgcred.test',
+        role: 'authenticated',
+        aud: 'authenticated',
+      },
+      DEV_JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '1h' },
+    )
+
+    return { usuarioId, accessToken, operacaoForaDaAreaId: opFora.rows[0].id }
+  } finally {
+    await client.end()
+  }
+}
