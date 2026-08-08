@@ -1,6 +1,6 @@
 """Router: ciclo de vida de operações de crédito."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Literal, Optional
 from uuid import UUID
@@ -232,6 +232,85 @@ def get_operacao(
             )
             for e in eventos
         ],
+    )
+
+
+class ParcelaOut(BaseModel):
+    numero: int
+    vencimento: date
+    valor_amortizacao: Decimal
+    valor_juros: Decimal
+    valor_total: Decimal
+    saldo_devedor_pos: Decimal
+    status: str
+
+
+class AgendaOut(BaseModel):
+    """Agenda + totais.
+
+    Os totais vêm somados do banco, e não do cliente: a régua de
+    arredondamento (resíduo na última parcela) é decidida em
+    `fn_gerar_parcelas`, e recalcular no frontend abriria espaço para
+    divergência de centavos entre o que a tela mostra e o que se cobra.
+    """
+
+    operacao_id: UUID
+    sistema_amortizacao: str
+    total_amortizacao: Decimal
+    total_juros: Decimal
+    total_geral: Decimal
+    parcelas: List[ParcelaOut]
+
+
+@router.get("/{operacao_id}/parcelas", response_model=AgendaOut)
+def get_parcelas(
+    operacao_id: UUID,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+) -> AgendaOut:
+    """Agenda de amortização emitida na ativação.
+
+    Operação que ainda não foi ativada não tem agenda — devolve lista vazia
+    em vez de 404, porque a operação existe e a ausência da agenda é um
+    estado legítimo do ciclo de vida, não um erro.
+    """
+    op = db.execute(
+        text("select sistema_amortizacao from operacao_credito where id = :id"),
+        {"id": str(operacao_id)},
+    ).first()
+    if op is None:
+        raise HTTPException(status_code=404, detail=f"Operação {operacao_id} não existe.")
+
+    rows = db.execute(
+        text("""
+        select numero, vencimento, valor_amortizacao, valor_juros,
+               valor_total, saldo_devedor_pos, status
+        from parcela
+        where operacao_id = :id
+        order by numero asc
+    """),
+        {"id": str(operacao_id)},
+    ).all()
+
+    parcelas = [
+        ParcelaOut(
+            numero=r.numero,
+            vencimento=r.vencimento,
+            valor_amortizacao=r.valor_amortizacao,
+            valor_juros=r.valor_juros,
+            valor_total=r.valor_total,
+            saldo_devedor_pos=r.saldo_devedor_pos,
+            status=r.status,
+        )
+        for r in rows
+    ]
+    return AgendaOut(
+        operacao_id=operacao_id,
+        sistema_amortizacao=op.sistema_amortizacao,
+        total_amortizacao=sum((p.valor_amortizacao for p in parcelas), Decimal("0")),
+        total_juros=sum((p.valor_juros for p in parcelas), Decimal("0")),
+        total_geral=sum((p.valor_total for p in parcelas), Decimal("0")),
+        parcelas=parcelas,
     )
 
 

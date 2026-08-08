@@ -98,10 +98,21 @@ test.describe('Ciclo de vida da operação de crédito', () => {
     await page.getByRole('button', { name: 'Confirmar registro' }).click()
     await expect(page.getByText('Registrada', { exact: true })).toBeVisible()
 
+    // Antes da ativação não há agenda: ela é emitida pelo banco no momento
+    // em que o crédito passa a existir de fato.
+    await expect(page.getByText(/a agenda é emitida no momento da ativação/)).toBeVisible()
+
     // --- Ativar: passa a comprometer capital -------------------------------
     await page.getByRole('button', { name: 'Ativar' }).click()
     await page.getByRole('button', { name: 'Confirmar ativação' }).click()
     await expect(page.getByText('Ativa', { exact: true })).toBeVisible()
+
+    // --- Agenda emitida na mesma transação da ativação ---------------------
+    const agenda = page.getByRole('table')
+    await expect(agenda.getByRole('row')).toHaveCount(12) // cabeçalho + 10 parcelas + totais
+    // A soma das amortizações fecha EXATAMENTE no principal. Esse é o
+    // invariante que importa: se sobrar centavo, a quitação nunca fecha.
+    await expect(page.getByRole('cell', { name: 'R$ 5.000,00', exact: true })).toBeVisible()
 
     // O ledger registrou o evento — a operação aparece na linha do tempo.
     await expect(page.getByText(/ativou uma operação de crédito/)).toBeVisible()

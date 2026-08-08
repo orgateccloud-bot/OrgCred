@@ -4,6 +4,7 @@ import { ArrowLeft, CircleDot, MapPin } from 'lucide-react'
 import {
   getOperacaoApiOperacoesOperacaoIdGetOptions,
   getOperacoesApiOperacoesGetQueryKey,
+  getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey,
   getCapitalSnapshotApiCapitalSnapshotGetOptions,
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPostMutation,
   postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostMutation,
@@ -13,6 +14,7 @@ import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa } from '@/lib/ledger'
 import { rotuloTipo } from '@/lib/rotulos'
+import { AgendaParcelas } from '@/components/agenda-parcelas'
 import { AtivarOperacaoDialog } from '@/components/ativar-operacao-dialog'
 import { NovarOperacaoDialog } from '@/components/novar-operacao-dialog'
 import { RegistrarOperacaoDialog } from '@/components/registrar-operacao-dialog'
@@ -45,6 +47,13 @@ function OperacaoDetailPage() {
       queryKey: getOperacaoApiOperacoesOperacaoIdGetOptions({ path: { operacao_id: id } }).queryKey,
     })
     queryClient.invalidateQueries({ queryKey: getOperacoesApiOperacoesGetQueryKey() })
+    // A agenda nasce na ativação — sem invalidar aqui, a tabela só aparece
+    // depois de um reload manual.
+    queryClient.invalidateQueries({
+      queryKey: getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey({
+        path: { operacao_id: id },
+      }),
+    })
     queryClient.invalidateQueries({
       queryKey: getCapitalSnapshotApiCapitalSnapshotGetOptions().queryKey,
     })
@@ -235,6 +244,8 @@ function OperacaoDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <AgendaParcelas operacaoId={data.id} />
 
       <Card>
         <CardHeader>

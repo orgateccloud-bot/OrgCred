@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -82,6 +82,31 @@ class OperacaoCredito(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     tomador = relationship("Tomador", back_populates="operacoes")
+
+
+class Parcela(Base):
+    """Parcela da agenda de amortização (migration 007).
+
+    Gerada pelo BANCO na ativação (trigger `trg_gerar_parcelas` chamando
+    `fn_gerar_parcelas`), nunca pela aplicação. Depois de emitida, só
+    `status` e `pago_em` podem mudar — qualquer alteração de valor, data ou
+    número é recusada com OC009. Reescrever a agenda depois de emitida
+    destruiria a base documental da cobrança.
+    """
+
+    __tablename__ = "parcela"
+
+    id = Column(PG_UUID(as_uuid=True), primary_key=True)
+    operacao_id = Column(PG_UUID(as_uuid=True), ForeignKey("operacao_credito.id"), nullable=False)
+    numero = Column(Integer, nullable=False)
+    vencimento = Column(Date, nullable=False)
+    valor_amortizacao = Column(Numeric(14, 2), nullable=False)
+    valor_juros = Column(Numeric(14, 2), nullable=False)
+    valor_total = Column(Numeric(14, 2), nullable=False)
+    saldo_devedor_pos = Column(Numeric(14, 2), nullable=False)
+    status = Column(String(20), nullable=False, default="aberta")  # aberta, paga, baixada
+    pago_em = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class CapitalLedger(Base):

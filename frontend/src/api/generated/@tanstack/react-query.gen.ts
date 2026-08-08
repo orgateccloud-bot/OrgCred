@@ -11,6 +11,7 @@ import {
   getMeApiMeGet,
   getOperacaoApiOperacoesOperacaoIdGet,
   getOperacoesApiOperacoesGet,
+  getParcelasApiOperacoesOperacaoIdParcelasGet,
   getTomadorApiTomadoresTomadorIdGet,
   getTomadoresApiTomadoresGet,
   healthCheckHealthGet,
@@ -45,6 +46,9 @@ import type {
   GetOperacaoApiOperacoesOperacaoIdGetResponse,
   GetOperacoesApiOperacoesGetData,
   GetOperacoesApiOperacoesGetResponse,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetData,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetError,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
   GetTomadorApiTomadoresTomadorIdGetData,
   GetTomadorApiTomadoresTomadorIdGetError,
   GetTomadorApiTomadoresTomadorIdGetResponse,
@@ -392,6 +396,40 @@ export const getOperacaoApiOperacoesOperacaoIdGetOptions = (
       return data
     },
     queryKey: getOperacaoApiOperacoesOperacaoIdGetQueryKey(options),
+  })
+
+export const getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey = (
+  options: Options<GetParcelasApiOperacoesOperacaoIdParcelasGetData>,
+) => createQueryKey('getParcelasApiOperacoesOperacaoIdParcelasGet', options)
+
+/**
+ * Get Parcelas
+ *
+ * Agenda de amortização emitida na ativação.
+ *
+ * Operação que ainda não foi ativada não tem agenda — devolve lista vazia
+ * em vez de 404, porque a operação existe e a ausência da agenda é um
+ * estado legítimo do ciclo de vida, não um erro.
+ */
+export const getParcelasApiOperacoesOperacaoIdParcelasGetOptions = (
+  options: Options<GetParcelasApiOperacoesOperacaoIdParcelasGetData>,
+) =>
+  queryOptions<
+    GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
+    GetParcelasApiOperacoesOperacaoIdParcelasGetError,
+    GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
+    ReturnType<typeof getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getParcelasApiOperacoesOperacaoIdParcelasGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey(options),
   })
 
 /**

@@ -18,6 +18,9 @@ import type {
   GetOperacaoApiOperacoesOperacaoIdGetResponses,
   GetOperacoesApiOperacoesGetData,
   GetOperacoesApiOperacoesGetResponses,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetData,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetErrors,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
   GetTomadorApiTomadoresTomadorIdGetData,
   GetTomadorApiTomadoresTomadorIdGetErrors,
   GetTomadorApiTomadoresTomadorIdGetResponses,
@@ -274,6 +277,32 @@ export const getOperacaoApiOperacoesOperacaoIdGet = <ThrowOnError extends boolea
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/operacoes/{operacao_id}',
+    ...options,
+  })
+
+/**
+ * Get Parcelas
+ *
+ * Agenda de amortização emitida na ativação.
+ *
+ * Operação que ainda não foi ativada não tem agenda — devolve lista vazia
+ * em vez de 404, porque a operação existe e a ausência da agenda é um
+ * estado legítimo do ciclo de vida, não um erro.
+ */
+export const getParcelasApiOperacoesOperacaoIdParcelasGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetParcelasApiOperacoesOperacaoIdParcelasGetData, ThrowOnError>,
+): RequestResult<
+  GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
+    GetParcelasApiOperacoesOperacaoIdParcelasGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/operacoes/{operacao_id}/parcelas',
     ...options,
   })
 
