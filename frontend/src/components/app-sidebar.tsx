@@ -9,6 +9,7 @@ import {
   Landmark,
   LogOut,
   ScrollText,
+  ShieldCheck,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -40,6 +41,7 @@ const NAV_ITEMS = [
   { to: '/tomadores', label: 'Tomadores', icon: Building2, exact: false },
   { to: '/cobranca', label: 'Cobrança', icon: AlarmClock, exact: false },
   { to: '/capital', label: 'Capital social', icon: Coins, exact: false },
+  { to: '/compliance', label: 'Compliance', icon: ShieldCheck, exact: false },
   { to: '/auditoria', label: 'Auditoria', icon: ScrollText, exact: false },
 ] as const
 

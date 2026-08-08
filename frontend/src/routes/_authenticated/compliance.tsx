@@ -1,0 +1,213 @@
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { RadarIcon, ShieldQuestion } from 'lucide-react'
+import { toast } from 'sonner'
+import {
+  getAtipicidadesApiComplianceAtipicidadesGetOptions,
+  getAtipicidadesApiComplianceAtipicidadesGetQueryKey,
+  getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetOptions,
+  postDetectarApiComplianceAtipicidadesDetectarPostMutation,
+} from '@/api/generated/@tanstack/react-query.gen'
+import { mensagemDeErro } from '@/api/errors'
+import { formatarMoeda } from '@/lib/format'
+import { rotuloRegraAtipicidade, rotuloSeveridade } from '@/lib/rotulos'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+
+export const Route = createFileRoute('/_authenticated/compliance')({
+  component: CompliancePage,
+})
+
+function classeSeveridade(severidade: string): string {
+  if (severidade === 'alta') return 'text-destructive'
+  if (severidade === 'media') return 'text-warning'
+  return 'text-muted-foreground'
+}
+
+/**
+ * Compliance PLD/FT — a parte que não depende de terceiro.
+ *
+ * O regime aplicável a uma ESC ainda depende de parecer jurídico, e o canal
+ * externo (COAF) é um adaptador que nada preenche hoje. O que já vale:
+ * identificação com evidência arquivada, retenção de 5 anos garantida pelo
+ * banco, e detecção interna de atipicidade.
+ */
+function CompliancePage() {
+  const queryClient = useQueryClient()
+  const pendencias = useQuery(
+    getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetOptions(),
+  )
+  const atipicidades = useQuery(getAtipicidadesApiComplianceAtipicidadesGetOptions())
+  const detectar = useMutation(postDetectarApiComplianceAtipicidadesDetectarPostMutation())
+
+  const expostoSemIdentificacao = (pendencias.data ?? []).reduce(
+    (soma, p) => soma + Number(p.capital_exposto),
+    0,
+  )
+
+  return (
+    <div className="space-y-6 p-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="font-heading text-2xl font-bold tracking-tight">Compliance</h1>
+        <Button
+          className="ml-auto"
+          disabled={detectar.isPending}
+          onClick={() =>
+            detectar.mutate(
+              { body: {} },
+              {
+                onSuccess: (resultado) => {
+                  queryClient.invalidateQueries({
+                    queryKey: getAtipicidadesApiComplianceAtipicidadesGetQueryKey(),
+                  })
+                  toast.success(
+                    resultado.novas_ocorrencias === 0
+                      ? 'Varredura concluída: nenhuma ocorrência nova.'
+                      : `${resultado.novas_ocorrencias} ocorrência(s) nova(s).`,
+                  )
+                },
+              },
+            )
+          }
+        >
+          <RadarIcon />
+          {detectar.isPending ? 'Varrendo…' : 'Rodar varredura'}
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Identificação pendente</CardTitle>
+          <CardDescription>
+            Tomadores sem nenhuma evidência arquivada, com o capital já exposto a eles. O sistema{' '}
+            <strong>não bloqueia</strong> a ativação por falta de identificação — é decisão de
+            negócio, e esta lista existe para que ela seja tomada com o número na mão.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {pendencias.isPending && <Skeleton className="h-24" />}
+          {pendencias.error && (
+            <p className="text-sm text-destructive">{mensagemDeErro(pendencias.error)}</p>
+          )}
+          {pendencias.data && pendencias.data.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Todos os tomadores têm ao menos uma evidência arquivada.
+            </p>
+          )}
+          {pendencias.data && pendencias.data.length > 0 && (
+            <>
+              <p className="mb-4 flex gap-2 text-sm">
+                <ShieldQuestion className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+                <span>
+                  <strong>{formatarMoeda(String(expostoSemIdentificacao))}</strong> emprestados a
+                  tomadores sem identificação arquivada.
+                </span>
+              </p>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tomador</TableHead>
+                      <TableHead>CNPJ</TableHead>
+                      <TableHead className="text-right">Capital exposto</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendencias.data.map((p) => (
+                      <TableRow key={p.tomador_id}>
+                        <TableCell>
+                          <Link
+                            to="/tomadores/$id"
+                            params={{ id: p.tomador_id }}
+                            className="text-primary hover:underline"
+                          >
+                            {p.razao_social}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="font-mono tabular-nums">{p.cnpj}</TableCell>
+                        <TableCell className="text-right font-mono tabular-nums">
+                          {formatarMoeda(String(p.capital_exposto))}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Atipicidades detectadas</CardTitle>
+          <CardDescription>
+            Detecção interna sobre os dados que já existem — fracionamento, liquidação antecipada e
+            pagamento em excesso. A comunicação a canal externo ainda não está ligada: o regime
+            PLD/COAF de uma ESC depende de parecer jurídico. As ocorrências ficam registradas até
+            lá, e são imutáveis.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {atipicidades.isPending && <Skeleton className="h-24" />}
+          {atipicidades.error && (
+            <p className="text-sm text-destructive">{mensagemDeErro(atipicidades.error)}</p>
+          )}
+          {atipicidades.data && atipicidades.data.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma atipicidade registrada. Rode a varredura para analisar os dados atuais.
+            </p>
+          )}
+          {atipicidades.data && atipicidades.data.length > 0 && (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Severidade</TableHead>
+                    <TableHead>Regra</TableHead>
+                    <TableHead>Tomador</TableHead>
+                    <TableHead>Detalhe</TableHead>
+                    <TableHead>Detectada em</TableHead>
+                    <TableHead>Comunicação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {atipicidades.data.map((o) => (
+                    <TableRow key={o.id}>
+                      <TableCell>
+                        <Badge variant="outline" className={classeSeveridade(o.severidade)}>
+                          {rotuloSeveridade(o.severidade)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{rotuloRegraAtipicidade(o.regra)}</TableCell>
+                      <TableCell>{o.tomador_razao_social ?? '—'}</TableCell>
+                      <TableCell className="text-muted-foreground">{o.detalhe}</TableCell>
+                      <TableCell className="tabular-nums">
+                        {new Date(o.created_at).toLocaleDateString('pt-BR')}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {o.comunicado_em
+                          ? new Date(o.comunicado_em).toLocaleDateString('pt-BR')
+                          : 'canal não ligado'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

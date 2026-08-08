@@ -122,6 +122,37 @@ export type AgingResumoOut = {
 }
 
 /**
+ * ArquivarDocumentoIn
+ *
+ * O conteúdo vem em base64 apenas para que o HASH seja calculado aqui.
+ *
+ * O binário não é persistido: o banco guarda o hash, e o arquivo vive no
+ * storage. Guardar o arquivo no Postgres inflaria o banco sem acrescentar
+ * garantia — o que se precisa provar é que o documento apresentado depois
+ * é bit a bit o mesmo que foi arquivado.
+ */
+export type ArquivarDocumentoIn = {
+  /**
+   * Tipo
+   */
+  tipo:
+    | 'contrato_social'
+    | 'cartao_cnpj'
+    | 'documento_socio'
+    | 'comprovante_endereco'
+    | 'procuracao'
+    | 'outro'
+  /**
+   * Nome Arquivo
+   */
+  nome_arquivo: string
+  /**
+   * Sha256
+   */
+  sha256: string
+}
+
+/**
  * AtivarOperacaoOut
  */
 export type AtivarOperacaoOut = {
@@ -297,6 +328,64 @@ export type CriarTomadorIn = {
    * Uf
    */
   uf: string
+}
+
+/**
+ * DetectarIn
+ */
+export type DetectarIn = {
+  /**
+   * Limiar
+   */
+  limiar?: number | string
+  /**
+   * Janela Dias
+   */
+  janela_dias?: number
+}
+
+/**
+ * DetectarOut
+ */
+export type DetectarOut = {
+  /**
+   * Novas Ocorrencias
+   */
+  novas_ocorrencias: number
+}
+
+/**
+ * DocumentoOut
+ */
+export type DocumentoOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Tomador Id
+   */
+  tomador_id: string
+  /**
+   * Tipo
+   */
+  tipo: string
+  /**
+   * Nome Arquivo
+   */
+  nome_arquivo: string
+  /**
+   * Sha256
+   */
+  sha256: string
+  /**
+   * Arquivado Em
+   */
+  arquivado_em: string
+  /**
+   * Retencao Ate
+   */
+  retencao_ate: string
 }
 
 /**
@@ -523,6 +612,48 @@ export type NovarOperacaoIn = {
 }
 
 /**
+ * OcorrenciaOut
+ */
+export type OcorrenciaOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Regra
+   */
+  regra: string
+  /**
+   * Severidade
+   */
+  severidade: string
+  /**
+   * Tomador Id
+   */
+  tomador_id: string | null
+  /**
+   * Tomador Razao Social
+   */
+  tomador_razao_social: string | null
+  /**
+   * Operacao Id
+   */
+  operacao_id: string | null
+  /**
+   * Detalhe
+   */
+  detalhe: string
+  /**
+   * Comunicado Em
+   */
+  comunicado_em: string | null
+  /**
+   * Created At
+   */
+  created_at: string
+}
+
+/**
  * OperacaoDetailOut
  */
 export type OperacaoDetailOut = {
@@ -669,6 +800,28 @@ export type ParcelaOut = {
    * Movimento Documento
    */
   movimento_documento: string | null
+}
+
+/**
+ * PendenciaIdentificacaoOut
+ */
+export type PendenciaIdentificacaoOut = {
+  /**
+   * Tomador Id
+   */
+  tomador_id: string
+  /**
+   * Cnpj
+   */
+  cnpj: string
+  /**
+   * Razao Social
+   */
+  razao_social: string
+  /**
+   * Capital Exposto
+   */
+  capital_exposto: string
 }
 
 /**
@@ -893,6 +1046,32 @@ export type ValidationError = {
    * Error Type
    */
   type: string
+}
+
+/**
+ * VerificacaoIn
+ *
+ * Conteúdo em base64 do arquivo a conferir contra o que foi arquivado.
+ */
+export type VerificacaoIn = {
+  /**
+   * Conteudo Base64
+   */
+  conteudo_base64: string
+}
+
+/**
+ * VerificacaoOut
+ */
+export type VerificacaoOut = {
+  /**
+   * Sha256 Calculado
+   */
+  sha256_calculado: string
+  /**
+   * Confere
+   */
+  confere: boolean
 }
 
 export type GetCapitalDisponivelApiCapitalDisponivelGetData = {
@@ -1386,6 +1565,169 @@ export type PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses = {
 
 export type PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponse =
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses[keyof PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses]
+
+export type GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData = {
+  body?: never
+  path: {
+    /**
+     * Tomador Id
+     */
+    tomador_id: string
+  }
+  query?: never
+  url: '/api/compliance/tomadores/{tomador_id}/documentos'
+}
+
+export type GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetError =
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors[keyof GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors]
+
+export type GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses = {
+  /**
+   * Response Get Documentos Api Compliance Tomadores  Tomador Id  Documentos Get
+   *
+   * Successful Response
+   */
+  200: Array<DocumentoOut>
+}
+
+export type GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse =
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses[keyof GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses]
+
+export type PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData = {
+  body: ArquivarDocumentoIn
+  path: {
+    /**
+     * Tomador Id
+     */
+    tomador_id: string
+  }
+  query?: never
+  url: '/api/compliance/tomadores/{tomador_id}/documentos'
+}
+
+export type PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostError =
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostErrors[keyof PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostErrors]
+
+export type PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: DocumentoOut
+}
+
+export type PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponse =
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses[keyof PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses]
+
+export type PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData = {
+  body: VerificacaoIn
+  path: {
+    /**
+     * Documento Id
+     */
+    documento_id: string
+  }
+  query?: never
+  url: '/api/compliance/documentos/{documento_id}/verificar'
+}
+
+export type PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostError =
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostErrors[keyof PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostErrors]
+
+export type PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: VerificacaoOut
+}
+
+export type PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponse =
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses[keyof PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses]
+
+export type GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/compliance/identificacao/pendencias'
+}
+
+export type GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses = {
+  /**
+   * Response Get Pendencias Identificacao Api Compliance Identificacao Pendencias Get
+   *
+   * Successful Response
+   */
+  200: Array<PendenciaIdentificacaoOut>
+}
+
+export type GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponse =
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses[keyof GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses]
+
+export type GetAtipicidadesApiComplianceAtipicidadesGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/compliance/atipicidades'
+}
+
+export type GetAtipicidadesApiComplianceAtipicidadesGetResponses = {
+  /**
+   * Response Get Atipicidades Api Compliance Atipicidades Get
+   *
+   * Successful Response
+   */
+  200: Array<OcorrenciaOut>
+}
+
+export type GetAtipicidadesApiComplianceAtipicidadesGetResponse =
+  GetAtipicidadesApiComplianceAtipicidadesGetResponses[keyof GetAtipicidadesApiComplianceAtipicidadesGetResponses]
+
+export type PostDetectarApiComplianceAtipicidadesDetectarPostData = {
+  body: DetectarIn
+  path?: never
+  query?: never
+  url: '/api/compliance/atipicidades/detectar'
+}
+
+export type PostDetectarApiComplianceAtipicidadesDetectarPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostDetectarApiComplianceAtipicidadesDetectarPostError =
+  PostDetectarApiComplianceAtipicidadesDetectarPostErrors[keyof PostDetectarApiComplianceAtipicidadesDetectarPostErrors]
+
+export type PostDetectarApiComplianceAtipicidadesDetectarPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DetectarOut
+}
+
+export type PostDetectarApiComplianceAtipicidadesDetectarPostResponse =
+  PostDetectarApiComplianceAtipicidadesDetectarPostResponses[keyof PostDetectarApiComplianceAtipicidadesDetectarPostResponses]
 
 export type GetAgingApiCobrancaAgingGetData = {
   body?: never

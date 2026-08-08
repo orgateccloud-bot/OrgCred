@@ -4,24 +4,36 @@
 > real via `htmlcov/status.json`, contagem de statements, endpoints e
 > testes), não de estimativa. Onde um número não pôde ser medido, está
 > dito explicitamente.
+>
+> **Revisado em 2026-08-08**, após a execução das Frentes 2, 3 e da parte
+> construível da Frente 4. Os números de scorecard abaixo foram
+> remedidos, não estimados: 158 testes backend, cobertura total 90%,
+> 50 Vitest, 5 E2E. A Frente 1 segue integralmente aberta — e continua
+> sendo o que separa este sistema de ser usado.
 
 ---
 
 ## 1. Retrato em uma frase
 
 O OrgCred tem **um núcleo de crédito sólido e provado** (capital, operações,
-auditoria com hash-chain) envolto por **quatro módulos regulatórios que são
-casca vazia** — e está **no ar em produção sem conseguir ser usado**, porque
-o teto de capital é R$ 0,00 e o login real nunca foi ativado.
+cobrança de ponta a ponta, auditoria com hash-chain) envolto por **três
+módulos regulatórios bloqueados em decisão externa** — e continua **no ar em
+produção sem conseguir ser usado**, porque o teto de capital é R$ 0,00 e o
+login real nunca foi ativado.
 
-O risco dominante não é qualidade de código. É que **o sistema parece pronto
-e não é operável**.
+O risco dominante nunca foi qualidade de código, e depois desta rodada é
+menos ainda. É que **o sistema parece pronto e não é operável**: tudo que
+foi construído nas Frentes 2, 3 e 4 está em `main` e em nenhum servidor.
 
 ---
 
 ## 2. Mapa de módulos
 
-### 2.1 Backend — 1.914 linhas, 19 endpoints, 9 routers
+### 2.1 Backend — 2.871 linhas, 31 endpoints, 9 routers, 10 migrations
+
+> Contagens remedidas em 2026-08-08. As tabelas desta seção descrevem o
+> levantamento original de 2026-07-31; o estado atual de cada módulo está
+> no scorecard da seção 3, que foi refeito.
 
 | Módulo | Arquivos | Stmt | Endpoints | Cobertura |
 |---|---|---:|---:|---:|
@@ -48,7 +60,7 @@ capital · OC002 gate geográfico · OC003 máquina de estados · OC004 registro
 em entidade registradora · OC005 redução de capital · OC007 ledger
 append-only.
 
-### 2.2 Frontend — 6.692 linhas, 10 rotas
+### 2.2 Frontend — 8.267 linhas, 14 rotas
 
 | Módulo | Arquivos principais | Linhas |
 |---|---|---:|
@@ -61,7 +73,9 @@ append-only.
 | **App shell** | `_authenticated.tsx`, `app-sidebar`, `command-palette` | 389 |
 | **Design system** | `components/ui/*` (18 componentes) + `index.css` | ~2.700 |
 
-### 2.3 Testes — 52 backend + 32 frontend + 1 E2E
+### 2.3 Testes — 158 backend + 50 Vitest + 5 E2E
+
+> Eram 52 + 32 + 1 em 2026-07-31. Cobertura backend total: 90%.
 
 | Suíte | Testes | Onde concentra | Onde **não** cobre |
 |---|---:|---|---|
@@ -78,51 +92,71 @@ Escala: 🟢 sólido · 🟡 funcional com lacuna · 🔴 crítico/ausente
 | # | Módulo | Função | Testes | Prod | Nota | Justificativa medida |
 |---|---|:---:|:---:|:---:|:---:|---|
 | 1 | Auditoria / hash-chain | 🟢 | 🟢 | 🟢 | **9,0** | 100% cobertura, ledger append-only por trigger, UI em duas camadas |
-| 2 | Identidade / Zero-Trust | 🟢 | 🟢 | 🔴 | **7,5** | `security.py` 100% coberto, papéis aplicados; **mas login real nunca funcionou em prod** |
-| 3 | Operações | 🟢 | 🟡 | 🟡 | **7,5** | 9 endpoints, ciclo de vida completo, 84% cobertura; E2E cobre só ativação |
-| 4 | Motor de capital | 🟢 | 🟡 | 🔴 | **7,0** | Núcleo legal correto (advisory lock provado); **58,8% cobertura** no arquivo mais crítico do sistema; teto R$ 0,00 em prod |
-| 5 | Modelos / migrations | 🟢 | 🟢 | 🟢 | **9,0** | 100% cobertura, ciclo up/down validado |
+| 2 | Identidade / Zero-Trust | 🟢 | 🟢 | 🔴 | **7,5** | `security.py` 100% coberto, papéis aplicados; **login real nunca funcionou em prod** |
+| 3 | Operações | 🟢 | 🟢 | 🔴 | **8,5** | 11 endpoints, ciclo completo, 87% cobertura; E2E cobre criar→registrar→ativar→liquidar e OC002 |
+| 4 | Motor de capital | 🟢 | 🟢 | 🔴 | **8,5** | 90% cobertura (era 58,8%); **dois furos do Art. 5º fechados** (inadimplência e novação); teto R$ 0,00 em prod |
+| 5 | Modelos / migrations | 🟢 | 🟢 | 🟢 | **9,0** | 100% cobertura, 10 migrations com ciclo up/down validado |
 | 6 | Capital (API + tela) | 🟢 | 🟡 | 🔴 | **6,5** | 81% cobertura, tela admin pronta; sem nenhum evento de constituição em prod |
-| 7 | Design system | 🟢 | 🟡 | 🟡 | **7,0** | DS canônico ORGATEC, 14 pares de contraste ≥4,5:1 medidos; sem teste de regressão visual |
-| 8 | App shell | 🟢 | 🔴 | 🟡 | **6,5** | Sidebar, ⌘K, temas; **zero teste** — o bug do TooltipProvider derrubou tudo e só o E2E pegou |
-| 9 | Tomadores | 🟡 | 🔴 | 🟡 | **5,5** | CRUD + gate OC002; **65% cobertura, 24 stmt mortos**, sem KYC, sem teste de tela |
-| 10 | Dashboard | 🟡 | 🔴 | 🟡 | **5,5** | KPIs, 2 gráficos, banners; **404 linhas sem um único teste** |
-| 11 | Observabilidade | 🟡 | 🟡 | 🟡 | **5,0** | Prometheus + logging estruturado ativos; **`alerts.py` é código morto (0 refs, 0%)** |
-| 12 | CI/CD | 🟡 | — | 🔴 | **4,0** | Migrado para CircleCI, mas **nunca executou uma vez** — GH Actions morreu por billing |
-| 13 | **Cobrança** | 🔴 | 🔴 | 🔴 | **1,0** | Stub. Não bloqueado por terceiro — só não foi feito |
+| 7 | Design system | 🟢 | 🟡 | 🟡 | **7,0** | DS canônico ORGATEC, 14 pares de contraste ≥4,5:1 medidos; sem regressão visual |
+| 8 | App shell | 🟢 | 🟡 | 🟡 | **7,0** | Sidebar, ⌘K, temas; coberto indiretamente por 5 E2E com asserção de erro de console |
+| 9 | Tomadores | 🟡 | 🟡 | 🟡 | **6,5** | CRUD + gate OC002; 65% cobertura; **KYC agora existe** (via Compliance), mas sem tela própria |
+| 10 | Dashboard | 🟡 | 🟡 | 🟡 | **6,0** | KPIs, 2 gráficos, banners; derivações extraídas para `lib/capital.ts` e cobertas por Vitest |
+| 11 | Observabilidade | 🟡 | 🟡 | 🟡 | **6,0** | Prometheus + logging estruturado ativos; `alerts.py` arquivado (era código morto) |
+| 12 | CI/CD | 🟡 | — | 🔴 | **4,0** | CircleCI configurado, mas **nunca executou** — aguarda autorização do GitHub App |
+| 13 | **Cobrança** | 🟢 | 🟢 | 🔴 | **8,5** | Agenda PRICE/SAC imutável, novação atômica, aging com trilha de autoria, baixa com lastro bancário; 100% cobertura |
 | 14 | **Contratos** | 🔴 | 🔴 | 🔴 | **0,5** | Stub. Bloqueado: entidade registradora não escolhida |
 | 15 | **Fiscal** | 🔴 | 🔴 | 🔴 | **0,5** | Stub. Bloqueado: parecer de IOF |
-| 16 | **Compliance** | 🔴 | 🔴 | 🔴 | **0,5** | Stub. Bloqueado: regime PLD/COAF |
+| 16 | **Compliance** | 🟡 | 🟢 | 🔴 | **6,0** | Identificação com evidência, retenção de 5 anos e detecção de atipicidade prontas e 100% cobertas; **canal COAF é adaptador desligado** |
 
-**Média ponderada por criticidade: 5,4/10.**
-Núcleo (1–8): **7,5**. Periferia regulatória (13–16): **0,6**.
+**Média ponderada por criticidade: 6,9/10** (era 5,4).
+Núcleo (1–8): **7,9** (era 7,5). Periferia regulatória (13–16): **3,9** (era 0,6).
+
+O salto da periferia vem quase todo de Cobrança e Compliance — os dois
+módulos que **não dependiam de terceiro**. Contratos e Fiscal continuam em
+0,5 porque nenhuma linha de código os desbloqueia.
 
 ---
 
-## 4. Achados desta varredura
+## 4. Achados — o que aconteceu com cada um
 
-1. **`app/core/alerts.py` é código morto.** 37 statements, 0% de cobertura,
-   **zero referências** em todo o projeto. Implementa alerta de capital
-   baixo e rajada de bloqueios — exatamente os dois eventos que mais
-   importam operacionalmente — e nunca é invocado. Ou liga, ou remove;
-   deixar dá falsa sensação de que existe alerta.
+Os cinco achados de 2026-07-31, e o estado deles em 2026-08-08:
 
-2. **O motor de capital tem a menor cobertura entre os módulos ativos
-   (58,8%)** e é o arquivo que carrega a responsabilidade legal do
-   Art. 5º. 35 statements sem cobertura — provavelmente os caminhos novos
-   (`transicionar_operacao`, `criar_operacao`, `registrar_evento_capital`)
-   adicionados na F7/F8.
+1. ~~**`app/core/alerts.py` é código morto.**~~ **RESOLVIDO** (`a7b5e01`):
+   arquivado. Alerta que ninguém invoca dá falsa sensação de que existe.
 
-3. **Produção serve bundle antigo** (`index-CsQRsW7J.js`) — o deploy do
-   Railway não dispara de `main` desde antes do PR #12. Tudo que foi
-   entregue nas fases F5–F9 **não está no ar**.
+2. ~~**Motor de capital com a menor cobertura entre os módulos ativos
+   (58,8%).**~~ **RESOLVIDO**: 90%. E a investigação que a cobertura
+   forçou encontrou **dois furos do Art. 5º já em produção** (`bdccab5`):
+   marcar inadimplência e renegociar liberavam capital de empréstimo não
+   pago. Nenhum dos dois exigia má-fé — eram consequência da definição de
+   "comprometido" contar só `ativa`.
 
-4. **1 teste E2E para 10 rotas.** O único E2E existente já pegou dois bugs
-   graves (TooltipProvider, heading ausente). É o teste com maior retorno
-   por unidade de esforço no projeto e está subutilizado.
+3. **Produção serve bundle antigo.** **ABERTO.** O Railway não faz deploy
+   de `main`. Tudo entregue de F5 até aqui — inclusive os dois furos
+   fechados — segue fora do ar. É o item de maior risco do projeto agora:
+   a produção roda a versão COM os furos.
 
-5. **Nenhuma das 5 telas principais tem teste de componente** — dashboard
-   (404 linhas), operações lista/detalhe/nova, tomadores, capital.
+4. ~~**1 teste E2E para 10 rotas.**~~ **MELHORADO**: 5 E2E, todos com
+   asserção de zero erro de console. Nesta rodada, o E2E pegou: query de
+   parcelas não invalidada, diálogo da régua que não fechava, e badge de
+   status ambíguo. Segue sendo o teste com maior retorno por esforço.
+
+5. **Nenhuma das 5 telas principais tem teste de componente.**
+   **PARCIAL**: as derivações do dashboard foram extraídas para
+   `lib/capital.ts` e cobertas; as telas em si continuam sem teste próprio,
+   cobertas indiretamente pelos E2E.
+
+### Achados novos desta rodada
+
+6. **Regras de negócio críticas estavam sem trilha.** `ativa →
+   inadimplente` não deixava rastro em lugar nenhum — declarar alguém
+   inadimplente acontecia sem autor. Fechado pela `operacao_evento` (008).
+
+7. **Dois erros de Postgres que só produção teria mostrado**, ambos
+   pegos por teste antes de existirem: `NULL` não conflita em chave única
+   (a varredura de atipicidade duplicaria a cada execução), e `now()` é o
+   timestamp da transação, não do statement (a trilha exibiria eventos em
+   ordem arbitrária).
 
 ---
 
@@ -145,28 +179,39 @@ Sem isto, todo o resto é investimento em algo que ninguém usa.
 **Sem 1.3 o sistema é uma vitrine.** É a decisão de maior alavancagem do
 projeto inteiro e não depende de nenhuma linha de código.
 
-### 🟡 Frente 2 — Fechar o flanco de testes (2–3 dias)
+### ✅ Frente 2 — Fechar o flanco de testes — **CONCLUÍDA**
 
-| # | Ação | Por quê |
+| # | Ação | Estado |
 |---|---|---|
-| 2.1 | Subir cobertura de `capital_engine.py` de 58,8% para ≥90% | é o arquivo com peso legal e a menor cobertura ativa |
-| 2.2 | E2E: criação → registro → liquidação, e OC002 (município não autorizado) | o E2E é o teste que mais achou bug real |
-| 2.3 | Teste de componente para dashboard, operações e tomadores | 5 telas, 0 testes |
-| 2.4 | Decidir `alerts.py`: ligar nos pontos reais ou remover | código morto que simula uma capacidade inexistente |
+| 2.1 | Cobertura de `capital_engine.py` ≥90% | ✅ 58,8% → 90% |
+| 2.2 | E2E de ciclo completo e OC002 | ✅ `68abb82` |
+| 2.3 | Teste de componente para as telas | 🟡 parcial — derivações extraídas e cobertas; telas ainda sem teste próprio |
+| 2.4 | Decidir `alerts.py` | ✅ arquivado em `a7b5e01` |
 
-### 🟢 Frente 3 — Cobrança (1–2 semanas, **não bloqueada**)
+### ✅ Frente 3 — Cobrança — **CONCLUÍDA**
 
-O único módulo de negócio que **não depende de terceiro** — só não foi
-feito. Ordem correta:
+| # | Ação | Commit |
+|---|---|---|
+| 3.1 | Agenda PRICE/SAC gerada no banco na ativação, imutável (OC009) | `4d5edc4` |
+| 3.2 | Novação atômica (OC008) + correção dos dois furos do Art. 5º | `bdccab5` |
+| 3.3 | Aging com transição automática e trilha de autoria (OC010) | `34b5b20` |
+| 3.4 | Baixa de recebimento amarrada a movimento bancário (OC011/OC012) | `39d29a1` |
 
-1. Agenda de parcelas gerada no banco na ativação (PRICE e SAC), imutável.
-2. **Novação atômica** para renegociação — sob o mesmo `pg_advisory_xact_lock`
-   do teto, com novo SQLSTATE. Sem isto, renegociar conta capital em dobro
-   e viola o Art. 5º sem ninguém agir de má-fé.
-3. Aging de inadimplência com transição automática e trilha de autor.
-4. Baixa de recebimento amarrada a movimentação bancária.
+O ciclo fecha: a agenda define o que se cobra, o aging vê o atraso a partir
+dela, e só a baixa **com lastro bancário** tira a parcela do atraso.
 
-### ⚪ Frente 4 — Desbloquear o regulatório (ação externa)
+### 🟡 Frente 4 — Regulatório
+
+**Construído sem depender de ninguém** (migration 010):
+
+| Item | Estado |
+|---|---|
+| Identificação com evidência arquivada (hash SHA-256 verificável) | ✅ |
+| Retenção de 5 anos garantida pelo banco (Lei 9.613/98, art. 10, III — OC013) | ✅ |
+| Detecção interna de atipicidade: fracionamento, liquidação antecipada, pagamento em excesso | ✅ |
+| Canal externo COAF | 🔌 adaptador pronto e **desligado** |
+
+**Continua bloqueado em ação externa:**
 
 | Módulo | Ação necessária | Quem |
 |---|---|---|
@@ -174,20 +219,32 @@ feito. Ordem correta:
 | Fiscal | Parecer jurídico-tributário sobre IOF em ESC | contador/advogado |
 | Compliance | Confirmação do regime PLD/COAF para ESC | advogado |
 
-Enquanto não saem, vale construir o que é **indiscutível**: identificação
-com evidência arquivada, retenção de 5 anos, detecção interna de
-atipicidade — com o canal externo como adaptador plugável.
+**Uma decisão de negócio pendente, agora com o número na mão:** exigir
+identificação arquivada antes de ativar uma operação. A amarra não foi
+ligada de propósito — hoje existem tomadores sem evidência, e ativá-la sem
+aviso pararia a operação. `GET /compliance/identificacao/pendencias` mostra
+quanto capital está exposto a tomadores sem identificação.
 
 ---
 
 ## 6. Sequência recomendada
 
 ```
-Frente 1 (operável)  ─── destrava valor real, dias
-   └─ Frente 2 (testes) ─── protege o que já existe, dias
-        └─ Frente 3 (cobrança) ─── único módulo de negócio livre, semanas
-             └─ Frente 4 ─── quando as decisões externas saírem
+Frente 2 (testes)    ─── ✅ concluída
+Frente 3 (cobrança)  ─── ✅ concluída
+Frente 4 (construível) ─ ✅ concluída · resto aguarda decisão externa
+Frente 1 (operável)  ─── 🔴 ABERTA — e agora é a ÚNICA coisa que importa
 ```
 
-Se só uma coisa for feita nesta semana: **item 1.3 — o valor do capital
-social.** É uma linha de SQL que transforma uma vitrine em uma ESC operante.
+Não há mais nada de valor a construir sem você. Todo o trabalho técnico
+possível foi feito; o que resta é integralmente decisão ou credencial:
+
+1. **Reconectar o GitHub no Railway** para `main`. Sem isso, produção segue
+   rodando a versão **com os dois furos do Art. 5º** que já foram
+   corrigidos aqui. Este é hoje o maior risco do projeto.
+2. **Valor do capital social integralizado** — decisão dos sócios. Uma
+   linha de SQL que transforma uma vitrine em uma ESC operante.
+3. **Senha do admin no Supabase** + linha em `usuario` com o mesmo UUID.
+4. **Autorizar o CircleCI** no GitHub.
+5. **Decidir** se identificação arquivada passa a ser pré-requisito de
+   ativação (ver Frente 4).

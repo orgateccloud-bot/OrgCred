@@ -5,6 +5,8 @@ import { client } from './client.gen'
 import type {
   GetAgingApiCobrancaAgingGetData,
   GetAgingApiCobrancaAgingGetResponses,
+  GetAtipicidadesApiComplianceAtipicidadesGetData,
+  GetAtipicidadesApiComplianceAtipicidadesGetResponses,
   GetAuditoriaApiAuditoriaGetData,
   GetAuditoriaApiAuditoriaGetResponses,
   GetCapitalDisponivelApiCapitalDisponivelGetData,
@@ -13,6 +15,9 @@ import type {
   GetCapitalEventosApiCapitalEventosGetResponses,
   GetCapitalSnapshotApiCapitalSnapshotGetData,
   GetCapitalSnapshotApiCapitalSnapshotGetResponses,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses,
   GetMeApiMeGetData,
   GetMeApiMeGetResponses,
   GetMovimentosApiCobrancaMovimentosGetData,
@@ -26,6 +31,8 @@ import type {
   GetParcelasApiOperacoesOperacaoIdParcelasGetData,
   GetParcelasApiOperacoesOperacaoIdParcelasGetErrors,
   GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses,
   GetTomadorApiTomadoresTomadorIdGetData,
   GetTomadorApiTomadoresTomadorIdGetErrors,
   GetTomadorApiTomadoresTomadorIdGetResponses,
@@ -56,6 +63,12 @@ import type {
   PostCriarTomadorApiTomadoresPostData,
   PostCriarTomadorApiTomadoresPostErrors,
   PostCriarTomadorApiTomadoresPostResponses,
+  PostDetectarApiComplianceAtipicidadesDetectarPostData,
+  PostDetectarApiComplianceAtipicidadesDetectarPostErrors,
+  PostDetectarApiComplianceAtipicidadesDetectarPostResponses,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostErrors,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostData,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostErrors,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponses,
@@ -74,6 +87,9 @@ import type {
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostData,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostErrors,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostResponses,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostErrors,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses,
   ReadinessCheckHealthReadyGetData,
   ReadinessCheckHealthReadyGetResponses,
 } from './types.gen'
@@ -541,6 +557,175 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch = <
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/tomadores/{tomador_id}/autorizacao',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Documentos
+ */
+export const getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData, ThrowOnError>,
+): RequestResult<
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses,
+    GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/tomadores/{tomador_id}/documentos',
+    ...options,
+  })
+
+/**
+ * Post Documento
+ *
+ * Arquiva a evidência de identificação.
+ *
+ * `retencao_ate` é gravado agora, e não calculado na leitura: se o prazo
+ * legal mudar, os documentos já arquivados mantêm a regra vigente à época
+ * — que é o que se defende numa fiscalização.
+ */
+export const postDocumentoApiComplianceTomadoresTomadorIdDocumentosPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData, ThrowOnError>,
+): RequestResult<
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses,
+    PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/tomadores/{tomador_id}/documentos',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Post Verificar Documento
+ *
+ * Confere se um arquivo é bit a bit o que foi arquivado.
+ *
+ * É o que dá sentido a guardar só o hash: sem esta conferência, o hash
+ * seria um número sem uso.
+ */
+export const postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData,
+    ThrowOnError
+  >,
+): RequestResult<
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses,
+    PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/documentos/{documento_id}/verificar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Pendencias Identificacao
+ *
+ * Tomadores sem nenhuma evidência arquivada, com o capital exposto.
+ *
+ * Ordenado por exposição: é essa a lista que embasa a decisão de negócio
+ * sobre exigir identificação antes da ativação.
+ */
+export const getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<
+    GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
+    ThrowOnError
+  >,
+): RequestResult<
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses,
+  unknown,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/identificacao/pendencias',
+    ...options,
+  })
+
+/**
+ * Get Atipicidades
+ *
+ * Ocorrências detectadas, mais graves e mais recentes primeiro.
+ */
+export const getAtipicidadesApiComplianceAtipicidadesGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAtipicidadesApiComplianceAtipicidadesGetData, ThrowOnError>,
+): RequestResult<GetAtipicidadesApiComplianceAtipicidadesGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetAtipicidadesApiComplianceAtipicidadesGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/atipicidades',
+    ...options,
+  })
+
+/**
+ * Post Detectar
+ *
+ * Roda a varredura de atipicidade sobre os dados existentes.
+ *
+ * Idempotente: a constraint `ocorrencia_unica` faz uma segunda passada no
+ * mesmo dia não duplicar nada. Sem isso o painel viraria ruído e o
+ * analista pararia de olhar — que é o pior resultado possível para um
+ * controle de PLD.
+ */
+export const postDetectarApiComplianceAtipicidadesDetectarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostDetectarApiComplianceAtipicidadesDetectarPostData, ThrowOnError>,
+): RequestResult<
+  PostDetectarApiComplianceAtipicidadesDetectarPostResponses,
+  PostDetectarApiComplianceAtipicidadesDetectarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostDetectarApiComplianceAtipicidadesDetectarPostResponses,
+    PostDetectarApiComplianceAtipicidadesDetectarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/atipicidades/detectar',
     ...options,
     headers: {
       'Content-Type': 'application/json',

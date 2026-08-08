@@ -48,7 +48,21 @@ const ORIGEM_EVENTO: Record<string, string> = {
   sistema: 'Régua automática',
 }
 
+const REGRA_ATIPICIDADE: Record<string, string> = {
+  fracionamento: 'Fracionamento',
+  liquidacao_antecipada: 'Liquidação antecipada',
+  pagamento_em_excesso: 'Pagamento em excesso',
+}
+
+const SEVERIDADE: Record<string, string> = {
+  alta: 'Alta',
+  media: 'Média',
+  baixa: 'Baixa',
+}
+
 export const rotuloTipo = (v: string) => TIPO_OPERACAO[v] ?? v
+export const rotuloRegraAtipicidade = (v: string) => REGRA_ATIPICIDADE[v] ?? v
+export const rotuloSeveridade = (v: string) => SEVERIDADE[v] ?? v
 export const rotuloFaixaAging = (v: string) => FAIXA_AGING[v] ?? v
 export const rotuloOrigemEvento = (v: string) => ORIGEM_EVENTO[v] ?? v
 export const rotuloStatus = (v: string) => STATUS_OPERACAO[v] ?? v

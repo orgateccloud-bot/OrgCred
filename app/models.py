@@ -84,6 +84,53 @@ class OperacaoCredito(Base):
     tomador = relationship("Tomador", back_populates="operacoes")
 
 
+class TomadorDocumento(Base):
+    """Evidência de identificação arquivada (migration 010).
+
+    Guarda o HASH, não o arquivo: o binário vive no storage, e o que o banco
+    garante é que o documento apresentado depois é bit a bit o mesmo que foi
+    arquivado.
+
+    `retencao_ate` é materializada, não calculada na leitura — se o prazo
+    legal mudar, os documentos já arquivados mantêm a regra vigente à época,
+    que é o que se defende numa fiscalização. Apagar antes do prazo é
+    recusado pelo banco (OC013, Lei 9.613/98 art. 10, III).
+    """
+
+    __tablename__ = "tomador_documento"
+
+    id = Column(PG_UUID(as_uuid=True), primary_key=True)
+    tomador_id = Column(PG_UUID(as_uuid=True), ForeignKey("tomador.id"), nullable=False)
+    tipo = Column(String(30), nullable=False)
+    nome_arquivo = Column(String, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    arquivado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
+    retencao_ate = Column(Date, nullable=False)
+    usuario_id = Column(String(255), nullable=True)
+
+
+class OcorrenciaAtipicidade(Base):
+    """Atipicidade detectada internamente (migration 010).
+
+    Append-only exceto `comunicado_em`/`comunicacao_ref`, que são o
+    ADAPTADOR do canal externo: nada os preenche hoje, porque o regime
+    PLD/COAF de uma ESC depende de parecer jurídico. Quando sair, liga-se o
+    envio sem tocar na detecção, e o histórico já acumulado continua válido.
+    """
+
+    __tablename__ = "ocorrencia_atipicidade"
+
+    id = Column(PG_UUID(as_uuid=True), primary_key=True)
+    regra = Column(String(50), nullable=False)
+    severidade = Column(String(10), nullable=False)  # baixa, media, alta
+    tomador_id = Column(PG_UUID(as_uuid=True), ForeignKey("tomador.id"), nullable=True)
+    operacao_id = Column(PG_UUID(as_uuid=True), ForeignKey("operacao_credito.id"), nullable=True)
+    detalhe = Column(String, nullable=False)
+    comunicado_em = Column(DateTime, nullable=True)
+    comunicacao_ref = Column(String, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class MovimentoBancario(Base):
     """Linha de extrato bancário (migration 009).
 

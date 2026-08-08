@@ -5,15 +5,18 @@ import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanst
 import { client } from '../client.gen'
 import {
   getAgingApiCobrancaAgingGet,
+  getAtipicidadesApiComplianceAtipicidadesGet,
   getAuditoriaApiAuditoriaGet,
   getCapitalDisponivelApiCapitalDisponivelGet,
   getCapitalEventosApiCapitalEventosGet,
   getCapitalSnapshotApiCapitalSnapshotGet,
+  getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet,
   getMeApiMeGet,
   getMovimentosApiCobrancaMovimentosGet,
   getOperacaoApiOperacoesOperacaoIdGet,
   getOperacoesApiOperacoesGet,
   getParcelasApiOperacoesOperacaoIdParcelasGet,
+  getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet,
   getTomadorApiTomadoresTomadorIdGet,
   getTomadoresApiTomadoresGet,
   healthCheckHealthGet,
@@ -26,17 +29,22 @@ import {
   postCapitalEventoApiCapitalEventosPost,
   postCriarOperacaoApiOperacoesPost,
   postCriarTomadorApiTomadoresPost,
+  postDetectarApiComplianceAtipicidadesDetectarPost,
+  postDocumentoApiComplianceTomadoresTomadorIdDocumentosPost,
   postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPost,
   postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePost,
   postMovimentoApiCobrancaMovimentosPost,
   postProcessarAgingApiCobrancaAgingProcessarPost,
   postRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPost,
   postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost,
+  postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost,
   readinessCheckHealthReadyGet,
 } from '../sdk.gen'
 import type {
   GetAgingApiCobrancaAgingGetData,
   GetAgingApiCobrancaAgingGetResponse,
+  GetAtipicidadesApiComplianceAtipicidadesGetData,
+  GetAtipicidadesApiComplianceAtipicidadesGetResponse,
   GetAuditoriaApiAuditoriaGetData,
   GetAuditoriaApiAuditoriaGetResponse,
   GetCapitalDisponivelApiCapitalDisponivelGetData,
@@ -45,6 +53,9 @@ import type {
   GetCapitalEventosApiCapitalEventosGetResponse,
   GetCapitalSnapshotApiCapitalSnapshotGetData,
   GetCapitalSnapshotApiCapitalSnapshotGetResponse,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetError,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse,
   GetMeApiMeGetData,
   GetMeApiMeGetResponse,
   GetMovimentosApiCobrancaMovimentosGetData,
@@ -58,6 +69,8 @@ import type {
   GetParcelasApiOperacoesOperacaoIdParcelasGetData,
   GetParcelasApiOperacoesOperacaoIdParcelasGetError,
   GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponse,
   GetTomadorApiTomadoresTomadorIdGetData,
   GetTomadorApiTomadoresTomadorIdGetError,
   GetTomadorApiTomadoresTomadorIdGetResponse,
@@ -87,6 +100,12 @@ import type {
   PostCriarTomadorApiTomadoresPostData,
   PostCriarTomadorApiTomadoresPostError,
   PostCriarTomadorApiTomadoresPostResponse,
+  PostDetectarApiComplianceAtipicidadesDetectarPostData,
+  PostDetectarApiComplianceAtipicidadesDetectarPostError,
+  PostDetectarApiComplianceAtipicidadesDetectarPostResponse,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostError,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponse,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostData,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostError,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponse,
@@ -105,6 +124,9 @@ import type {
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostData,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostError,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostResponse,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostError,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponse,
   ReadinessCheckHealthReadyGetData,
 } from '../types.gen'
 
@@ -712,6 +734,198 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchMutation = (
   > = {
     mutationFn: async (fnOptions) => {
       const { data } = await patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getDocumentosApiComplianceTomadoresTomadorIdDocumentosGetQueryKey = (
+  options: Options<GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData>,
+) => createQueryKey('getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet', options)
+
+/**
+ * Get Documentos
+ */
+export const getDocumentosApiComplianceTomadoresTomadorIdDocumentosGetOptions = (
+  options: Options<GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData>,
+) =>
+  queryOptions<
+    GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse,
+    GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetError,
+    GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse,
+    ReturnType<typeof getDocumentosApiComplianceTomadoresTomadorIdDocumentosGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getDocumentosApiComplianceTomadoresTomadorIdDocumentosGetQueryKey(options),
+  })
+
+/**
+ * Post Documento
+ *
+ * Arquiva a evidência de identificação.
+ *
+ * `retencao_ate` é gravado agora, e não calculado na leitura: se o prazo
+ * legal mudar, os documentos já arquivados mantêm a regra vigente à época
+ * — que é o que se defende numa fiscalização.
+ */
+export const postDocumentoApiComplianceTomadoresTomadorIdDocumentosPostMutation = (
+  options?: Partial<Options<PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData>>,
+): UseMutationOptions<
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponse,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostError,
+  Options<PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponse,
+    PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostError,
+    Options<PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postDocumentoApiComplianceTomadoresTomadorIdDocumentosPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Verificar Documento
+ *
+ * Confere se um arquivo é bit a bit o que foi arquivado.
+ *
+ * É o que dá sentido a guardar só o hash: sem esta conferência, o hash
+ * seria um número sem uso.
+ */
+export const postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostMutation = (
+  options?: Partial<
+    Options<PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData>
+  >,
+): UseMutationOptions<
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponse,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostError,
+  Options<PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponse,
+    PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostError,
+    Options<PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetQueryKey = (
+  options?: Options<GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData>,
+) => createQueryKey('getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet', options)
+
+/**
+ * Get Pendencias Identificacao
+ *
+ * Tomadores sem nenhuma evidência arquivada, com o capital exposto.
+ *
+ * Ordenado por exposição: é essa a lista que embasa a decisão de negócio
+ * sobre exigir identificação antes da ativação.
+ */
+export const getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetOptions = (
+  options?: Options<GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData>,
+) =>
+  queryOptions<
+    GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponse,
+    DefaultError,
+    GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponse,
+    ReturnType<typeof getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetQueryKey(options),
+  })
+
+export const getAtipicidadesApiComplianceAtipicidadesGetQueryKey = (
+  options?: Options<GetAtipicidadesApiComplianceAtipicidadesGetData>,
+) => createQueryKey('getAtipicidadesApiComplianceAtipicidadesGet', options)
+
+/**
+ * Get Atipicidades
+ *
+ * Ocorrências detectadas, mais graves e mais recentes primeiro.
+ */
+export const getAtipicidadesApiComplianceAtipicidadesGetOptions = (
+  options?: Options<GetAtipicidadesApiComplianceAtipicidadesGetData>,
+) =>
+  queryOptions<
+    GetAtipicidadesApiComplianceAtipicidadesGetResponse,
+    DefaultError,
+    GetAtipicidadesApiComplianceAtipicidadesGetResponse,
+    ReturnType<typeof getAtipicidadesApiComplianceAtipicidadesGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getAtipicidadesApiComplianceAtipicidadesGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getAtipicidadesApiComplianceAtipicidadesGetQueryKey(options),
+  })
+
+/**
+ * Post Detectar
+ *
+ * Roda a varredura de atipicidade sobre os dados existentes.
+ *
+ * Idempotente: a constraint `ocorrencia_unica` faz uma segunda passada no
+ * mesmo dia não duplicar nada. Sem isso o painel viraria ruído e o
+ * analista pararia de olhar — que é o pior resultado possível para um
+ * controle de PLD.
+ */
+export const postDetectarApiComplianceAtipicidadesDetectarPostMutation = (
+  options?: Partial<Options<PostDetectarApiComplianceAtipicidadesDetectarPostData>>,
+): UseMutationOptions<
+  PostDetectarApiComplianceAtipicidadesDetectarPostResponse,
+  PostDetectarApiComplianceAtipicidadesDetectarPostError,
+  Options<PostDetectarApiComplianceAtipicidadesDetectarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostDetectarApiComplianceAtipicidadesDetectarPostResponse,
+    PostDetectarApiComplianceAtipicidadesDetectarPostError,
+    Options<PostDetectarApiComplianceAtipicidadesDetectarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postDetectarApiComplianceAtipicidadesDetectarPost({
         ...options,
         ...fnOptions,
         throwOnError: true,
