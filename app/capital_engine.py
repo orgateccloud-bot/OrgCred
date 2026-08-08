@@ -33,56 +33,18 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import (
-    BaixaInvalida,
-    MovimentoImutavel,
-    MunicipioNaoAutorizado,
-    NovacaoForaDaTransacaoAtomica,
-    OperacaoNaoEncontrada,
-    ParcelaImutavel,
-    ReducaoCapitalBloqueada,
-    RegistroEntidadeAusente,
-    TetoCapitalExcedido,
-    TransicaoInvalida,
-)
+from app.core.db_errors import extrair_sqlstate, traduzir_erro_banco
+from app.core.exceptions import BaixaInvalida, OperacaoNaoEncontrada
 from app.core.metrics import registrar_ativacao
 from app.models import EscCapitalSocial, OperacaoCredito
 
 
-_PGCODE_MAP = {
-    "OC001": TetoCapitalExcedido,
-    "OC002": MunicipioNaoAutorizado,
-    "OC003": TransicaoInvalida,
-    "OC004": RegistroEntidadeAusente,
-    "OC005": ReducaoCapitalBloqueada,
-    "OC008": NovacaoForaDaTransacaoAtomica,
-    "OC009": ParcelaImutavel,
-    "OC011": BaixaInvalida,
-    "OC012": MovimentoImutavel,
-}
-
-
-def _extrair_sqlstate(exc: DBAPIError) -> Optional[str]:
-    """
-    Extrai o código SQLSTATE da exceção original do driver.
-
-    psycopg3 (psycopg, o driver em uso — ver pyproject.toml) expõe o código
-    via `.sqlstate`; psycopg2 expunha via `.pgcode`. Checa ambos para não
-    quebrar silenciosamente se o driver mudar de novo — um bug real desta
-    natureza (só `.pgcode`) já vazou para produção quando o projeto migrou
-    de psycopg2 para psycopg3 sem atualizar este ponto.
-    """
-    orig = getattr(exc, "orig", None)
-    return getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
-
-
-def _traduz_erro_banco(exc: DBAPIError) -> Exception:
-    sqlstate = _extrair_sqlstate(exc)
-    exc_cls = _PGCODE_MAP.get(sqlstate) if sqlstate else None
-    msg = str(getattr(exc, "orig", exc)).splitlines()[0]
-    if exc_cls:
-        return exc_cls(msg)
-    return exc
+# Tradução SQLSTATE -> exceção vive em app/core/db_errors.py desde que
+# cobrança e fiscal passaram a precisar dela. Os aliases privados ficam para
+# não reescrever as ~8 chamadas internas, e porque o docstring de conftest.py
+# referencia este nome.
+_extrair_sqlstate = extrair_sqlstate
+_traduz_erro_banco = traduzir_erro_banco
 
 
 def consultar_capital_disponivel(db: Session) -> Decimal:

@@ -5,6 +5,7 @@ import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanst
 import { client } from '../client.gen'
 import {
   getAgingApiCobrancaAgingGet,
+  getApuracoesApiFiscalApuracoesGet,
   getAtipicidadesApiComplianceAtipicidadesGet,
   getAuditoriaApiAuditoriaGet,
   getCapitalDisponivelApiCapitalDisponivelGet,
@@ -15,6 +16,8 @@ import {
   getMovimentosApiCobrancaMovimentosGet,
   getOperacaoApiOperacoesOperacaoIdGet,
   getOperacoesApiOperacoesGet,
+  getParametrosApiFiscalParametrosGet,
+  getParametroVigenteApiFiscalParametrosVigenteGet,
   getParcelasApiOperacoesOperacaoIdParcelasGet,
   getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet,
   getTomadorApiTomadoresTomadorIdGet,
@@ -23,6 +26,7 @@ import {
   metricsMetricsGet,
   type Options,
   patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch,
+  postApurarApiFiscalApuracoesPost,
   postAtivarOperacaoApiOperacoesOperacaoIdAtivarPost,
   postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPost,
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPost,
@@ -34,6 +38,7 @@ import {
   postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPost,
   postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePost,
   postMovimentoApiCobrancaMovimentosPost,
+  postParametroApiFiscalParametrosPost,
   postProcessarAgingApiCobrancaAgingProcessarPost,
   postRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPost,
   postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost,
@@ -43,6 +48,8 @@ import {
 import type {
   GetAgingApiCobrancaAgingGetData,
   GetAgingApiCobrancaAgingGetResponse,
+  GetApuracoesApiFiscalApuracoesGetData,
+  GetApuracoesApiFiscalApuracoesGetResponse,
   GetAtipicidadesApiComplianceAtipicidadesGetData,
   GetAtipicidadesApiComplianceAtipicidadesGetResponse,
   GetAuditoriaApiAuditoriaGetData,
@@ -66,6 +73,10 @@ import type {
   GetOperacaoApiOperacoesOperacaoIdGetResponse,
   GetOperacoesApiOperacoesGetData,
   GetOperacoesApiOperacoesGetResponse,
+  GetParametrosApiFiscalParametrosGetData,
+  GetParametrosApiFiscalParametrosGetResponse,
+  GetParametroVigenteApiFiscalParametrosVigenteGetData,
+  GetParametroVigenteApiFiscalParametrosVigenteGetResponse,
   GetParcelasApiOperacoesOperacaoIdParcelasGetData,
   GetParcelasApiOperacoesOperacaoIdParcelasGetError,
   GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
@@ -82,6 +93,9 @@ import type {
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchData,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchError,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponse,
+  PostApurarApiFiscalApuracoesPostData,
+  PostApurarApiFiscalApuracoesPostError,
+  PostApurarApiFiscalApuracoesPostResponse,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostError,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponse,
@@ -115,6 +129,9 @@ import type {
   PostMovimentoApiCobrancaMovimentosPostData,
   PostMovimentoApiCobrancaMovimentosPostError,
   PostMovimentoApiCobrancaMovimentosPostResponse,
+  PostParametroApiFiscalParametrosPostData,
+  PostParametroApiFiscalParametrosPostError,
+  PostParametroApiFiscalParametrosPostResponse,
   PostProcessarAgingApiCobrancaAgingProcessarPostData,
   PostProcessarAgingApiCobrancaAgingProcessarPostError,
   PostProcessarAgingApiCobrancaAgingProcessarPostResponse,
@@ -734,6 +751,167 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchMutation = (
   > = {
     mutationFn: async (fnOptions) => {
       const { data } = await patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getParametrosApiFiscalParametrosGetQueryKey = (
+  options?: Options<GetParametrosApiFiscalParametrosGetData>,
+) => createQueryKey('getParametrosApiFiscalParametrosGet', options)
+
+/**
+ * Get Parametros
+ *
+ * Histórico de parâmetros, vigência mais recente primeiro.
+ */
+export const getParametrosApiFiscalParametrosGetOptions = (
+  options?: Options<GetParametrosApiFiscalParametrosGetData>,
+) =>
+  queryOptions<
+    GetParametrosApiFiscalParametrosGetResponse,
+    DefaultError,
+    GetParametrosApiFiscalParametrosGetResponse,
+    ReturnType<typeof getParametrosApiFiscalParametrosGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getParametrosApiFiscalParametrosGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getParametrosApiFiscalParametrosGetQueryKey(options),
+  })
+
+/**
+ * Post Parametro
+ *
+ * Registra um conjunto de parâmetros com data de vigência.
+ *
+ * Vigência, e não edição de um registro único: alíquota muda por lei, e
+ * uma apuração de 2026 tem que continuar reproduzível com os números de
+ * 2026.
+ */
+export const postParametroApiFiscalParametrosPostMutation = (
+  options?: Partial<Options<PostParametroApiFiscalParametrosPostData>>,
+): UseMutationOptions<
+  PostParametroApiFiscalParametrosPostResponse,
+  PostParametroApiFiscalParametrosPostError,
+  Options<PostParametroApiFiscalParametrosPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostParametroApiFiscalParametrosPostResponse,
+    PostParametroApiFiscalParametrosPostError,
+    Options<PostParametroApiFiscalParametrosPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postParametroApiFiscalParametrosPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getParametroVigenteApiFiscalParametrosVigenteGetQueryKey = (
+  options?: Options<GetParametroVigenteApiFiscalParametrosVigenteGetData>,
+) => createQueryKey('getParametroVigenteApiFiscalParametrosVigenteGet', options)
+
+/**
+ * Get Parametro Vigente
+ *
+ * Devolve `null` quando nada foi configurado — a tela precisa
+ * distinguir 'não configurado' de 'erro ao carregar'.
+ */
+export const getParametroVigenteApiFiscalParametrosVigenteGetOptions = (
+  options?: Options<GetParametroVigenteApiFiscalParametrosVigenteGetData>,
+) =>
+  queryOptions<
+    GetParametroVigenteApiFiscalParametrosVigenteGetResponse,
+    DefaultError,
+    GetParametroVigenteApiFiscalParametrosVigenteGetResponse,
+    ReturnType<typeof getParametroVigenteApiFiscalParametrosVigenteGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getParametroVigenteApiFiscalParametrosVigenteGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getParametroVigenteApiFiscalParametrosVigenteGetQueryKey(options),
+  })
+
+export const getApuracoesApiFiscalApuracoesGetQueryKey = (
+  options?: Options<GetApuracoesApiFiscalApuracoesGetData>,
+) => createQueryKey('getApuracoesApiFiscalApuracoesGet', options)
+
+/**
+ * Get Apuracoes
+ *
+ * Última versão de cada trimestre — retificações substituem na tela,
+ * sem apagar o histórico no banco.
+ */
+export const getApuracoesApiFiscalApuracoesGetOptions = (
+  options?: Options<GetApuracoesApiFiscalApuracoesGetData>,
+) =>
+  queryOptions<
+    GetApuracoesApiFiscalApuracoesGetResponse,
+    DefaultError,
+    GetApuracoesApiFiscalApuracoesGetResponse,
+    ReturnType<typeof getApuracoesApiFiscalApuracoesGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getApuracoesApiFiscalApuracoesGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getApuracoesApiFiscalApuracoesGetQueryKey(options),
+  })
+
+/**
+ * Post Apurar
+ *
+ * Apura o trimestre com os parâmetros vigentes.
+ *
+ * A base é a RECEITA DE JUROS, tirada da agenda de parcelas — nunca a
+ * amortização, que é devolução de principal e não resultado.
+ *
+ * Reapurar o mesmo trimestre grava uma nova VERSÃO em vez de sobrescrever:
+ * retificação existe no mundo real, e editar a original apagaria o que já
+ * foi declarado.
+ */
+export const postApurarApiFiscalApuracoesPostMutation = (
+  options?: Partial<Options<PostApurarApiFiscalApuracoesPostData>>,
+): UseMutationOptions<
+  PostApurarApiFiscalApuracoesPostResponse,
+  PostApurarApiFiscalApuracoesPostError,
+  Options<PostApurarApiFiscalApuracoesPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostApurarApiFiscalApuracoesPostResponse,
+    PostApurarApiFiscalApuracoesPostError,
+    Options<PostApurarApiFiscalApuracoesPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postApurarApiFiscalApuracoesPost({
         ...options,
         ...fnOptions,
         throwOnError: true,

@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DefinirSenhaRouteImport } from './routes/definir-senha'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedFiscalRouteImport } from './routes/_authenticated/fiscal'
 import { Route as AuthenticatedComplianceRouteImport } from './routes/_authenticated/compliance'
 import { Route as AuthenticatedCobrancaRouteImport } from './routes/_authenticated/cobranca'
 import { Route as AuthenticatedCapitalRouteImport } from './routes/_authenticated/capital'
@@ -40,6 +41,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedFiscalRoute = AuthenticatedFiscalRouteImport.update({
+  id: '/fiscal',
+  path: '/fiscal',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedComplianceRoute = AuthenticatedComplianceRouteImport.update({
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/capital': typeof AuthenticatedCapitalRoute
   '/cobranca': typeof AuthenticatedCobrancaRoute
   '/compliance': typeof AuthenticatedComplianceRoute
+  '/fiscal': typeof AuthenticatedFiscalRoute
   '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
   '/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
   '/tomadores/$id': typeof AuthenticatedTomadoresIdRoute
@@ -114,6 +121,7 @@ export interface FileRoutesByTo {
   '/capital': typeof AuthenticatedCapitalRoute
   '/cobranca': typeof AuthenticatedCobrancaRoute
   '/compliance': typeof AuthenticatedComplianceRoute
+  '/fiscal': typeof AuthenticatedFiscalRoute
   '/': typeof AuthenticatedIndexRoute
   '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
   '/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
@@ -130,6 +138,7 @@ export interface FileRoutesById {
   '/_authenticated/capital': typeof AuthenticatedCapitalRoute
   '/_authenticated/cobranca': typeof AuthenticatedCobrancaRoute
   '/_authenticated/compliance': typeof AuthenticatedComplianceRoute
+  '/_authenticated/fiscal': typeof AuthenticatedFiscalRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
   '/_authenticated/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
@@ -147,6 +156,7 @@ export interface FileRouteTypes {
     | '/capital'
     | '/cobranca'
     | '/compliance'
+    | '/fiscal'
     | '/operacoes/$id'
     | '/operacoes/nova'
     | '/tomadores/$id'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
     | '/capital'
     | '/cobranca'
     | '/compliance'
+    | '/fiscal'
     | '/'
     | '/operacoes/$id'
     | '/operacoes/nova'
@@ -175,6 +186,7 @@ export interface FileRouteTypes {
     | '/_authenticated/capital'
     | '/_authenticated/cobranca'
     | '/_authenticated/compliance'
+    | '/_authenticated/fiscal'
     | '/_authenticated/'
     | '/_authenticated/operacoes/$id'
     | '/_authenticated/operacoes/nova'
@@ -217,6 +229,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/fiscal': {
+      id: '/_authenticated/fiscal'
+      path: '/fiscal'
+      fullPath: '/fiscal'
+      preLoaderRoute: typeof AuthenticatedFiscalRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/compliance': {
@@ -290,6 +309,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCapitalRoute: typeof AuthenticatedCapitalRoute
   AuthenticatedCobrancaRoute: typeof AuthenticatedCobrancaRoute
   AuthenticatedComplianceRoute: typeof AuthenticatedComplianceRoute
+  AuthenticatedFiscalRoute: typeof AuthenticatedFiscalRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedOperacoesIdRoute: typeof AuthenticatedOperacoesIdRoute
   AuthenticatedOperacoesNovaRoute: typeof AuthenticatedOperacoesNovaRoute
@@ -303,6 +323,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCapitalRoute: AuthenticatedCapitalRoute,
   AuthenticatedCobrancaRoute: AuthenticatedCobrancaRoute,
   AuthenticatedComplianceRoute: AuthenticatedComplianceRoute,
+  AuthenticatedFiscalRoute: AuthenticatedFiscalRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedOperacoesIdRoute: AuthenticatedOperacoesIdRoute,
   AuthenticatedOperacoesNovaRoute: AuthenticatedOperacoesNovaRoute,

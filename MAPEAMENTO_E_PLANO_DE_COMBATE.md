@@ -7,8 +7,8 @@
 >
 > **Revisado em 2026-08-08**, após a execução das Frentes 2, 3 e da parte
 > construível da Frente 4. Os números de scorecard abaixo foram
-> remedidos, não estimados: 158 testes backend, cobertura total 90%,
-> 50 Vitest, 5 E2E. A Frente 1 segue integralmente aberta — e continua
+> remedidos, não estimados: 176 testes backend, cobertura total 91%,
+> 50 Vitest, 5 E2E, 11 migrations. A Frente 1 segue integralmente aberta — e continua
 > sendo o que separa este sistema de ser usado.
 
 ---
@@ -29,7 +29,7 @@ foi construído nas Frentes 2, 3 e 4 está em `main` e em nenhum servidor.
 
 ## 2. Mapa de módulos
 
-### 2.1 Backend — 2.871 linhas, 31 endpoints, 9 routers, 10 migrations
+### 2.1 Backend — 3.3k linhas, 39 endpoints, 9 routers, 11 migrations
 
 > Contagens remedidas em 2026-08-08. As tabelas desta seção descrevem o
 > levantamento original de 2026-07-31; o estado atual de cada módulo está
@@ -73,9 +73,9 @@ append-only.
 | **App shell** | `_authenticated.tsx`, `app-sidebar`, `command-palette` | 389 |
 | **Design system** | `components/ui/*` (18 componentes) + `index.css` | ~2.700 |
 
-### 2.3 Testes — 158 backend + 50 Vitest + 5 E2E
+### 2.3 Testes — 176 backend + 50 Vitest + 5 E2E
 
-> Eram 52 + 32 + 1 em 2026-07-31. Cobertura backend total: 90%.
+> Eram 52 + 32 + 1 em 2026-07-31. Cobertura backend total: 91%.
 
 | Suíte | Testes | Onde concentra | Onde **não** cobre |
 |---|---:|---|---|
@@ -105,15 +105,15 @@ Escala: 🟢 sólido · 🟡 funcional com lacuna · 🔴 crítico/ausente
 | 12 | CI/CD | 🟡 | — | 🔴 | **4,0** | CircleCI configurado, mas **nunca executou** — aguarda autorização do GitHub App |
 | 13 | **Cobrança** | 🟢 | 🟢 | 🔴 | **8,5** | Agenda PRICE/SAC imutável, novação atômica, aging com trilha de autoria, baixa com lastro bancário; 100% cobertura |
 | 14 | **Contratos** | 🔴 | 🔴 | 🔴 | **0,5** | Stub. Bloqueado: entidade registradora não escolhida |
-| 15 | **Fiscal** | 🔴 | 🔴 | 🔴 | **0,5** | Stub. Bloqueado: parecer de IOF |
+| 15 | **Fiscal** | 🟡 | 🟢 | 🔴 | **5,5** | Apuração IRPJ/CSLL/PIS/COFINS no Lucro Presumido pronta e 100% coberta, alíquotas em configuração; **IOF segue bloqueado em parecer** |
 | 16 | **Compliance** | 🟡 | 🟢 | 🔴 | **6,0** | Identificação com evidência, retenção de 5 anos e detecção de atipicidade prontas e 100% cobertas; **canal COAF é adaptador desligado** |
 
-**Média ponderada por criticidade: 6,9/10** (era 5,4).
-Núcleo (1–8): **7,9** (era 7,5). Periferia regulatória (13–16): **3,9** (era 0,6).
+**Média ponderada por criticidade: 7,2/10** (era 5,4).
+Núcleo (1–8): **7,9** (era 7,5). Periferia regulatória (13–16): **5,1** (era 0,6).
 
-O salto da periferia vem quase todo de Cobrança e Compliance — os dois
-módulos que **não dependiam de terceiro**. Contratos e Fiscal continuam em
-0,5 porque nenhuma linha de código os desbloqueia.
+O salto da periferia vem de Cobrança, Compliance e Fiscal — tudo que **não
+dependia de terceiro**. Só **Contratos** continua em 0,5: nenhuma linha de
+código o desbloqueia enquanto a entidade registradora não for escolhida.
 
 ---
 
@@ -211,13 +211,28 @@ dela, e só a baixa **com lastro bancário** tira a parcela do atraso.
 | Detecção interna de atipicidade: fracionamento, liquidação antecipada, pagamento em excesso | ✅ |
 | Canal externo COAF | 🔌 adaptador pronto e **desligado** |
 
+**Fiscal — apuração da receita da ESC construída** (migration 011):
+
+| Item | Estado |
+|---|---|
+| Regime Lucro Presumido, apuração trimestral | ✅ decidido pelo dono do negócio |
+| IRPJ, adicional, CSLL, PIS e COFINS sobre a receita de JUROS | ✅ |
+| Presunção, alíquotas e limite do adicional em configuração, com vigência | ✅ nada semeado no código |
+| Retificação por versão (a apuração original nunca é editada) | ✅ |
+| IOF-crédito | 🔴 bloqueado em parecer |
+
+A base é só o juro — a amortização devolve principal e não é resultado. Sem
+parâmetro configurado, apurar é **recusado** (OC015) em vez de devolver um
+número plausível calculado com alíquota escolhida pelo sistema.
+
 **Continua bloqueado em ação externa:**
 
 | Módulo | Ação necessária | Quem |
 |---|---|---|
 | Contratos | Contato comercial: CRDC, SPC Grafeno (via ABRAFESC), CERC, B3 | você — formulários já mapeados |
-| Fiscal | Parecer jurídico-tributário sobre IOF em ESC | contador/advogado |
-| Compliance | Confirmação do regime PLD/COAF para ESC | advogado |
+| Fiscal (só o IOF) | Parecer jurídico-tributário sobre IOF em ESC | contador/advogado |
+| Compliance (só o canal) | Confirmação do regime PLD/COAF para ESC | advogado |
+| Fiscal (para usar) | Preencher presunção e alíquotas na tela | contador |
 
 **Uma decisão de negócio pendente, agora com o número na mão:** exigir
 identificação arquivada antes de ativar uma operação. A amarra não foi
@@ -232,7 +247,7 @@ quanto capital está exposto a tomadores sem identificação.
 ```
 Frente 2 (testes)    ─── ✅ concluída
 Frente 3 (cobrança)  ─── ✅ concluída
-Frente 4 (construível) ─ ✅ concluída · resto aguarda decisão externa
+Frente 4 (construível) ─ ✅ concluída — compliance E fiscal
 Frente 1 (operável)  ─── 🔴 ABERTA — e agora é a ÚNICA coisa que importa
 ```
 
@@ -248,3 +263,5 @@ possível foi feito; o que resta é integralmente decisão ou credencial:
 4. **Autorizar o CircleCI** no GitHub.
 5. **Decidir** se identificação arquivada passa a ser pré-requisito de
    ativação (ver Frente 4).
+6. **Contador preenche** presunção e alíquotas na tela Fiscal — sem isso a
+   apuração recusa, de propósito.

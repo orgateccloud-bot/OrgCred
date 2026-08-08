@@ -46,6 +46,7 @@ MIGRATIONS = [
     "008_aging_inadimplencia",
     "009_baixa_de_recebimento",
     "010_compliance_interno",
+    "011_apuracao_fiscal",
 ]
 
 

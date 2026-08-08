@@ -122,6 +122,82 @@ export type AgingResumoOut = {
 }
 
 /**
+ * ApuracaoOut
+ */
+export type ApuracaoOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Ano
+   */
+  ano: number
+  /**
+   * Trimestre
+   */
+  trimestre: number
+  /**
+   * Versao
+   */
+  versao: number
+  /**
+   * Receita Juros
+   */
+  receita_juros: string
+  /**
+   * Base Irpj
+   */
+  base_irpj: string
+  /**
+   * Irpj
+   */
+  irpj: string
+  /**
+   * Adicional Irpj
+   */
+  adicional_irpj: string
+  /**
+   * Base Csll
+   */
+  base_csll: string
+  /**
+   * Csll
+   */
+  csll: string
+  /**
+   * Pis
+   */
+  pis: string
+  /**
+   * Cofins
+   */
+  cofins: string
+  /**
+   * Total Tributos
+   */
+  total_tributos: string
+  /**
+   * Regime Reconhecimento
+   */
+  regime_reconhecimento: string
+}
+
+/**
+ * ApurarIn
+ */
+export type ApurarIn = {
+  /**
+   * Ano
+   */
+  ano: number
+  /**
+   * Trimestre
+   */
+  trimestre: number
+}
+
+/**
  * ArquivarDocumentoIn
  *
  * O conteúdo vem em base64 apenas para que o HASH seja calculado aqui.
@@ -758,6 +834,116 @@ export type OperacaoStatusOut = {
    * Status
    */
   status: string
+}
+
+/**
+ * ParametroFiscalIn
+ *
+ * Percentuais em fração (0,32 = 32%), não em pontos percentuais.
+ *
+ * Escolha deliberada: aceitar "32" e "0,32" na mesma API é como se
+ * escreve um erro de duas ordens de grandeza numa base tributária. A
+ * validação `le=1` recusa o formato errado em vez de calcular com ele.
+ */
+export type ParametroFiscalIn = {
+  /**
+   * Vigencia Inicio
+   */
+  vigencia_inicio: string
+  /**
+   * Percentual Presuncao Irpj
+   */
+  percentual_presuncao_irpj: number | string
+  /**
+   * Percentual Presuncao Csll
+   */
+  percentual_presuncao_csll: number | string
+  /**
+   * Aliquota Irpj
+   */
+  aliquota_irpj: number | string
+  /**
+   * Aliquota Csll
+   */
+  aliquota_csll: number | string
+  /**
+   * Adicional Irpj Aliquota
+   */
+  adicional_irpj_aliquota: number | string
+  /**
+   * Adicional Irpj Limite
+   */
+  adicional_irpj_limite: number | string
+  /**
+   * Aliquota Pis
+   */
+  aliquota_pis: number | string
+  /**
+   * Aliquota Cofins
+   */
+  aliquota_cofins: number | string
+  /**
+   * Regime Reconhecimento
+   */
+  regime_reconhecimento: 'caixa' | 'competencia'
+  /**
+   * Observacao
+   */
+  observacao?: string | null
+}
+
+/**
+ * ParametroFiscalOut
+ */
+export type ParametroFiscalOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Vigencia Inicio
+   */
+  vigencia_inicio: string
+  /**
+   * Percentual Presuncao Irpj
+   */
+  percentual_presuncao_irpj: string
+  /**
+   * Percentual Presuncao Csll
+   */
+  percentual_presuncao_csll: string
+  /**
+   * Aliquota Irpj
+   */
+  aliquota_irpj: string
+  /**
+   * Aliquota Csll
+   */
+  aliquota_csll: string
+  /**
+   * Adicional Irpj Aliquota
+   */
+  adicional_irpj_aliquota: string
+  /**
+   * Adicional Irpj Limite
+   */
+  adicional_irpj_limite: string
+  /**
+   * Aliquota Pis
+   */
+  aliquota_pis: string
+  /**
+   * Aliquota Cofins
+   */
+  aliquota_cofins: string
+  /**
+   * Regime Reconhecimento
+   */
+  regime_reconhecimento: string
+  /**
+   * Observacao
+   */
+  observacao: string | null
 }
 
 /**
@@ -1565,6 +1751,117 @@ export type PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses = {
 
 export type PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponse =
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses[keyof PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses]
+
+export type GetParametrosApiFiscalParametrosGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/fiscal/parametros'
+}
+
+export type GetParametrosApiFiscalParametrosGetResponses = {
+  /**
+   * Response Get Parametros Api Fiscal Parametros Get
+   *
+   * Successful Response
+   */
+  200: Array<ParametroFiscalOut>
+}
+
+export type GetParametrosApiFiscalParametrosGetResponse =
+  GetParametrosApiFiscalParametrosGetResponses[keyof GetParametrosApiFiscalParametrosGetResponses]
+
+export type PostParametroApiFiscalParametrosPostData = {
+  body: ParametroFiscalIn
+  path?: never
+  query?: never
+  url: '/api/fiscal/parametros'
+}
+
+export type PostParametroApiFiscalParametrosPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostParametroApiFiscalParametrosPostError =
+  PostParametroApiFiscalParametrosPostErrors[keyof PostParametroApiFiscalParametrosPostErrors]
+
+export type PostParametroApiFiscalParametrosPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: ParametroFiscalOut
+}
+
+export type PostParametroApiFiscalParametrosPostResponse =
+  PostParametroApiFiscalParametrosPostResponses[keyof PostParametroApiFiscalParametrosPostResponses]
+
+export type GetParametroVigenteApiFiscalParametrosVigenteGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/fiscal/parametros/vigente'
+}
+
+export type GetParametroVigenteApiFiscalParametrosVigenteGetResponses = {
+  /**
+   * Response Get Parametro Vigente Api Fiscal Parametros Vigente Get
+   *
+   * Successful Response
+   */
+  200: ParametroFiscalOut | null
+}
+
+export type GetParametroVigenteApiFiscalParametrosVigenteGetResponse =
+  GetParametroVigenteApiFiscalParametrosVigenteGetResponses[keyof GetParametroVigenteApiFiscalParametrosVigenteGetResponses]
+
+export type GetApuracoesApiFiscalApuracoesGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/fiscal/apuracoes'
+}
+
+export type GetApuracoesApiFiscalApuracoesGetResponses = {
+  /**
+   * Response Get Apuracoes Api Fiscal Apuracoes Get
+   *
+   * Successful Response
+   */
+  200: Array<ApuracaoOut>
+}
+
+export type GetApuracoesApiFiscalApuracoesGetResponse =
+  GetApuracoesApiFiscalApuracoesGetResponses[keyof GetApuracoesApiFiscalApuracoesGetResponses]
+
+export type PostApurarApiFiscalApuracoesPostData = {
+  body: ApurarIn
+  path?: never
+  query?: never
+  url: '/api/fiscal/apuracoes'
+}
+
+export type PostApurarApiFiscalApuracoesPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostApurarApiFiscalApuracoesPostError =
+  PostApurarApiFiscalApuracoesPostErrors[keyof PostApurarApiFiscalApuracoesPostErrors]
+
+export type PostApurarApiFiscalApuracoesPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: ApuracaoOut
+}
+
+export type PostApurarApiFiscalApuracoesPostResponse =
+  PostApurarApiFiscalApuracoesPostResponses[keyof PostApurarApiFiscalApuracoesPostResponses]
 
 export type GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData = {
   body?: never

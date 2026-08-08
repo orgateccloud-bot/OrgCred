@@ -36,6 +36,7 @@ const ROTULOS: Array<{ prefixo: string; rotulo: string }> = [
   { prefixo: '/auditoria', rotulo: 'Auditoria' },
   { prefixo: '/cobranca', rotulo: 'Cobrança' },
   { prefixo: '/compliance', rotulo: 'Compliance' },
+  { prefixo: '/fiscal', rotulo: 'Fiscal' },
   { prefixo: '/operacoes', rotulo: 'Operações' },
   { prefixo: '/', rotulo: 'Dashboard' },
 ]

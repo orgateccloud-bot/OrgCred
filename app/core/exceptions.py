@@ -97,6 +97,25 @@ class MovimentoImutavel(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC012", http_status=422)
 
 
+class ApuracaoSemParametro(RegraNegocioViolada):
+    """OC015: apuração fiscal sem parâmetro vigente.
+
+    Percentuais de presunção e alíquotas são matéria tributária — sem eles,
+    recusar é a única resposta honesta. Calcular com um padrão embutido no
+    código produziria um valor plausível e errado, que é pior do que erro.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC015", http_status=422)
+
+
+class ApuracaoImutavel(RegraNegocioViolada):
+    """OC016: apuração fiscal não se edita — retificação cria nova versão."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC016", http_status=422)
+
+
 class OperacaoNaoEncontrada(Exception):
     """Operação não existe."""
 

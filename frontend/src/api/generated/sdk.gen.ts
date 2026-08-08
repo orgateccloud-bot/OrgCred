@@ -5,6 +5,8 @@ import { client } from './client.gen'
 import type {
   GetAgingApiCobrancaAgingGetData,
   GetAgingApiCobrancaAgingGetResponses,
+  GetApuracoesApiFiscalApuracoesGetData,
+  GetApuracoesApiFiscalApuracoesGetResponses,
   GetAtipicidadesApiComplianceAtipicidadesGetData,
   GetAtipicidadesApiComplianceAtipicidadesGetResponses,
   GetAuditoriaApiAuditoriaGetData,
@@ -28,6 +30,10 @@ import type {
   GetOperacaoApiOperacoesOperacaoIdGetResponses,
   GetOperacoesApiOperacoesGetData,
   GetOperacoesApiOperacoesGetResponses,
+  GetParametrosApiFiscalParametrosGetData,
+  GetParametrosApiFiscalParametrosGetResponses,
+  GetParametroVigenteApiFiscalParametrosVigenteGetData,
+  GetParametroVigenteApiFiscalParametrosVigenteGetResponses,
   GetParcelasApiOperacoesOperacaoIdParcelasGetData,
   GetParcelasApiOperacoesOperacaoIdParcelasGetErrors,
   GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
@@ -45,6 +51,9 @@ import type {
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchData,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchErrors,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses,
+  PostApurarApiFiscalApuracoesPostData,
+  PostApurarApiFiscalApuracoesPostErrors,
+  PostApurarApiFiscalApuracoesPostResponses,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostErrors,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponses,
@@ -78,6 +87,9 @@ import type {
   PostMovimentoApiCobrancaMovimentosPostData,
   PostMovimentoApiCobrancaMovimentosPostErrors,
   PostMovimentoApiCobrancaMovimentosPostResponses,
+  PostParametroApiFiscalParametrosPostData,
+  PostParametroApiFiscalParametrosPostErrors,
+  PostParametroApiFiscalParametrosPostResponses,
   PostProcessarAgingApiCobrancaAgingProcessarPostData,
   PostProcessarAgingApiCobrancaAgingProcessarPostErrors,
   PostProcessarAgingApiCobrancaAgingProcessarPostResponses,
@@ -557,6 +569,131 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch = <
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/tomadores/{tomador_id}/autorizacao',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Parametros
+ *
+ * Histórico de parâmetros, vigência mais recente primeiro.
+ */
+export const getParametrosApiFiscalParametrosGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetParametrosApiFiscalParametrosGetData, ThrowOnError>,
+): RequestResult<GetParametrosApiFiscalParametrosGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetParametrosApiFiscalParametrosGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/parametros',
+    ...options,
+  })
+
+/**
+ * Post Parametro
+ *
+ * Registra um conjunto de parâmetros com data de vigência.
+ *
+ * Vigência, e não edição de um registro único: alíquota muda por lei, e
+ * uma apuração de 2026 tem que continuar reproduzível com os números de
+ * 2026.
+ */
+export const postParametroApiFiscalParametrosPost = <ThrowOnError extends boolean = false>(
+  options: Options<PostParametroApiFiscalParametrosPostData, ThrowOnError>,
+): RequestResult<
+  PostParametroApiFiscalParametrosPostResponses,
+  PostParametroApiFiscalParametrosPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostParametroApiFiscalParametrosPostResponses,
+    PostParametroApiFiscalParametrosPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/parametros',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Parametro Vigente
+ *
+ * Devolve `null` quando nada foi configurado — a tela precisa
+ * distinguir 'não configurado' de 'erro ao carregar'.
+ */
+export const getParametroVigenteApiFiscalParametrosVigenteGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<GetParametroVigenteApiFiscalParametrosVigenteGetData, ThrowOnError>,
+): RequestResult<
+  GetParametroVigenteApiFiscalParametrosVigenteGetResponses,
+  unknown,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    GetParametroVigenteApiFiscalParametrosVigenteGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/parametros/vigente',
+    ...options,
+  })
+
+/**
+ * Get Apuracoes
+ *
+ * Última versão de cada trimestre — retificações substituem na tela,
+ * sem apagar o histórico no banco.
+ */
+export const getApuracoesApiFiscalApuracoesGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetApuracoesApiFiscalApuracoesGetData, ThrowOnError>,
+): RequestResult<GetApuracoesApiFiscalApuracoesGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetApuracoesApiFiscalApuracoesGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/apuracoes',
+    ...options,
+  })
+
+/**
+ * Post Apurar
+ *
+ * Apura o trimestre com os parâmetros vigentes.
+ *
+ * A base é a RECEITA DE JUROS, tirada da agenda de parcelas — nunca a
+ * amortização, que é devolução de principal e não resultado.
+ *
+ * Reapurar o mesmo trimestre grava uma nova VERSÃO em vez de sobrescrever:
+ * retificação existe no mundo real, e editar a original apagaria o que já
+ * foi declarado.
+ */
+export const postApurarApiFiscalApuracoesPost = <ThrowOnError extends boolean = false>(
+  options: Options<PostApurarApiFiscalApuracoesPostData, ThrowOnError>,
+): RequestResult<
+  PostApurarApiFiscalApuracoesPostResponses,
+  PostApurarApiFiscalApuracoesPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostApurarApiFiscalApuracoesPostResponses,
+    PostApurarApiFiscalApuracoesPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/apuracoes',
     ...options,
     headers: {
       'Content-Type': 'application/json',
