@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getParcelasApiOperacoesOperacaoIdParcelasGetOptions } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
+import { BaixarParcelaDialog } from '@/components/baixar-parcela-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -24,7 +25,13 @@ import {
  * tela refizesse a conta, bastaria um `toFixed` diferente para mostrar um
  * total que não é o que se cobra.
  */
-export function AgendaParcelas({ operacaoId }: { operacaoId: string }) {
+export function AgendaParcelas({
+  operacaoId,
+  onBaixa,
+}: {
+  operacaoId: string
+  onBaixa: () => void
+}) {
   const { data, error, isPending } = useQuery(
     getParcelasApiOperacoesOperacaoIdParcelasGetOptions({ path: { operacao_id: operacaoId } }),
   )
@@ -58,6 +65,7 @@ export function AgendaParcelas({ operacaoId }: { operacaoId: string }) {
                   <TableHead className="text-right">Parcela</TableHead>
                   <TableHead className="text-right">Saldo devedor</TableHead>
                   <TableHead>Situação</TableHead>
+                  <TableHead className="text-right">Baixa</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -88,6 +96,23 @@ export function AgendaParcelas({ operacaoId }: { operacaoId: string }) {
                         </Badge>
                       )}
                     </TableCell>
+                    <TableCell className="text-right">
+                      {p.status === 'aberta' ? (
+                        <BaixarParcelaDialog
+                          parcelaId={p.id}
+                          numero={p.numero}
+                          valorTotal={String(p.valor_total)}
+                          onSucesso={onBaixa}
+                        />
+                      ) : (
+                        // O documento do extrato fica visível: baixa sem
+                        // origem exibida é indistinguível de um "marcar como
+                        // pago" sem lastro.
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {p.movimento_documento ?? '—'}
+                        </span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -103,7 +128,7 @@ export function AgendaParcelas({ operacaoId }: { operacaoId: string }) {
                   <TableCell className="text-right font-mono tabular-nums">
                     {formatarMoeda(String(data.total_geral))}
                   </TableCell>
-                  <TableCell colSpan={2} />
+                  <TableCell colSpan={3} />
                 </TableRow>
               </TableFooter>
             </Table>

@@ -44,6 +44,7 @@ MIGRATIONS = [
     "006_novacao_e_inadimplencia",
     "007_agenda_de_parcelas",
     "008_aging_inadimplencia",
+    "009_baixa_de_recebimento",
 ]
 
 
@@ -137,6 +138,33 @@ def tomador_autorizado(db_session: Session) -> uuid.UUID:
     )
     db_session.commit()
     return result.scalar_one()
+
+
+def baixar_parcelas(db_session: Session, operacao_id: uuid.UUID, numeros: list[int]) -> None:
+    """Baixa parcelas via `fn_baixar_parcela`, criando um movimento por parcela.
+
+    Existe porque, desde a migration 009, `update parcela set status='paga'`
+    é recusado pelo banco (OC011) — não há caminho para dar uma parcela por
+    paga sem lastro bancário, nem em teste. Cada baixa precisa do seu
+    próprio movimento: o índice único impede que um crédito baixe duas.
+    """
+    for numero in numeros:
+        parcela = db_session.execute(
+            text("select id, valor_total from parcela where operacao_id = :op and numero = :n"),
+            {"op": str(operacao_id), "n": numero},
+        ).one()
+        movimento_id = db_session.execute(
+            text("""
+            insert into movimento_bancario (data_movimento, valor, documento)
+            values (current_date, :valor, :doc) returning id
+            """),
+            {"valor": parcela.valor_total, "doc": f"DOC-{uuid.uuid4().hex[:12]}"},
+        ).scalar_one()
+        db_session.execute(
+            text("select fn_baixar_parcela(:p, :m)"),
+            {"p": str(parcela.id), "m": str(movimento_id)},
+        )
+    db_session.commit()
 
 
 @pytest.fixture()

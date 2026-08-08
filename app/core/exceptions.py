@@ -70,6 +70,33 @@ class NovacaoForaDaTransacaoAtomica(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC008", http_status=422)
 
 
+class ParcelaImutavel(RegraNegocioViolada):
+    """OC009: tentativa de alterar ou apagar parcela já emitida."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC009", http_status=422)
+
+
+class BaixaInvalida(RegraNegocioViolada):
+    """OC011: baixa de recebimento sem lastro bancário válido.
+
+    Cobre os quatro caminhos: parcela inexistente ou já baixada, movimento
+    inexistente, movimento já usado em outra parcela, e movimento de valor
+    menor que a parcela. Dar uma parcela como paga sem lastro faria a régua
+    de inadimplência (migration 008) parar de ver o atraso.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC011", http_status=422)
+
+
+class MovimentoImutavel(RegraNegocioViolada):
+    """OC012: extrato bancário é fato de fora — registra-se, não se edita."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC012", http_status=422)
+
+
 class OperacaoNaoEncontrada(Exception):
     """Operação não existe."""
 

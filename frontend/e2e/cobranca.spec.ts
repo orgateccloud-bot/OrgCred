@@ -94,4 +94,68 @@ test.describe('Régua de inadimplência', () => {
 
     expect(errosConsole, `erros de console: ${errosConsole.join(' | ')}`).toEqual([])
   })
+
+  test('baixa só acontece com lastro bancário, e tira a parcela do atraso', async ({ page }) => {
+    const errosConsole: string[] = []
+    page.on('console', (m) => {
+      if (m.type() === 'error') errosConsole.push(m.text())
+    })
+    page.on('pageerror', (e) => errosConsole.push(String(e)))
+
+    const cenario = await semearCenarioAging()
+    await login(page, cenario)
+
+    // --- Sem extrato registrado, não há como baixar -----------------------
+    await page.goto(`/operacoes/${cenario.operacaoAtrasadaId}`)
+    await expect(page.getByText('120 dias')).toBeVisible()
+
+    await page.getByRole('row', { name: /^1 / }).getByRole('button', { name: 'Baixar' }).click()
+    await expect(page.getByRole('dialog')).toContainText('Nenhum movimento disponível cobre')
+    await page.getByRole('button', { name: 'Cancelar' }).click()
+
+    // --- Registrar a linha do extrato ------------------------------------
+    await page.goto('/cobranca')
+    await page.getByRole('button', { name: 'Registrar movimento' }).click()
+    await page.getByLabel('Valor (R$)').fill('2000')
+    await page.getByLabel('Documento').fill('FITID-E2E-001')
+    await page.getByLabel('Descrição (opcional)').fill('TED Padaria Atrasada')
+    await page.getByRole('button', { name: 'Registrar', exact: true }).click()
+    await expect(page.getByText('Movimento registrado.')).toBeVisible()
+
+    const linhaExtrato = page.getByRole('row', { name: /FITID-E2E-001/ })
+    await expect(linhaExtrato).toContainText('Disponível')
+
+    // O documento é único: reimportar o mesmo extrato não duplica crédito.
+    await page.getByRole('button', { name: 'Registrar movimento' }).click()
+    await page.getByLabel('Valor (R$)').fill('2000')
+    await page.getByLabel('Documento').fill('FITID-E2E-001')
+    await page.getByRole('button', { name: 'Registrar', exact: true }).click()
+    await expect(page.getByRole('dialog')).toContainText('Já existe um movimento')
+    await page.getByRole('button', { name: 'Cancelar' }).click()
+
+    // --- Agora a baixa acontece, e o atraso some --------------------------
+    await page.goto(`/operacoes/${cenario.operacaoAtrasadaId}`)
+    await page.getByRole('row', { name: /^1 / }).getByRole('button', { name: 'Baixar' }).click()
+    await page.getByLabel('Movimento bancário').click()
+    await page.getByRole('option', { name: /FITID-E2E-001/ }).click()
+    await page.getByRole('button', { name: 'Confirmar baixa' }).click()
+    await expect(page.getByText('Parcela 1 baixada.')).toBeVisible()
+
+    // O documento fica visível na linha: baixa sem origem exibida é
+    // indistinguível de um "marcar como pago" sem lastro.
+    await expect(page.getByRole('row', { name: /^1 / })).toContainText('FITID-E2E-001')
+    await expect(page.getByText('Em dia')).toBeVisible()
+
+    // E o movimento sai dos disponíveis — não baixa uma segunda parcela.
+    await page.goto('/cobranca')
+    await expect(page.getByRole('row', { name: /FITID-E2E-001/ })).toContainText('Conciliado')
+
+    // Este teste PROVOCA um 422 de propósito (documento duplicado), e o
+    // navegador loga toda resposta 4xx como erro de console. Filtrar só essa
+    // linha — em vez de abandonar a asserção — mantém o detector de erro de
+    // JavaScript, que é o que já pegou TooltipProvider ausente e HTML
+    // inválido nesta suíte.
+    const inesperados = errosConsole.filter((e) => !e.includes('422 (Unprocessable Entity)'))
+    expect(inesperados, `erros de console: ${inesperados.join(' | ')}`).toEqual([])
+  })
 })

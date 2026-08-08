@@ -10,6 +10,7 @@ import {
   getCapitalEventosApiCapitalEventosGet,
   getCapitalSnapshotApiCapitalSnapshotGet,
   getMeApiMeGet,
+  getMovimentosApiCobrancaMovimentosGet,
   getOperacaoApiOperacoesOperacaoIdGet,
   getOperacoesApiOperacoesGet,
   getParcelasApiOperacoesOperacaoIdParcelasGet,
@@ -20,12 +21,14 @@ import {
   type Options,
   patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch,
   postAtivarOperacaoApiOperacoesOperacaoIdAtivarPost,
+  postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPost,
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPost,
   postCapitalEventoApiCapitalEventosPost,
   postCriarOperacaoApiOperacoesPost,
   postCriarTomadorApiTomadoresPost,
   postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPost,
   postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePost,
+  postMovimentoApiCobrancaMovimentosPost,
   postProcessarAgingApiCobrancaAgingProcessarPost,
   postRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPost,
   postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost,
@@ -44,6 +47,9 @@ import type {
   GetCapitalSnapshotApiCapitalSnapshotGetResponse,
   GetMeApiMeGetData,
   GetMeApiMeGetResponse,
+  GetMovimentosApiCobrancaMovimentosGetData,
+  GetMovimentosApiCobrancaMovimentosGetError,
+  GetMovimentosApiCobrancaMovimentosGetResponse,
   GetOperacaoApiOperacoesOperacaoIdGetData,
   GetOperacaoApiOperacoesOperacaoIdGetError,
   GetOperacaoApiOperacoesOperacaoIdGetResponse,
@@ -66,6 +72,9 @@ import type {
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostError,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponse,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostError,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponse,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostData,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostError,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostResponse,
@@ -84,6 +93,9 @@ import type {
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostData,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostError,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostResponse,
+  PostMovimentoApiCobrancaMovimentosPostData,
+  PostMovimentoApiCobrancaMovimentosPostError,
+  PostMovimentoApiCobrancaMovimentosPostResponse,
   PostProcessarAgingApiCobrancaAgingProcessarPostData,
   PostProcessarAgingApiCobrancaAgingProcessarPostError,
   PostProcessarAgingApiCobrancaAgingProcessarPostResponse,
@@ -771,6 +783,107 @@ export const postProcessarAgingApiCobrancaAgingProcessarPostMutation = (
   > = {
     mutationFn: async (fnOptions) => {
       const { data } = await postProcessarAgingApiCobrancaAgingProcessarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getMovimentosApiCobrancaMovimentosGetQueryKey = (
+  options?: Options<GetMovimentosApiCobrancaMovimentosGetData>,
+) => createQueryKey('getMovimentosApiCobrancaMovimentosGet', options)
+
+/**
+ * Get Movimentos
+ *
+ * Extrato registrado, mais recente primeiro.
+ *
+ * `apenas_disponiveis=true` traz só os ainda não usados em nenhuma baixa —
+ * é o que o diálogo de baixa consome, para não oferecer um movimento que
+ * o banco recusaria.
+ */
+export const getMovimentosApiCobrancaMovimentosGetOptions = (
+  options?: Options<GetMovimentosApiCobrancaMovimentosGetData>,
+) =>
+  queryOptions<
+    GetMovimentosApiCobrancaMovimentosGetResponse,
+    GetMovimentosApiCobrancaMovimentosGetError,
+    GetMovimentosApiCobrancaMovimentosGetResponse,
+    ReturnType<typeof getMovimentosApiCobrancaMovimentosGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getMovimentosApiCobrancaMovimentosGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getMovimentosApiCobrancaMovimentosGetQueryKey(options),
+  })
+
+/**
+ * Post Movimento
+ *
+ * Registra uma linha de extrato.
+ *
+ * `documento` é único: reimportar o mesmo extrato não duplica crédito nem
+ * permite baixar duas parcelas com o mesmo dinheiro.
+ */
+export const postMovimentoApiCobrancaMovimentosPostMutation = (
+  options?: Partial<Options<PostMovimentoApiCobrancaMovimentosPostData>>,
+): UseMutationOptions<
+  PostMovimentoApiCobrancaMovimentosPostResponse,
+  PostMovimentoApiCobrancaMovimentosPostError,
+  Options<PostMovimentoApiCobrancaMovimentosPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostMovimentoApiCobrancaMovimentosPostResponse,
+    PostMovimentoApiCobrancaMovimentosPostError,
+    Options<PostMovimentoApiCobrancaMovimentosPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postMovimentoApiCobrancaMovimentosPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Baixar Parcela
+ *
+ * Baixa a parcela contra um movimento bancário.
+ *
+ * Não existe endpoint para "só marcar como paga": sem lastro, a régua de
+ * inadimplência pararia de ver o atraso de uma dívida que continua em
+ * aberto. O banco recusa com OC011.
+ *
+ * A baixa é terminal — não há estorno definido (ver migration 009).
+ */
+export const postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostMutation = (
+  options?: Partial<Options<PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData>>,
+): UseMutationOptions<
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponse,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostError,
+  Options<PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponse,
+    PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostError,
+    Options<PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPost({
         ...options,
         ...fnOptions,
         throwOnError: true,

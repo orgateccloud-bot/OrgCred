@@ -31,7 +31,13 @@ export async function semearCenarioAtivacao(): Promise<CenarioAtivacao> {
   try {
     // Dev DB, não produção — reset das tabelas do cenário para tornar o
     // teste repetível entre execuções locais.
-    await client.query('truncate capital_ledger, operacao_credito, esc_capital_social cascade')
+    await client.query(
+      // movimento_bancario entra explicitamente: ele e referenciado POR
+      // parcela, entao o cascade de operacao_credito nao o alcanca — sem
+      // isto o documento unico de uma execucao anterior sobrevive e a
+      // proxima falha com "ja existe um movimento".
+      'truncate capital_ledger, operacao_credito, esc_capital_social, movimento_bancario cascade',
+    )
     await client.query("delete from tomador where cnpj like '9999%'")
     await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
 
@@ -118,7 +124,13 @@ export async function semearCenarioAging(): Promise<CenarioAging> {
   await client.connect()
 
   try {
-    await client.query('truncate capital_ledger, operacao_credito, esc_capital_social cascade')
+    await client.query(
+      // movimento_bancario entra explicitamente: ele e referenciado POR
+      // parcela, entao o cascade de operacao_credito nao o alcanca — sem
+      // isto o documento unico de uma execucao anterior sobrevive e a
+      // proxima falha com "ja existe um movimento".
+      'truncate capital_ledger, operacao_credito, esc_capital_social, movimento_bancario cascade',
+    )
     await client.query("delete from tomador where cnpj like '9999%'")
     await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
 
@@ -200,7 +212,13 @@ export async function semearCenarioGeografico(): Promise<CenarioGeografico> {
   await client.connect()
 
   try {
-    await client.query('truncate capital_ledger, operacao_credito, esc_capital_social cascade')
+    await client.query(
+      // movimento_bancario entra explicitamente: ele e referenciado POR
+      // parcela, entao o cascade de operacao_credito nao o alcanca — sem
+      // isto o documento unico de uma execucao anterior sobrevive e a
+      // proxima falha com "ja existe um movimento".
+      'truncate capital_ledger, operacao_credito, esc_capital_social, movimento_bancario cascade',
+    )
     await client.query("delete from tomador where cnpj like '9999%'")
     await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
 

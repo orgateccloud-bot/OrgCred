@@ -283,6 +283,7 @@ def get_operacao(
 
 
 class ParcelaOut(BaseModel):
+    id: UUID
     numero: int
     vencimento: date
     valor_amortizacao: Decimal
@@ -290,6 +291,10 @@ class ParcelaOut(BaseModel):
     valor_total: Decimal
     saldo_devedor_pos: Decimal
     status: str
+    # Lastro da baixa: presente só quando paga. Exposto para que a tela
+    # mostre CONTRA O QUE a parcela foi baixada — uma baixa sem origem
+    # visível é indistinguível de um "marcar como pago" sem lastro.
+    movimento_documento: Optional[str]
 
 
 class AgendaOut(BaseModel):
@@ -330,17 +335,20 @@ def get_parcelas(
 
     rows = db.execute(
         text("""
-        select numero, vencimento, valor_amortizacao, valor_juros,
-               valor_total, saldo_devedor_pos, status
-        from parcela
-        where operacao_id = :id
-        order by numero asc
+        select p.id, p.numero, p.vencimento, p.valor_amortizacao, p.valor_juros,
+               p.valor_total, p.saldo_devedor_pos, p.status,
+               m.documento as movimento_documento
+        from parcela p
+        left join movimento_bancario m on m.id = p.movimento_id
+        where p.operacao_id = :id
+        order by p.numero asc
     """),
         {"id": str(operacao_id)},
     ).all()
 
     parcelas = [
         ParcelaOut(
+            id=r.id,
             numero=r.numero,
             vencimento=r.vencimento,
             valor_amortizacao=r.valor_amortizacao,
@@ -348,6 +356,7 @@ def get_parcelas(
             valor_total=r.valor_total,
             saldo_devedor_pos=r.saldo_devedor_pos,
             status=r.status,
+            movimento_documento=r.movimento_documento,
         )
         for r in rows
     ]

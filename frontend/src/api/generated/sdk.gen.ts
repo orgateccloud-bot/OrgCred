@@ -15,6 +15,9 @@ import type {
   GetCapitalSnapshotApiCapitalSnapshotGetResponses,
   GetMeApiMeGetData,
   GetMeApiMeGetResponses,
+  GetMovimentosApiCobrancaMovimentosGetData,
+  GetMovimentosApiCobrancaMovimentosGetErrors,
+  GetMovimentosApiCobrancaMovimentosGetResponses,
   GetOperacaoApiOperacoesOperacaoIdGetData,
   GetOperacaoApiOperacoesOperacaoIdGetErrors,
   GetOperacaoApiOperacoesOperacaoIdGetResponses,
@@ -38,6 +41,9 @@ import type {
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostErrors,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponses,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostErrors,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponses,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostData,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostErrors,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostResponses,
@@ -56,6 +62,9 @@ import type {
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostData,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostErrors,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostResponses,
+  PostMovimentoApiCobrancaMovimentosPostData,
+  PostMovimentoApiCobrancaMovimentosPostErrors,
+  PostMovimentoApiCobrancaMovimentosPostResponses,
   PostProcessarAgingApiCobrancaAgingProcessarPostData,
   PostProcessarAgingApiCobrancaAgingProcessarPostErrors,
   PostProcessarAgingApiCobrancaAgingProcessarPostResponses,
@@ -586,6 +595,95 @@ export const postProcessarAgingApiCobrancaAgingProcessarPost = <
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/cobranca/aging/processar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Movimentos
+ *
+ * Extrato registrado, mais recente primeiro.
+ *
+ * `apenas_disponiveis=true` traz só os ainda não usados em nenhuma baixa —
+ * é o que o diálogo de baixa consome, para não oferecer um movimento que
+ * o banco recusaria.
+ */
+export const getMovimentosApiCobrancaMovimentosGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetMovimentosApiCobrancaMovimentosGetData, ThrowOnError>,
+): RequestResult<
+  GetMovimentosApiCobrancaMovimentosGetResponses,
+  GetMovimentosApiCobrancaMovimentosGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    GetMovimentosApiCobrancaMovimentosGetResponses,
+    GetMovimentosApiCobrancaMovimentosGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/movimentos',
+    ...options,
+  })
+
+/**
+ * Post Movimento
+ *
+ * Registra uma linha de extrato.
+ *
+ * `documento` é único: reimportar o mesmo extrato não duplica crédito nem
+ * permite baixar duas parcelas com o mesmo dinheiro.
+ */
+export const postMovimentoApiCobrancaMovimentosPost = <ThrowOnError extends boolean = false>(
+  options: Options<PostMovimentoApiCobrancaMovimentosPostData, ThrowOnError>,
+): RequestResult<
+  PostMovimentoApiCobrancaMovimentosPostResponses,
+  PostMovimentoApiCobrancaMovimentosPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostMovimentoApiCobrancaMovimentosPostResponses,
+    PostMovimentoApiCobrancaMovimentosPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/movimentos',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Post Baixar Parcela
+ *
+ * Baixa a parcela contra um movimento bancário.
+ *
+ * Não existe endpoint para "só marcar como paga": sem lastro, a régua de
+ * inadimplência pararia de ver o atraso de uma dívida que continua em
+ * aberto. O banco recusa com OC011.
+ *
+ * A baixa é terminal — não há estorno definido (ver migration 009).
+ */
+export const postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData, ThrowOnError>,
+): RequestResult<
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponses,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponses,
+    PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/parcelas/{parcela_id}/baixar',
     ...options,
     headers: {
       'Content-Type': 'application/json',

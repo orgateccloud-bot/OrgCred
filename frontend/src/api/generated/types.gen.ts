@@ -168,6 +168,16 @@ export type AuditoriaOut = {
 }
 
 /**
+ * BaixarParcelaIn
+ */
+export type BaixarParcelaIn = {
+  /**
+   * Movimento Id
+   */
+  movimento_id: string
+}
+
+/**
  * CapitalDisponivelOut
  */
 export type CapitalDisponivelOut = {
@@ -433,6 +443,40 @@ export type MeOut = {
 }
 
 /**
+ * MovimentoOut
+ */
+export type MovimentoOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Data Movimento
+   */
+  data_movimento: string
+  /**
+   * Valor
+   */
+  valor: string
+  /**
+   * Descricao
+   */
+  descricao: string | null
+  /**
+   * Documento
+   */
+  documento: string
+  /**
+   * Origem
+   */
+  origem: string
+  /**
+   * Conciliado
+   */
+  conciliado: boolean
+}
+
+/**
  * NovacaoOut
  */
 export type NovacaoOut = {
@@ -590,6 +634,10 @@ export type OperacaoStatusOut = {
  */
 export type ParcelaOut = {
   /**
+   * Id
+   */
+  id: string
+  /**
    * Numero
    */
   numero: number
@@ -617,6 +665,10 @@ export type ParcelaOut = {
    * Status
    */
   status: string
+  /**
+   * Movimento Documento
+   */
+  movimento_documento: string | null
 }
 
 /**
@@ -655,6 +707,28 @@ export type QuebraCadeia = {
    * Motivo
    */
   motivo: string
+}
+
+/**
+ * RegistrarMovimentoIn
+ */
+export type RegistrarMovimentoIn = {
+  /**
+   * Data Movimento
+   */
+  data_movimento: string
+  /**
+   * Valor
+   */
+  valor: number | string
+  /**
+   * Documento
+   */
+  documento: string
+  /**
+   * Descricao
+   */
+  descricao?: string | null
 }
 
 /**
@@ -1356,6 +1430,99 @@ export type PostProcessarAgingApiCobrancaAgingProcessarPostResponses = {
 
 export type PostProcessarAgingApiCobrancaAgingProcessarPostResponse =
   PostProcessarAgingApiCobrancaAgingProcessarPostResponses[keyof PostProcessarAgingApiCobrancaAgingProcessarPostResponses]
+
+export type GetMovimentosApiCobrancaMovimentosGetData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Apenas Disponiveis
+     */
+    apenas_disponiveis?: boolean
+  }
+  url: '/api/cobranca/movimentos'
+}
+
+export type GetMovimentosApiCobrancaMovimentosGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetMovimentosApiCobrancaMovimentosGetError =
+  GetMovimentosApiCobrancaMovimentosGetErrors[keyof GetMovimentosApiCobrancaMovimentosGetErrors]
+
+export type GetMovimentosApiCobrancaMovimentosGetResponses = {
+  /**
+   * Response Get Movimentos Api Cobranca Movimentos Get
+   *
+   * Successful Response
+   */
+  200: Array<MovimentoOut>
+}
+
+export type GetMovimentosApiCobrancaMovimentosGetResponse =
+  GetMovimentosApiCobrancaMovimentosGetResponses[keyof GetMovimentosApiCobrancaMovimentosGetResponses]
+
+export type PostMovimentoApiCobrancaMovimentosPostData = {
+  body: RegistrarMovimentoIn
+  path?: never
+  query?: never
+  url: '/api/cobranca/movimentos'
+}
+
+export type PostMovimentoApiCobrancaMovimentosPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostMovimentoApiCobrancaMovimentosPostError =
+  PostMovimentoApiCobrancaMovimentosPostErrors[keyof PostMovimentoApiCobrancaMovimentosPostErrors]
+
+export type PostMovimentoApiCobrancaMovimentosPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: MovimentoOut
+}
+
+export type PostMovimentoApiCobrancaMovimentosPostResponse =
+  PostMovimentoApiCobrancaMovimentosPostResponses[keyof PostMovimentoApiCobrancaMovimentosPostResponses]
+
+export type PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData = {
+  body: BaixarParcelaIn
+  path: {
+    /**
+     * Parcela Id
+     */
+    parcela_id: string
+  }
+  query?: never
+  url: '/api/cobranca/parcelas/{parcela_id}/baixar'
+}
+
+export type PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostError =
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostErrors[keyof PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostErrors]
+
+export type PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponse =
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponses[keyof PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponses]
 
 export type GetAuditoriaApiAuditoriaGetData = {
   body?: never

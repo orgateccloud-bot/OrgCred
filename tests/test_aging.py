@@ -17,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.capital_engine import ativar_operacao, processar_aging, transicionar_operacao
-from tests.conftest import sqlstate_de
+from tests.conftest import baixar_parcelas, sqlstate_de
 
 
 def _criar_ativa(
@@ -109,13 +109,7 @@ def test_parcela_paga_sai_do_atraso(db_session, tomador_autorizado, capital_cons
     op_id = _criar_ativa(db_session, tomador_autorizado)
     _envelhecer(db_session, op_id, dias=45, quantas=1)
 
-    db_session.execute(
-        text(
-            "update parcela set status = 'paga', pago_em = now() where operacao_id = :id and numero = 1"
-        ),
-        {"id": str(op_id)},
-    )
-    db_session.commit()
+    baixar_parcelas(db_session, op_id, [1])
 
     dias = db_session.execute(text("select fn_dias_atraso(:id)"), {"id": str(op_id)}).scalar_one()
     assert dias == 0
@@ -198,11 +192,7 @@ def test_regua_nunca_reativa_sozinha(db_session, tomador_autorizado, capital_con
     _envelhecer(db_session, op_id, dias=100)
     processar_aging(db_session, limite_dias=90)
 
-    db_session.execute(
-        text("update parcela set status = 'paga', pago_em = now() where operacao_id = :id"),
-        {"id": str(op_id)},
-    )
-    db_session.commit()
+    baixar_parcelas(db_session, op_id, list(range(1, 13)))
 
     assert processar_aging(db_session, limite_dias=90) == 0
     status = db_session.execute(

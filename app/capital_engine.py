@@ -24,18 +24,22 @@ liberava o capital de um empréstimo não pago — permitindo emprestá-lo de
 novo (furo comprovado contra Postgres real, ver 006_novacao_e_inadimplencia.sql).
 """
 
+from datetime import date
 from decimal import Decimal
 from typing import NamedTuple, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import (
+    BaixaInvalida,
+    MovimentoImutavel,
     MunicipioNaoAutorizado,
     NovacaoForaDaTransacaoAtomica,
     OperacaoNaoEncontrada,
+    ParcelaImutavel,
     ReducaoCapitalBloqueada,
     RegistroEntidadeAusente,
     TetoCapitalExcedido,
@@ -52,6 +56,9 @@ _PGCODE_MAP = {
     "OC004": RegistroEntidadeAusente,
     "OC005": ReducaoCapitalBloqueada,
     "OC008": NovacaoForaDaTransacaoAtomica,
+    "OC009": ParcelaImutavel,
+    "OC011": BaixaInvalida,
+    "OC012": MovimentoImutavel,
 }
 
 
@@ -275,6 +282,73 @@ def registrar_evento_capital(db: Session, *, valor: Decimal, tipo_evento: str) -
 
     db.refresh(evento)
     return evento
+
+
+def registrar_movimento_bancario(
+    db: Session,
+    *,
+    data_movimento: date,
+    valor: Decimal,
+    documento: str,
+    descricao: Optional[str] = None,
+    origem: str = "manual",
+    usuario_id: Optional[str] = None,
+) -> UUID:
+    """
+    Registra uma linha de extrato. Devolve o id do movimento.
+
+    `documento` é UNIQUE no banco: reimportar o mesmo extrato — coisa
+    rotineira na operação real — não duplica crédito. A violação de unique
+    sobe como IntegrityError e é traduzida aqui para uma mensagem que diz o
+    que de fato aconteceu, em vez de vazar o nome da constraint.
+    """
+    try:
+        movimento_id = db.execute(
+            text("""
+            insert into movimento_bancario
+                (data_movimento, valor, documento, descricao, origem, usuario_id)
+            values (:data, :valor, :documento, :descricao, :origem, :usuario)
+            returning id
+            """),
+            {
+                "data": data_movimento,
+                "valor": valor,
+                "documento": documento,
+                "descricao": descricao,
+                "origem": origem,
+                "usuario": usuario_id,
+            },
+        ).scalar_one()
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise BaixaInvalida(
+            f"Já existe um movimento bancário com o documento '{documento}'."
+        ) from exc
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+    return movimento_id  # type: ignore[no-any-return]
+
+
+def baixar_parcela(db: Session, parcela_id: UUID, movimento_id: UUID) -> None:
+    """
+    Dá uma parcela por paga, amarrada a um movimento bancário.
+
+    Toda a validação vive em `fn_baixar_parcela` (migration 009) — parcela
+    em aberto, movimento existente, movimento ainda não usado, valor
+    suficiente. Replicar essas checagens aqui criaria uma segunda fonte de
+    verdade que dessincroniza, e a aplicação não é a única porta do banco.
+    """
+    try:
+        db.execute(
+            text("select fn_baixar_parcela(:parcela, :movimento)"),
+            {"parcela": str(parcela_id), "movimento": str(movimento_id)},
+        )
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
 
 
 def processar_aging(db: Session, limite_dias: int = 90) -> int:

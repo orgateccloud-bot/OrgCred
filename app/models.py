@@ -84,6 +84,26 @@ class OperacaoCredito(Base):
     tomador = relationship("Tomador", back_populates="operacoes")
 
 
+class MovimentoBancario(Base):
+    """Linha de extrato bancário (migration 009).
+
+    Imutável (OC012): extrato é fato de fora — o sistema registra, não
+    edita. `documento` (FITID no OFX) é único, o que torna a importação
+    idempotente e impede que o mesmo dinheiro baixe duas parcelas.
+    """
+
+    __tablename__ = "movimento_bancario"
+
+    id = Column(PG_UUID(as_uuid=True), primary_key=True)
+    data_movimento = Column(Date, nullable=False)
+    valor = Column(Numeric(14, 2), nullable=False)
+    descricao = Column(String, nullable=True)
+    documento = Column(String, unique=True, nullable=False)
+    origem = Column(String(10), nullable=False, default="manual")  # manual, ofx
+    usuario_id = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class OperacaoEvento(Base):
     """Trilha append-only de transições de estado (migration 008).
 
@@ -131,6 +151,9 @@ class Parcela(Base):
     saldo_devedor_pos = Column(Numeric(14, 2), nullable=False)
     status = Column(String(20), nullable=False, default="aberta")  # aberta, paga, baixada
     pago_em = Column(DateTime, nullable=True)
+    # Lastro da baixa (migration 009): 'paga' sem movimento é recusado pelo
+    # banco (OC011), e um movimento só baixa uma parcela (índice único).
+    movimento_id = Column(PG_UUID(as_uuid=True), ForeignKey("movimento_bancario.id"), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 

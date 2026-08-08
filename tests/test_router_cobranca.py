@@ -179,3 +179,97 @@ class TestProcessarAging:
             admin_client.post("/api/cobranca/aging/processar", json={"limite_dias": 0}).status_code
             == 422
         )
+
+
+class TestMovimentosEBaixa:
+    def test_registrar_movimento_e_listar(self, admin_client: TestClient) -> None:
+        response = admin_client.post(
+            "/api/cobranca/movimentos",
+            json={
+                "data_movimento": str(date.today()),
+                "valor": "1500.00",
+                "documento": "FITID-ROUTER-1",
+                "descricao": "TED recebida",
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["conciliado"] is False
+
+        lista = admin_client.get("/api/cobranca/movimentos").json()
+        assert [m["documento"] for m in lista] == ["FITID-ROUTER-1"]
+
+    def test_documento_duplicado_vira_422(self, admin_client: TestClient) -> None:
+        """Reimportar o mesmo extrato é rotina; a resposta precisa dizer o
+        que houve, não vazar o nome da constraint."""
+        corpo = {
+            "data_movimento": str(date.today()),
+            "valor": "1500.00",
+            "documento": "FITID-DUP",
+        }
+        assert admin_client.post("/api/cobranca/movimentos", json=corpo).status_code == 201
+
+        repetido = admin_client.post("/api/cobranca/movimentos", json=corpo)
+        assert repetido.status_code == 422
+        assert "Já existe um movimento" in repetido.json()["detail"]
+
+    def test_baixa_pelo_endpoint(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        op_id = _operacao_atrasada(db_session, tomador_autorizado, dias=10)
+        parcela = db_session.execute(
+            text("select id, valor_total from parcela where operacao_id = :op and numero = 1"),
+            {"op": str(op_id)},
+        ).one()
+
+        movimento_id = admin_client.post(
+            "/api/cobranca/movimentos",
+            json={
+                "data_movimento": str(date.today()),
+                "valor": str(parcela.valor_total),
+                "documento": "FITID-BAIXA",
+            },
+        ).json()["id"]
+
+        baixa = admin_client.post(
+            f"/api/cobranca/parcelas/{parcela.id}/baixar", json={"movimento_id": movimento_id}
+        )
+        assert baixa.status_code == 204
+
+        # O movimento sai da lista de disponíveis: o diálogo de baixa não
+        # pode oferecer algo que o banco recusaria.
+        disponiveis = admin_client.get(
+            "/api/cobranca/movimentos", params={"apenas_disponiveis": True}
+        ).json()
+        assert disponiveis == []
+
+    def test_baixa_sem_lastro_suficiente_vira_422(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        op_id = _operacao_atrasada(db_session, tomador_autorizado, dias=10)
+        parcela = db_session.execute(
+            text("select id, valor_total from parcela where operacao_id = :op and numero = 1"),
+            {"op": str(op_id)},
+        ).one()
+
+        movimento_id = admin_client.post(
+            "/api/cobranca/movimentos",
+            json={
+                "data_movimento": str(date.today()),
+                "valor": "1.00",
+                "documento": "FITID-CURTO",
+            },
+        ).json()["id"]
+
+        resposta = admin_client.post(
+            f"/api/cobranca/parcelas/{parcela.id}/baixar", json={"movimento_id": movimento_id}
+        )
+        assert resposta.status_code == 422
+        assert resposta.json()["codigo"] == "OC011"

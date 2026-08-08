@@ -259,7 +259,7 @@ function OperacaoDetailPage() {
         </Card>
       </div>
 
-      <AgendaParcelas operacaoId={data.id} />
+      <AgendaParcelas operacaoId={data.id} onBaixa={invalidar} />
 
       <Card>
         <CardHeader>

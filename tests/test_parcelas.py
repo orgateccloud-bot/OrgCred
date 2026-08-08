@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.capital_engine import ativar_operacao, novar_operacao, transicionar_operacao
-from tests.conftest import sqlstate_de
+from tests.conftest import baixar_parcelas, sqlstate_de
 
 
 def _criar(
@@ -248,19 +248,13 @@ def test_apagar_parcela_emitida_e_recusado(db_session, tomador_autorizado, capit
 
 
 def test_baixa_de_recebimento_e_permitida(db_session, tomador_autorizado, capital_constituido):
-    """status e pago_em são a exceção deliberada: é por eles que a baixa de
-    recebimento vai acontecer, sem tocar nos valores acordados."""
+    """status e pago_em são a exceção deliberada à imutabilidade: é por eles
+    que a baixa acontece, sem tocar nos valores acordados. Desde a migration
+    009 a baixa exige lastro bancário — daí passar por `fn_baixar_parcela`."""
     op_id = _criar(db_session, tomador_autorizado, "12000", parcelas=12)
     ativar_operacao(db_session, op_id)
 
-    db_session.execute(
-        text("""
-        update parcela set status = 'paga', pago_em = now()
-        where operacao_id = :id and numero = 1
-        """),
-        {"id": str(op_id)},
-    )
-    db_session.commit()
+    baixar_parcelas(db_session, op_id, [1])
 
     agenda = _agenda(db_session, op_id)
     assert agenda[0].status == "paga"
