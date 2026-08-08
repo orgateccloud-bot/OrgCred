@@ -34,6 +34,7 @@ export const Route = createFileRoute('/_authenticated')({
  */
 const ROTULOS: Array<{ prefixo: string; rotulo: string }> = [
   { prefixo: '/auditoria', rotulo: 'Auditoria' },
+  { prefixo: '/cobranca', rotulo: 'Cobrança' },
   { prefixo: '/operacoes', rotulo: 'Operações' },
   { prefixo: '/', rotulo: 'Dashboard' },
 ]

@@ -35,7 +35,22 @@ const EVENTO_CAPITAL: Record<string, string> = {
   liquidacao: 'Liquidação',
 }
 
+const FAIXA_AGING: Record<string, string> = {
+  em_dia: 'Em dia',
+  ate_30: 'Até 30 dias',
+  de_31_a_60: '31 a 60 dias',
+  de_61_a_90: '61 a 90 dias',
+  acima_de_90: 'Acima de 90 dias',
+}
+
+const ORIGEM_EVENTO: Record<string, string> = {
+  usuario: 'Operador',
+  sistema: 'Régua automática',
+}
+
 export const rotuloTipo = (v: string) => TIPO_OPERACAO[v] ?? v
+export const rotuloFaixaAging = (v: string) => FAIXA_AGING[v] ?? v
+export const rotuloOrigemEvento = (v: string) => ORIGEM_EVENTO[v] ?? v
 export const rotuloStatus = (v: string) => STATUS_OPERACAO[v] ?? v
 export const rotuloPorte = (v: string) => PORTE_TOMADOR[v] ?? v
 export const rotuloEventoCapital = (v: string) => EVENTO_CAPITAL[v] ?? v

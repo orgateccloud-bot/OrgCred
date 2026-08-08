@@ -84,6 +84,31 @@ class OperacaoCredito(Base):
     tomador = relationship("Tomador", back_populates="operacoes")
 
 
+class OperacaoEvento(Base):
+    """Trilha append-only de transições de estado (migration 008).
+
+    Separada do CapitalLedger de propósito: o ledger registra movimentos de
+    CAPITAL (e reconstrói o saldo pela hash-chain), enquanto esta tabela
+    registra mudanças de ESTADO — inclusive as que não movem dinheiro, como
+    `ativa -> inadimplente`, que antes da 008 não deixavam rastro algum.
+
+    `origem` distingue o que uma pessoa fez do que a régua automática fez;
+    quando é 'sistema', `usuario_id` é obrigatoriamente nulo, para que um
+    ato automático nunca possa ser imputado a alguém.
+    """
+
+    __tablename__ = "operacao_evento"
+
+    id = Column(PG_UUID(as_uuid=True), primary_key=True)
+    operacao_id = Column(PG_UUID(as_uuid=True), ForeignKey("operacao_credito.id"), nullable=False)
+    status_anterior = Column(String(20), nullable=True)
+    status_novo = Column(String(20), nullable=False)
+    origem = Column(String(10), nullable=False)  # usuario, sistema
+    usuario_id = Column(String(255), nullable=True)
+    dias_atraso = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class Parcela(Base):
     """Parcela da agenda de amortização (migration 007).
 

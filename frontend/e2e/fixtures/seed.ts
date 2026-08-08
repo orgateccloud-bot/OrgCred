@@ -94,6 +94,90 @@ export async function semearCenarioAtivacao(): Promise<CenarioAtivacao> {
   }
 }
 
+export interface CenarioAging {
+  usuarioId: string
+  accessToken: string
+  /** Ativa, com a primeira parcela vencida há mais de 90 dias. */
+  operacaoAtrasadaId: string
+}
+
+/**
+ * Cenário da régua de inadimplência.
+ *
+ * O usuário aqui é ADMIN, não operador: `POST /cobranca/aging/processar`
+ * exige admin, e semear um operador faria o teste falhar por 403 sem que
+ * isso dissesse nada sobre a régua.
+ *
+ * Envelhecer a parcela exige desabilitar `trg_parcela_imutavel` — o
+ * vencimento é imutável desde a migration 007. Ter que desligar o trigger
+ * para montar o cenário é justamente a prova de que, pela aplicação, não
+ * existe caminho para reescrever a agenda.
+ */
+export async function semearCenarioAging(): Promise<CenarioAging> {
+  const client = new Client({ connectionString: DB_URL })
+  await client.connect()
+
+  try {
+    await client.query('truncate capital_ledger, operacao_credito, esc_capital_social cascade')
+    await client.query("delete from tomador where cnpj like '9999%'")
+    await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
+
+    const usuarioId = randomUUID()
+    await client.query(
+      `insert into usuario (id, email, nome, papel, ativo) values ($1, $2, $3, $4, $5)`,
+      [usuarioId, 'e2e-operador@orgcred.test', 'Admin E2E', 'admin', true],
+    )
+
+    await client.query(
+      `insert into esc_capital_social (valor, tipo_evento) values (50000, 'constituicao')`,
+    )
+
+    const tomador = await client.query<{ id: string }>(
+      `insert into tomador (cnpj, razao_social, porte, municipio, uf, municipio_autorizado)
+       values ($1, 'Padaria Atrasada ME', 'ME', 'Formoso', 'GO', true) returning id`,
+      [`9999${String(Date.now()).slice(-10)}`],
+    )
+
+    const op = await client.query<{ id: string }>(
+      `insert into operacao_credito
+        (tomador_id, tipo, valor_principal, taxa_juros_mensal, sistema_amortizacao,
+         numero_parcelas, status, registro_entidade_ref)
+       values ($1, 'emprestimo', 10000, 2.0, 'PRICE', 10, 'registrada', 'REG-E2E-AGING')
+       returning id`,
+      [tomador.rows[0].id],
+    )
+    const operacaoAtrasadaId = op.rows[0].id
+
+    // Ativar gera a agenda (trigger da 007) e o evento de estado (008).
+    await client.query(`update operacao_credito set status = 'ativa' where id = $1`, [
+      operacaoAtrasadaId,
+    ])
+
+    await client.query('alter table parcela disable trigger trg_parcela_imutavel')
+    await client.query(
+      `update parcela set vencimento = current_date - 120
+       where operacao_id = $1 and numero = 1`,
+      [operacaoAtrasadaId],
+    )
+    await client.query('alter table parcela enable trigger trg_parcela_imutavel')
+
+    const accessToken = jwt.sign(
+      {
+        sub: usuarioId,
+        email: 'e2e-operador@orgcred.test',
+        role: 'authenticated',
+        aud: 'authenticated',
+      },
+      DEV_JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '1h' },
+    )
+
+    return { usuarioId, accessToken, operacaoAtrasadaId }
+  } finally {
+    await client.end()
+  }
+}
+
 export interface CenarioGeografico {
   usuarioId: string
   accessToken: string

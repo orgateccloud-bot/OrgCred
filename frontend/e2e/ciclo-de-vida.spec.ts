@@ -90,13 +90,13 @@ test.describe('Ciclo de vida da operação de crédito', () => {
 
     // Navega para o detalhe da operação recém-criada.
     await expect(page.getByRole('heading', { name: 'Padaria E2E ME' })).toBeVisible()
-    await expect(page.getByText('Proposta', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Status atual: Proposta')).toBeVisible()
 
     // --- Registrar: exige a referência da entidade registradora (OC004) ----
     await page.getByRole('button', { name: 'Registrar' }).click()
     await page.getByLabel('Referência do registro').fill('B3-REG-E2E-CICLO')
     await page.getByRole('button', { name: 'Confirmar registro' }).click()
-    await expect(page.getByText('Registrada', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Status atual: Registrada')).toBeVisible()
 
     // Antes da ativação não há agenda: ela é emitida pelo banco no momento
     // em que o crédito passa a existir de fato.
@@ -105,7 +105,7 @@ test.describe('Ciclo de vida da operação de crédito', () => {
     // --- Ativar: passa a comprometer capital -------------------------------
     await page.getByRole('button', { name: 'Ativar' }).click()
     await page.getByRole('button', { name: 'Confirmar ativação' }).click()
-    await expect(page.getByText('Ativa', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Status atual: Ativa')).toBeVisible()
 
     // --- Agenda emitida na mesma transação da ativação ---------------------
     const agenda = page.getByRole('table')
@@ -126,7 +126,7 @@ test.describe('Ciclo de vida da operação de crédito', () => {
     await page.getByRole('link', { name: 'Padaria E2E ME' }).first().click()
     await page.getByRole('button', { name: 'Liquidar' }).click()
     await page.getByRole('button', { name: 'Confirmar liquidação' }).click()
-    await expect(page.getByText('Liquidada', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Status atual: Liquidada')).toBeVisible()
 
     // Os dois eventos ficam na linha do tempo — o ledger é append-only.
     await expect(page.getByText(/ativou uma operação de crédito/)).toBeVisible()

@@ -132,6 +132,22 @@ class LedgerEventoResumoOut(BaseModel):
     created_at: datetime
 
 
+class EventoEstadoOut(BaseModel):
+    """Transição de estado da trilha `operacao_evento` (migration 008).
+
+    `usuario_nome` é nulo quando a transição foi da régua automática
+    (`origem = 'sistema'`) — por construção, e não por dado faltando.
+    """
+
+    id: UUID
+    status_anterior: Optional[str]
+    status_novo: str
+    origem: str
+    usuario_nome: Optional[str]
+    dias_atraso: Optional[int]
+    created_at: datetime
+
+
 class OperacaoDetailOut(BaseModel):
     id: UUID
     tomador: TomadorResumoOut
@@ -144,7 +160,9 @@ class OperacaoDetailOut(BaseModel):
     registro_entidade_ref: Optional[str]
     created_at: datetime
     updated_at: datetime
+    dias_atraso: int
     eventos: List[LedgerEventoResumoOut]
+    eventos_estado: List[EventoEstadoOut]
 
 
 class CriarOperacaoIn(BaseModel):
@@ -202,6 +220,22 @@ def get_operacao(
         {"operacao_id": str(operacao_id)},
     ).all()
 
+    eventos_estado = db.execute(
+        text("""
+        select oe.id, oe.status_anterior, oe.status_novo, oe.origem,
+               u.nome as usuario_nome, oe.dias_atraso, oe.created_at
+        from operacao_evento oe
+        left join usuario u on u.id::text = oe.usuario_id
+        where oe.operacao_id = :operacao_id
+        order by oe.created_at asc
+    """),
+        {"operacao_id": str(operacao_id)},
+    ).all()
+
+    dias_atraso = db.execute(
+        text("select fn_dias_atraso(:operacao_id)"), {"operacao_id": str(operacao_id)}
+    ).scalar_one()
+
     return OperacaoDetailOut(
         id=row.id,
         tomador=TomadorResumoOut(
@@ -231,6 +265,19 @@ def get_operacao(
                 created_at=e.created_at,
             )
             for e in eventos
+        ],
+        dias_atraso=dias_atraso,
+        eventos_estado=[
+            EventoEstadoOut(
+                id=e.id,
+                status_anterior=e.status_anterior,
+                status_novo=e.status_novo,
+                origem=e.origem,
+                usuario_nome=e.usuario_nome,
+                dias_atraso=e.dias_atraso,
+                created_at=e.created_at,
+            )
+            for e in eventos_estado
         ],
     )
 

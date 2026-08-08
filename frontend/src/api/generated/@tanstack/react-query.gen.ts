@@ -4,6 +4,7 @@ import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanst
 
 import { client } from '../client.gen'
 import {
+  getAgingApiCobrancaAgingGet,
   getAuditoriaApiAuditoriaGet,
   getCapitalDisponivelApiCapitalDisponivelGet,
   getCapitalEventosApiCapitalEventosGet,
@@ -25,12 +26,14 @@ import {
   postCriarTomadorApiTomadoresPost,
   postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPost,
   postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePost,
+  postProcessarAgingApiCobrancaAgingProcessarPost,
   postRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPost,
   postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost,
   readinessCheckHealthReadyGet,
-  rootGet,
 } from '../sdk.gen'
 import type {
+  GetAgingApiCobrancaAgingGetData,
+  GetAgingApiCobrancaAgingGetResponse,
   GetAuditoriaApiAuditoriaGetData,
   GetAuditoriaApiAuditoriaGetResponse,
   GetCapitalDisponivelApiCapitalDisponivelGetData,
@@ -81,6 +84,9 @@ import type {
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostData,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostError,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostResponse,
+  PostProcessarAgingApiCobrancaAgingProcessarPostData,
+  PostProcessarAgingApiCobrancaAgingProcessarPostError,
+  PostProcessarAgingApiCobrancaAgingProcessarPostResponse,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostData,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostError,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostResponse,
@@ -88,8 +94,6 @@ import type {
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostError,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostResponse,
   ReadinessCheckHealthReadyGetData,
-  RootGetData,
-  RootGetResponse,
 } from '../types.gen'
 
 export type QueryKey<TOptions extends Options> = [
@@ -706,6 +710,77 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchMutation = (
   return mutationOptions
 }
 
+export const getAgingApiCobrancaAgingGetQueryKey = (
+  options?: Options<GetAgingApiCobrancaAgingGetData>,
+) => createQueryKey('getAgingApiCobrancaAgingGet', options)
+
+/**
+ * Get Aging
+ *
+ * Aging de todas as operações que comprometem capital, mais atrasadas
+ * primeiro.
+ */
+export const getAgingApiCobrancaAgingGetOptions = (
+  options?: Options<GetAgingApiCobrancaAgingGetData>,
+) =>
+  queryOptions<
+    GetAgingApiCobrancaAgingGetResponse,
+    DefaultError,
+    GetAgingApiCobrancaAgingGetResponse,
+    ReturnType<typeof getAgingApiCobrancaAgingGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getAgingApiCobrancaAgingGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getAgingApiCobrancaAgingGetQueryKey(options),
+  })
+
+/**
+ * Post Processar Aging
+ *
+ * Executa a régua: 'ativa' com atraso >= limite passa a 'inadimplente'.
+ *
+ * Exige admin, não operador: declarar inadimplência em lote tem
+ * consequência jurídica e reputacional para os tomadores, e o efeito é
+ * irreversível sem que alguém assuma nominalmente a regularização.
+ *
+ * As transições ficam na trilha com `origem = 'sistema'` e autor nulo —
+ * o que a régua fez não é imputado a quem apertou o botão. A execução em
+ * si é rastreável por este endpoint estar sob autenticação de admin.
+ *
+ * Idempotente: rodar de novo no mesmo dia não transiciona nada, porque as
+ * operações já saíram de 'ativa'.
+ */
+export const postProcessarAgingApiCobrancaAgingProcessarPostMutation = (
+  options?: Partial<Options<PostProcessarAgingApiCobrancaAgingProcessarPostData>>,
+): UseMutationOptions<
+  PostProcessarAgingApiCobrancaAgingProcessarPostResponse,
+  PostProcessarAgingApiCobrancaAgingProcessarPostError,
+  Options<PostProcessarAgingApiCobrancaAgingProcessarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostProcessarAgingApiCobrancaAgingProcessarPostResponse,
+    PostProcessarAgingApiCobrancaAgingProcessarPostError,
+    Options<PostProcessarAgingApiCobrancaAgingProcessarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postProcessarAgingApiCobrancaAgingProcessarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
 export const getAuditoriaApiAuditoriaGetQueryKey = (
   options?: Options<GetAuditoriaApiAuditoriaGetData>,
 ) => createQueryKey('getAuditoriaApiAuditoriaGet', options)
@@ -843,26 +918,4 @@ export const metricsMetricsGetOptions = (options?: Options<MetricsMetricsGetData
       return data
     },
     queryKey: metricsMetricsGetQueryKey(options),
-  })
-
-export const rootGetQueryKey = (options?: Options<RootGetData>) =>
-  createQueryKey('rootGet', options)
-
-/**
- * Root
- *
- * Raiz da API (dev/CI — sem build do frontend disponível).
- */
-export const rootGetOptions = (options?: Options<RootGetData>) =>
-  queryOptions<RootGetResponse, DefaultError, RootGetResponse, ReturnType<typeof rootGetQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-      const { data } = await rootGet({
-        ...options,
-        ...queryKey[0],
-        signal,
-        throwOnError: true,
-      })
-      return data
-    },
-    queryKey: rootGetQueryKey(options),
   })

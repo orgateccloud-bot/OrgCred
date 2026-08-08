@@ -1,5 +1,6 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
+  AlarmClock,
   Banknote,
   Building2,
   ChevronsUpDown,
@@ -37,6 +38,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/operacoes', label: 'Operações', icon: Banknote, exact: false },
   { to: '/tomadores', label: 'Tomadores', icon: Building2, exact: false },
+  { to: '/cobranca', label: 'Cobrança', icon: AlarmClock, exact: false },
   { to: '/capital', label: 'Capital social', icon: Coins, exact: false },
   { to: '/auditoria', label: 'Auditoria', icon: ScrollText, exact: false },
 ] as const

@@ -43,6 +43,7 @@ MIGRATIONS = [
     "005_ledger_imutavel",
     "006_novacao_e_inadimplencia",
     "007_agenda_de_parcelas",
+    "008_aging_inadimplencia",
 ]
 
 

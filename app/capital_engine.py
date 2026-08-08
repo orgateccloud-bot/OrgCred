@@ -277,6 +277,30 @@ def registrar_evento_capital(db: Session, *, valor: Decimal, tipo_evento: str) -
     return evento
 
 
+def processar_aging(db: Session, limite_dias: int = 90) -> int:
+    """
+    Roda a régua automática: operações 'ativa' com atraso >= `limite_dias`
+    passam a 'inadimplente'. Devolve quantas foram transicionadas.
+
+    Toda a lógica vive em `fn_processar_aging` (migration 008). Fazer o
+    laço aqui exigiria ler as operações, decidir em Python e escrever de
+    volta — três viagens em que o atraso poderia mudar entre a leitura e a
+    escrita, e uma segunda definição de "estar em atraso" fora do banco.
+
+    Não existe caminho automático de volta: a regularização é decisão de
+    uma pessoa e fica na trilha com o nome dela.
+    """
+    try:
+        total = db.execute(
+            text("select fn_processar_aging(:limite)"), {"limite": limite_dias}
+        ).scalar_one()
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+    return int(total)
+
+
 def novar_operacao(
     db: Session,
     operacao_id: UUID,

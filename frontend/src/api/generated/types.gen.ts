@@ -42,6 +42,86 @@ export type AgendaOut = {
 }
 
 /**
+ * AgingItemOut
+ */
+export type AgingItemOut = {
+  /**
+   * Operacao Id
+   */
+  operacao_id: string
+  /**
+   * Tomador Id
+   */
+  tomador_id: string
+  /**
+   * Tomador Razao Social
+   */
+  tomador_razao_social: string
+  /**
+   * Status
+   */
+  status: string
+  /**
+   * Valor Principal
+   */
+  valor_principal: string
+  /**
+   * Dias Atraso
+   */
+  dias_atraso: number
+  /**
+   * Faixa
+   */
+  faixa: string
+  /**
+   * Parcelas Vencidas
+   */
+  parcelas_vencidas: number
+  /**
+   * Valor Vencido
+   */
+  valor_vencido: string
+}
+
+/**
+ * AgingOut
+ */
+export type AgingOut = {
+  /**
+   * Limite Inadimplencia Dias
+   */
+  limite_inadimplencia_dias: number
+  /**
+   * Resumo
+   */
+  resumo: Array<AgingResumoOut>
+  /**
+   * Operacoes
+   */
+  operacoes: Array<AgingItemOut>
+}
+
+/**
+ * AgingResumoOut
+ *
+ * Contagem e valor vencido por faixa, para o painel de cobrança.
+ */
+export type AgingResumoOut = {
+  /**
+   * Faixa
+   */
+  faixa: string
+  /**
+   * Quantidade
+   */
+  quantidade: number
+  /**
+   * Valor Vencido
+   */
+  valor_vencido: string
+}
+
+/**
  * AtivarOperacaoOut
  */
 export type AtivarOperacaoOut = {
@@ -207,6 +287,45 @@ export type CriarTomadorIn = {
    * Uf
    */
   uf: string
+}
+
+/**
+ * EventoEstadoOut
+ *
+ * Transição de estado da trilha `operacao_evento` (migration 008).
+ *
+ * `usuario_nome` é nulo quando a transição foi da régua automática
+ * (`origem = 'sistema'`) — por construção, e não por dado faltando.
+ */
+export type EventoEstadoOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Status Anterior
+   */
+  status_anterior: string | null
+  /**
+   * Status Novo
+   */
+  status_novo: string
+  /**
+   * Origem
+   */
+  origem: string
+  /**
+   * Usuario Nome
+   */
+  usuario_nome: string | null
+  /**
+   * Dias Atraso
+   */
+  dias_atraso: number | null
+  /**
+   * Created At
+   */
+  created_at: string
 }
 
 /**
@@ -405,9 +524,17 @@ export type OperacaoDetailOut = {
    */
   updated_at: string
   /**
+   * Dias Atraso
+   */
+  dias_atraso: number
+  /**
    * Eventos
    */
   eventos: Array<LedgerEventoResumoOut>
+  /**
+   * Eventos Estado
+   */
+  eventos_estado: Array<EventoEstadoOut>
 }
 
 /**
@@ -490,6 +617,30 @@ export type ParcelaOut = {
    * Status
    */
   status: string
+}
+
+/**
+ * ProcessarAgingIn
+ */
+export type ProcessarAgingIn = {
+  /**
+   * Limite Dias
+   */
+  limite_dias?: number
+}
+
+/**
+ * ProcessarAgingOut
+ */
+export type ProcessarAgingOut = {
+  /**
+   * Transicionadas
+   */
+  transicionadas: number
+  /**
+   * Limite Dias
+   */
+  limite_dias: number
 }
 
 /**
@@ -1162,6 +1313,50 @@ export type PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses = {
 export type PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponse =
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses[keyof PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses]
 
+export type GetAgingApiCobrancaAgingGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/cobranca/aging'
+}
+
+export type GetAgingApiCobrancaAgingGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: AgingOut
+}
+
+export type GetAgingApiCobrancaAgingGetResponse =
+  GetAgingApiCobrancaAgingGetResponses[keyof GetAgingApiCobrancaAgingGetResponses]
+
+export type PostProcessarAgingApiCobrancaAgingProcessarPostData = {
+  body: ProcessarAgingIn
+  path?: never
+  query?: never
+  url: '/api/cobranca/aging/processar'
+}
+
+export type PostProcessarAgingApiCobrancaAgingProcessarPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostProcessarAgingApiCobrancaAgingProcessarPostError =
+  PostProcessarAgingApiCobrancaAgingProcessarPostErrors[keyof PostProcessarAgingApiCobrancaAgingProcessarPostErrors]
+
+export type PostProcessarAgingApiCobrancaAgingProcessarPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ProcessarAgingOut
+}
+
+export type PostProcessarAgingApiCobrancaAgingProcessarPostResponse =
+  PostProcessarAgingApiCobrancaAgingProcessarPostResponses[keyof PostProcessarAgingApiCobrancaAgingProcessarPostResponses]
+
 export type GetAuditoriaApiAuditoriaGetData = {
   body?: never
   path?: never
@@ -1243,23 +1438,3 @@ export type MetricsMetricsGetResponses = {
    */
   200: unknown
 }
-
-export type RootGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: '/'
-}
-
-export type RootGetResponses = {
-  /**
-   * Response Root  Get
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string
-  }
-}
-
-export type RootGetResponse = RootGetResponses[keyof RootGetResponses]

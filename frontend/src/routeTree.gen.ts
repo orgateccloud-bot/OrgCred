@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DefinirSenhaRouteImport } from './routes/definir-senha'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedCobrancaRouteImport } from './routes/_authenticated/cobranca'
 import { Route as AuthenticatedCapitalRouteImport } from './routes/_authenticated/capital'
 import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
 import { Route as AuthenticatedTomadoresIndexRouteImport } from './routes/_authenticated/tomadores/index'
@@ -38,6 +39,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedCobrancaRoute = AuthenticatedCobrancaRouteImport.update({
+  id: '/cobranca',
+  path: '/cobranca',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedCapitalRoute = AuthenticatedCapitalRouteImport.update({
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/capital': typeof AuthenticatedCapitalRoute
+  '/cobranca': typeof AuthenticatedCobrancaRoute
   '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
   '/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
   '/tomadores/$id': typeof AuthenticatedTomadoresIdRoute
@@ -98,6 +105,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/capital': typeof AuthenticatedCapitalRoute
+  '/cobranca': typeof AuthenticatedCobrancaRoute
   '/': typeof AuthenticatedIndexRoute
   '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
   '/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
@@ -112,6 +120,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
   '/_authenticated/capital': typeof AuthenticatedCapitalRoute
+  '/_authenticated/cobranca': typeof AuthenticatedCobrancaRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
   '/_authenticated/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
@@ -127,6 +136,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/auditoria'
     | '/capital'
+    | '/cobranca'
     | '/operacoes/$id'
     | '/operacoes/nova'
     | '/tomadores/$id'
@@ -138,6 +148,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/auditoria'
     | '/capital'
+    | '/cobranca'
     | '/'
     | '/operacoes/$id'
     | '/operacoes/nova'
@@ -151,6 +162,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/auditoria'
     | '/_authenticated/capital'
+    | '/_authenticated/cobranca'
     | '/_authenticated/'
     | '/_authenticated/operacoes/$id'
     | '/_authenticated/operacoes/nova'
@@ -193,6 +205,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/cobranca': {
+      id: '/_authenticated/cobranca'
+      path: '/cobranca'
+      fullPath: '/cobranca'
+      preLoaderRoute: typeof AuthenticatedCobrancaRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/capital': {
@@ -250,6 +269,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteChildren {
   AuthenticatedAuditoriaRoute: typeof AuthenticatedAuditoriaRoute
   AuthenticatedCapitalRoute: typeof AuthenticatedCapitalRoute
+  AuthenticatedCobrancaRoute: typeof AuthenticatedCobrancaRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedOperacoesIdRoute: typeof AuthenticatedOperacoesIdRoute
   AuthenticatedOperacoesNovaRoute: typeof AuthenticatedOperacoesNovaRoute
@@ -261,6 +281,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAuditoriaRoute: AuthenticatedAuditoriaRoute,
   AuthenticatedCapitalRoute: AuthenticatedCapitalRoute,
+  AuthenticatedCobrancaRoute: AuthenticatedCobrancaRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedOperacoesIdRoute: AuthenticatedOperacoesIdRoute,
   AuthenticatedOperacoesNovaRoute: AuthenticatedOperacoesNovaRoute,

@@ -3,6 +3,8 @@
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client'
 import { client } from './client.gen'
 import type {
+  GetAgingApiCobrancaAgingGetData,
+  GetAgingApiCobrancaAgingGetResponses,
   GetAuditoriaApiAuditoriaGetData,
   GetAuditoriaApiAuditoriaGetResponses,
   GetCapitalDisponivelApiCapitalDisponivelGetData,
@@ -54,6 +56,9 @@ import type {
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostData,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostErrors,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostResponses,
+  PostProcessarAgingApiCobrancaAgingProcessarPostData,
+  PostProcessarAgingApiCobrancaAgingProcessarPostErrors,
+  PostProcessarAgingApiCobrancaAgingProcessarPostResponses,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostData,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostErrors,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostResponses,
@@ -62,8 +67,6 @@ import type {
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostResponses,
   ReadinessCheckHealthReadyGetData,
   ReadinessCheckHealthReadyGetResponses,
-  RootGetData,
-  RootGetResponses,
 } from './types.gen'
 
 export type Options<
@@ -537,6 +540,60 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch = <
   })
 
 /**
+ * Get Aging
+ *
+ * Aging de todas as operações que comprometem capital, mais atrasadas
+ * primeiro.
+ */
+export const getAgingApiCobrancaAgingGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAgingApiCobrancaAgingGetData, ThrowOnError>,
+): RequestResult<GetAgingApiCobrancaAgingGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<GetAgingApiCobrancaAgingGetResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/aging',
+    ...options,
+  })
+
+/**
+ * Post Processar Aging
+ *
+ * Executa a régua: 'ativa' com atraso >= limite passa a 'inadimplente'.
+ *
+ * Exige admin, não operador: declarar inadimplência em lote tem
+ * consequência jurídica e reputacional para os tomadores, e o efeito é
+ * irreversível sem que alguém assuma nominalmente a regularização.
+ *
+ * As transições ficam na trilha com `origem = 'sistema'` e autor nulo —
+ * o que a régua fez não é imputado a quem apertou o botão. A execução em
+ * si é rastreável por este endpoint estar sob autenticação de admin.
+ *
+ * Idempotente: rodar de novo no mesmo dia não transiciona nada, porque as
+ * operações já saíram de 'ativa'.
+ */
+export const postProcessarAgingApiCobrancaAgingProcessarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostProcessarAgingApiCobrancaAgingProcessarPostData, ThrowOnError>,
+): RequestResult<
+  PostProcessarAgingApiCobrancaAgingProcessarPostResponses,
+  PostProcessarAgingApiCobrancaAgingProcessarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostProcessarAgingApiCobrancaAgingProcessarPostResponses,
+    PostProcessarAgingApiCobrancaAgingProcessarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/aging/processar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
  * Get Auditoria
  *
  * Trilha de auditoria em duas camadas: eventos legíveis (com nome do
@@ -605,13 +662,3 @@ export const metricsMetricsGet = <ThrowOnError extends boolean = false>(
     url: '/metrics',
     ...options,
   })
-
-/**
- * Root
- *
- * Raiz da API (dev/CI — sem build do frontend disponível).
- */
-export const rootGet = <ThrowOnError extends boolean = false>(
-  options?: Options<RootGetData, ThrowOnError>,
-): RequestResult<RootGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<RootGetResponses, unknown, ThrowOnError>({ url: '/', ...options })
