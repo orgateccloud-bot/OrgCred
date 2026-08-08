@@ -358,7 +358,16 @@ export const postCancelarOperacaoApiOperacoesOperacaoIdCancelarPost = <
 /**
  * Post Renegociar Operacao
  *
- * ativa/inadimplente -> renegociada.
+ * Renegocia por novação atômica: baixa a original e cria a substituta na
+ * mesma transação, sob o mesmo advisory lock do teto.
+ *
+ * Não existe endpoint para "só marcar como renegociada": fazer a baixa sem
+ * amarrar a substituta deixa a original fora do comprometido e nada
+ * impediria criar a substituta depois, contando o capital duas vezes em
+ * janelas diferentes (o banco recusa com OC008).
+ *
+ * A substituta nasce em 'registrada' — ainda não compromete capital, e
+ * ativá-la passa pelos gates normais.
  */
 export const postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost = <
   ThrowOnError extends boolean = false,
@@ -377,6 +386,10 @@ export const postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost = <
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/operacoes/{operacao_id}/renegociar',
     ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
   })
 
 /**

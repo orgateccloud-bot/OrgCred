@@ -14,6 +14,14 @@ silenciosamente se a mensagem do trigger mudar. Códigos:
   OC003 transição de status inválida
   OC004 ativação sem registro na entidade registradora
   OC005 redução de capital abaixo do comprometido
+  OC008 renegociação/substituta fora da novação atômica
+
+Capital COMPROMETIDO = operações em 'ativa' OU 'inadimplente'. Inadimplente
+entra porque o dinheiro não voltou: o título saiu de 'ativa', mas continua
+ocupando o teto do Art. 5º até ser efetivamente liquidado. Antes da
+migration 006 o comprometido contava só 'ativa', e marcar inadimplência
+liberava o capital de um empréstimo não pago — permitindo emprestá-lo de
+novo (furo comprovado contra Postgres real, ver 006_novacao_e_inadimplencia.sql).
 """
 
 from decimal import Decimal
@@ -26,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import (
     MunicipioNaoAutorizado,
+    NovacaoForaDaTransacaoAtomica,
     OperacaoNaoEncontrada,
     ReducaoCapitalBloqueada,
     RegistroEntidadeAusente,
@@ -42,6 +51,7 @@ _PGCODE_MAP = {
     "OC003": TransicaoInvalida,
     "OC004": RegistroEntidadeAusente,
     "OC005": ReducaoCapitalBloqueada,
+    "OC008": NovacaoForaDaTransacaoAtomica,
 }
 
 
@@ -81,7 +91,7 @@ def consultar_capital_disponivel(db: Session) -> Decimal:
         text("""
         select (select capital_atual from v_capital_atual)
              - coalesce((select sum(valor_principal) from operacao_credito
-                         where status = 'ativa'), 0) as disponivel
+                         where status in ('ativa', 'inadimplente')), 0) as disponivel
     """)
     ).first()
     if row is None:
@@ -108,7 +118,7 @@ def consultar_capital_snapshot(db: Session) -> CapitalSnapshot:
         select
             (select capital_atual from v_capital_atual) as total,
             coalesce((select sum(valor_principal) from operacao_credito
-                      where status = 'ativa'), 0) as comprometido
+                      where status in ('ativa', 'inadimplente')), 0) as comprometido
     """)
     ).first()
     if row is None:
@@ -265,3 +275,58 @@ def registrar_evento_capital(db: Session, *, valor: Decimal, tipo_evento: str) -
 
     db.refresh(evento)
     return evento
+
+
+def novar_operacao(
+    db: Session,
+    operacao_id: UUID,
+    *,
+    valor_principal: Decimal,
+    taxa_juros_mensal: Decimal,
+    sistema_amortizacao: str,
+    numero_parcelas: int,
+    registro_entidade_ref: Optional[str] = None,
+    usuario_id: Optional[str] = None,
+) -> OperacaoCredito:
+    """
+    Renegocia por novação ATÔMICA: baixa a original e cria a substituta na
+    mesma transação, sob o mesmo advisory lock do teto.
+
+    Toda a lógica vive em `fn_novar_operacao` (migration 006), não aqui. Se
+    a aplicação fizesse as duas etapas em chamadas separadas, existiria uma
+    janela em que a original e a substituta contam capital ao mesmo tempo —
+    dupla contagem que fura o Art. 5º. O banco decide, como no resto do
+    motor.
+
+    A substituta nasce em 'registrada': ainda não compromete capital, e a
+    ativação dela segue passando pelos gates normais (teto, município,
+    registro na entidade registradora).
+    """
+    db.execute(
+        text("select set_config('app.user_id', :usuario_id, true)"),
+        {"usuario_id": usuario_id},
+    )
+
+    try:
+        nova_id = db.execute(
+            text("select fn_novar_operacao(:op, :valor, :taxa, :sistema, :parcelas, :registro)"),
+            {
+                "op": str(operacao_id),
+                "valor": valor_principal,
+                "taxa": taxa_juros_mensal,
+                "sistema": sistema_amortizacao,
+                "parcelas": numero_parcelas,
+                "registro": registro_entidade_ref,
+            },
+        ).scalar_one()
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+
+    nova: Optional[OperacaoCredito] = (
+        db.query(OperacaoCredito).filter(OperacaoCredito.id == nova_id).one_or_none()
+    )
+    if nova is None:  # pragma: no cover - a função acabou de criar a linha
+        raise OperacaoNaoEncontrada(f"Substituta {nova_id} não encontrada após a novação.")
+    return nova

@@ -16,11 +16,13 @@ from app.capital_engine import (
     consultar_capital_disponivel,
     consultar_capital_snapshot,
     criar_operacao,
+    novar_operacao,
     registrar_evento_capital,
     transicionar_operacao,
 )
 from app.core.exceptions import (
     MunicipioNaoAutorizado,
+    NovacaoForaDaTransacaoAtomica,
     OperacaoNaoEncontrada,
     ReducaoCapitalBloqueada,
     RegistroEntidadeAusente,
@@ -492,3 +494,235 @@ class TestRegistrarEventoCapital:
         ativar_operacao(db_session, op_id)
         registrar_evento_capital(db_session, valor=Decimal("5000"), tipo_evento="reducao")
         assert consultar_capital_snapshot(db_session).total == Decimal("45000.00")
+
+
+# ---------------------------------------------------------------------------
+# Migration 006 — os dois furos de teto que ela fecha
+#
+# Ambos comprovados contra Postgres real ANTES da correção existir:
+#   ativa -> inadimplente  liberou R$ 40.000,00 | eventos no ledger: 0
+#   ativa -> renegociada   liberou R$ 40.000,00 | eventos no ledger: 0
+# ---------------------------------------------------------------------------
+
+
+class TestInadimplenteComprometeCapital:
+    def test_marcar_inadimplente_nao_libera_capital(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O dinheiro nao voltou: o titulo sai de 'ativa', mas continua
+        ocupando o teto do Art. 5o. Antes da 006 isso liberava o valor
+        inteiro e permitia emprestar de novo o mesmo capital."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
+        ativar_operacao(db_session, op_id)
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("40000.00")
+
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("40000.00")
+        assert consultar_capital_disponivel(db_session) == Decimal("10000.00")
+
+    def test_inadimplente_nao_gera_evento_no_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Nao ha movimento de capital, entao nao ha o que registrar no
+        ledger de CAPITAL. Quem marcou fica na trilha da aplicacao."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 10000)
+        ativar_operacao(db_session, op_id)
+        antes = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        depois = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+        assert depois == antes
+
+    def test_teto_bloqueia_nova_operacao_com_capital_preso_em_inadimplente(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O teste que prova o furo fechado: com 40.000 inadimplentes de
+        50.000, uma nova operacao de 20.000 NAO cabe. Antes da 006 cabia."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        outra = _criar_operacao(db_session, tomador_autorizado, 20000)
+        with pytest.raises(TetoCapitalExcedido) as exc:
+            ativar_operacao(db_session, outra)
+        assert sqlstate_de(exc.value) == "OC001"
+
+    def test_liquidar_inadimplente_devolve_capital_com_evento(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """inadimplente -> liquidada e uma SAIDA real do comprometido, e
+        agora gera evento (antes da 006 esse caminho nao gerava nada)."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        transicionar_operacao(db_session, op_id, "liquidada")
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+        eventos = (
+            db_session.execute(
+                text(
+                    "select evento_tipo from capital_ledger where operacao_id = :i"
+                    " order by created_at"
+                ),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert eventos == ["ativacao_operacao", "liquidacao"]
+
+    def test_regularizar_inadimplente_nao_duplica_evento(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """inadimplente -> ativa nao muda o comprometido (os dois ocupam o
+        teto), entao nao pode gravar uma segunda ativacao — isso contaria o
+        mesmo dinheiro duas vezes no ledger."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 15000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        ativar_operacao(db_session, op_id)
+
+        eventos = (
+            db_session.execute(
+                text("select evento_tipo from capital_ledger where operacao_id = :i"),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert eventos == ["ativacao_operacao"]
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("15000.00")
+
+
+class TestNovacaoAtomica:
+    def test_renegociar_direto_e_bloqueado(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Sem a novacao atomica, a original sairia do comprometido e nada
+        impediria criar a substituta depois — capital contado duas vezes em
+        janelas diferentes."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+
+        with pytest.raises(NovacaoForaDaTransacaoAtomica) as exc:
+            transicionar_operacao(db_session, op_id, "renegociada")
+        assert sqlstate_de(exc.value) == "OC008"
+
+    def test_novacao_baixa_original_e_cria_substituta(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("25000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=24,
+            registro_entidade_ref="REG-NOVA",
+        )
+
+        original = db_session.execute(
+            text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
+        ).scalar_one()
+        assert original == "renegociada"
+        assert nova.status == "registrada"
+        assert str(nova.substitui_operacao_id) == str(op_id)
+
+        # A substituta ainda NAO compromete: nasce em 'registrada'.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+
+    def test_novacao_registra_evento_de_saida_no_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A renegociacao move capital (libera a original), entao TEM que
+        aparecer no ledger — antes da 006 nao aparecia, e a serie temporal
+        do dashboard mentia."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+
+        novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("10000"),
+            taxa_juros_mensal=Decimal("2.0"),
+            sistema_amortizacao="SAC",
+            numero_parcelas=12,
+        )
+
+        eventos = (
+            db_session.execute(
+                text(
+                    "select evento_tipo from capital_ledger where operacao_id = :i"
+                    " order by created_at"
+                ),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert eventos == ["ativacao_operacao", "renegociacao"]
+
+    def test_sem_dupla_contagem_ao_ativar_a_substituta(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O teste central da novacao: 40.000 originais + 25.000 substitutos
+        NAO podem somar 65.000 de comprometido."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("25000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=24,
+            registro_entidade_ref="REG-NOVA",
+        )
+        ativar_operacao(db_session, nova.id)
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("25000.00")
+
+    def test_novacao_de_operacao_nao_renegociavel_e_recusada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """So 'ativa' ou 'inadimplente' podem ser renegociadas."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 5000)  # fica em 'registrada'
+
+        with pytest.raises(TransicaoInvalida):
+            novar_operacao(
+                db_session,
+                op_id,
+                valor_principal=Decimal("1000"),
+                taxa_juros_mensal=Decimal("1.0"),
+                sistema_amortizacao="PRICE",
+                numero_parcelas=6,
+            )
+
+    def test_novacao_de_inadimplente_e_permitida(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Renegociar um inadimplente e o caso de uso mais comum de novacao."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("22000"),
+            taxa_juros_mensal=Decimal("3.0"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=36,
+        )
+
+        assert nova.status == "registrada"
+        # A original saiu do comprometido; a substituta ainda nao entrou.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")

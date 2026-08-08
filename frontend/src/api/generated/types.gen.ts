@@ -277,6 +277,52 @@ export type MeOut = {
 }
 
 /**
+ * NovacaoOut
+ */
+export type NovacaoOut = {
+  /**
+   * Operacao Original Id
+   */
+  operacao_original_id: string
+  /**
+   * Operacao Substituta Id
+   */
+  operacao_substituta_id: string
+  /**
+   * Status Substituta
+   */
+  status_substituta: string
+}
+
+/**
+ * NovarOperacaoIn
+ *
+ * Condições da operação SUBSTITUTA.
+ */
+export type NovarOperacaoIn = {
+  /**
+   * Valor Principal
+   */
+  valor_principal: number | string
+  /**
+   * Taxa Juros Mensal
+   */
+  taxa_juros_mensal: number | string
+  /**
+   * Sistema Amortizacao
+   */
+  sistema_amortizacao: 'PRICE' | 'SAC'
+  /**
+   * Numero Parcelas
+   */
+  numero_parcelas: number
+  /**
+   * Registro Entidade Ref
+   */
+  registro_entidade_ref?: string | null
+}
+
+/**
  * OperacaoDetailOut
  */
 export type OperacaoDetailOut = {
@@ -850,7 +896,7 @@ export type PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostResponse =
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostResponses[keyof PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostResponses]
 
 export type PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostData = {
-  body?: never
+  body: NovarOperacaoIn
   path: {
     /**
      * Operacao Id
@@ -875,7 +921,7 @@ export type PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostResponses 
   /**
    * Successful Response
    */
-  200: OperacaoStatusOut
+  200: NovacaoOut
 }
 
 export type PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostResponse =

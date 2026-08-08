@@ -26,6 +26,8 @@ const MENSAGENS_POR_CODIGO: Record<string, string> = {
   OC004: 'A operação precisa estar registrada na entidade registradora antes de ativar.',
   OC005: 'Essa redução de capital deixaria o comprometido acima do saldo disponível.',
   OC007: 'Falha de integridade na trilha de auditoria. Contate o suporte técnico.',
+  OC008:
+    'Renegociação exige informar as condições da nova operação — a baixa e a substituta são feitas juntas.',
 }
 
 const MENSAGEM_PADRAO = 'Ocorreu um erro inesperado. Tente novamente.'

@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.capital_engine import ativar_operacao, criar_operacao, transicionar_operacao
+from app.capital_engine import (
+    ativar_operacao,
+    criar_operacao,
+    novar_operacao,
+    transicionar_operacao,
+)
 from app.core.exceptions import OperacaoNaoEncontrada
 from app.core.security import get_current_user, get_operador_user
 from app.db import get_db
@@ -305,14 +310,56 @@ def post_cancelar_operacao(
     return _transicao(db, operacao_id, "cancelada", user)
 
 
-@router.post("/{operacao_id}/renegociar", response_model=OperacaoStatusOut)
+class NovarOperacaoIn(BaseModel):
+    """Condições da operação SUBSTITUTA."""
+
+    valor_principal: Decimal = Field(gt=0)
+    taxa_juros_mensal: Decimal = Field(ge=0)
+    sistema_amortizacao: Literal["PRICE", "SAC"]
+    numero_parcelas: int = Field(gt=0)
+    registro_entidade_ref: Optional[str] = Field(default=None, max_length=255)
+
+
+class NovacaoOut(BaseModel):
+    operacao_original_id: UUID
+    operacao_substituta_id: UUID
+    status_substituta: str
+
+
+@router.post("/{operacao_id}/renegociar", response_model=NovacaoOut)
 def post_renegociar_operacao(
     operacao_id: UUID,
+    body: NovarOperacaoIn,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_operador_user),
-) -> OperacaoStatusOut:
-    """ativa/inadimplente -> renegociada."""
-    return _transicao(db, operacao_id, "renegociada", user)
+) -> NovacaoOut:
+    """
+    Renegocia por novação atômica: baixa a original e cria a substituta na
+    mesma transação, sob o mesmo advisory lock do teto.
+
+    Não existe endpoint para "só marcar como renegociada": fazer a baixa sem
+    amarrar a substituta deixa a original fora do comprometido e nada
+    impediria criar a substituta depois, contando o capital duas vezes em
+    janelas diferentes (o banco recusa com OC008).
+
+    A substituta nasce em 'registrada' — ainda não compromete capital, e
+    ativá-la passa pelos gates normais.
+    """
+    nova = novar_operacao(
+        db,
+        operacao_id,
+        valor_principal=body.valor_principal,
+        taxa_juros_mensal=body.taxa_juros_mensal,
+        sistema_amortizacao=body.sistema_amortizacao,
+        numero_parcelas=body.numero_parcelas,
+        registro_entidade_ref=body.registro_entidade_ref,
+        usuario_id=str(user.id),
+    )
+    return NovacaoOut(
+        operacao_original_id=operacao_id,
+        operacao_substituta_id=nova.id,  # type: ignore[arg-type]
+        status_substituta=nova.status,  # type: ignore[arg-type]
+    )
 
 
 @router.post("/{operacao_id}/marcar-inadimplente", response_model=OperacaoStatusOut)

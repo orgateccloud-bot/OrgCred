@@ -77,6 +77,8 @@ export type {
   MeOut,
   MetricsMetricsGetData,
   MetricsMetricsGetResponses,
+  NovacaoOut,
+  NovarOperacaoIn,
   OperacaoDetailOut,
   OperacaoListItemOut,
   OperacaoStatusOut,

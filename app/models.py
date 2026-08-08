@@ -70,6 +70,14 @@ class OperacaoCredito(Base):
     numero_parcelas = Column(Integer, nullable=False)
     status = Column(String(20), nullable=False, default="proposta")
     registro_entidade_ref = Column(String(255), nullable=True)
+    # Novação (migration 006): aponta para a operação que esta substituiu.
+    # Só é preenchida por fn_novar_operacao — criar uma substituta fora dela
+    # é bloqueado pelo trigger (OC008), porque a baixa da original e a
+    # criação da substituta precisam ser atômicas para não contar o mesmo
+    # capital duas vezes.
+    substitui_operacao_id = Column(
+        PG_UUID(as_uuid=True), ForeignKey("operacao_credito.id"), nullable=True
+    )
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

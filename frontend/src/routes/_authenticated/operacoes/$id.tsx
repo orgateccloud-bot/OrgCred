@@ -8,13 +8,13 @@ import {
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPostMutation,
   postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostMutation,
   postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostMutation,
-  postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostMutation,
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa } from '@/lib/ledger'
 import { rotuloTipo } from '@/lib/rotulos'
 import { AtivarOperacaoDialog } from '@/components/ativar-operacao-dialog'
+import { NovarOperacaoDialog } from '@/components/novar-operacao-dialog'
 import { RegistrarOperacaoDialog } from '@/components/registrar-operacao-dialog'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { TransicaoOperacaoDialog } from '@/components/transicao-operacao-dialog'
@@ -36,9 +36,6 @@ function OperacaoDetailPage() {
 
   const liquidar = useMutation(postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostMutation())
   const cancelar = useMutation(postCancelarOperacaoApiOperacoesOperacaoIdCancelarPostMutation())
-  const renegociar = useMutation(
-    postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostMutation(),
-  )
   const inadimplente = useMutation(
     postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostMutation(),
   )
@@ -130,14 +127,10 @@ function OperacaoDetailPage() {
                 mutation={liquidar}
                 invalidar={invalidar}
               />
-              <TransicaoOperacaoDialog
+              <NovarOperacaoDialog
                 operacaoId={data.id}
-                titulo="Renegociar operação"
-                descricao="A operação sai do estado ativo para renegociada. Uma nova operação deverá formalizar as novas condições."
-                rotuloBotao="Renegociar"
-                rotuloConfirmar="Confirmar renegociação"
-                mutation={renegociar}
-                invalidar={invalidar}
+                valorOriginal={String(data.valor_principal)}
+                onSucesso={invalidar}
               />
               <TransicaoOperacaoDialog
                 operacaoId={data.id}
@@ -169,14 +162,10 @@ function OperacaoDetailPage() {
                 mutation={liquidar}
                 invalidar={invalidar}
               />
-              <TransicaoOperacaoDialog
+              <NovarOperacaoDialog
                 operacaoId={data.id}
-                titulo="Renegociar operação"
-                descricao="A operação inadimplente sai para renegociada. Uma nova operação deverá formalizar as novas condições."
-                rotuloBotao="Renegociar"
-                rotuloConfirmar="Confirmar renegociação"
-                mutation={renegociar}
-                invalidar={invalidar}
+                valorOriginal={String(data.valor_principal)}
+                onSucesso={invalidar}
               />
             </>
           )}

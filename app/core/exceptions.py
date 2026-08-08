@@ -58,6 +58,18 @@ class ReducaoCapitalBloqueada(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC005", http_status=422)
 
 
+class NovacaoForaDaTransacaoAtomica(RegraNegocioViolada):
+    """OC008: renegociação ou substituta criada fora de fn_novar_operacao.
+
+    Renegociar em duas etapas separadas abre a janela em que a original e a
+    substituta contam capital ao mesmo tempo — dupla contagem que fura o
+    teto do Art. 5º sem ninguém agir de má-fé.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC008", http_status=422)
+
+
 class OperacaoNaoEncontrada(Exception):
     """Operação não existe."""
 
