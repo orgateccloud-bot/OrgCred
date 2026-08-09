@@ -1,17 +1,16 @@
 """
 Router: instrumento contratual e registro na entidade registradora.
 
-O QUE ESTE MÓDULO RESOLVE: `operacao_credito.registro_entidade_ref` é texto
-livre, e o trigger OC004 só verifica que não está vazio — escrever "x" ali
-passa pelo gate do Art. 5º §3º da LC 167/2019. Aqui o registro vira entidade
-de primeira classe (entidade, protocolo, status, datas), com máquina de
-estados no banco.
+O QUE ESTE MÓDULO RESOLVEU: `operacao_credito.registro_entidade_ref` era
+texto livre, e o gate OC004 só verificava que não estava vazio — escrever
+"x" ali passava pela exigência do Art. 5º §3º da LC 167/2019. Aqui o
+registro virou entidade de primeira classe (entidade, protocolo, status,
+datas), com máquina de estados no banco.
 
-O GATE CONTINUA DESLIGADO. Exigir registro CONFIRMADO para ativar é a amarra
-com dentes, mas mudaria comportamento: operações com referência inventada
-parariam de ativar. `GET /contratos/registros/pendencias` mostra quantas e
-quanto, para a decisão ser tomada com o número na mão. O trigger que ligaria
-o gate está escrito e comentado ao final da migration 012.
+O GATE ESTÁ LIGADO desde a migration 013: ativar exige registro CONFIRMADO,
+e `registro_entidade_ref` virou campo informativo.
+`GET /contratos/registros/pendencias` deixou de ser só medida da lacuna — é
+a relação de operações que não conseguem ativar.
 
 AINDA BLOQUEADO pela escolha da entidade registradora (CRDC, Núclea, SPC
 Grafeno, B3, CERC — ver PESQUISA_ENTIDADE_REGISTRADORA.md):

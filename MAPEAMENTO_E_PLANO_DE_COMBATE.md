@@ -1,87 +1,111 @@
 # OrgCred — Mapeamento, Scorecard e Plano de Combate
 
-> Levantado em 2026-07-31 a partir de medição direta do código (cobertura
-> real via `htmlcov/status.json`, contagem de statements, endpoints e
-> testes), não de estimativa. Onde um número não pôde ser medido, está
-> dito explicitamente.
+> **Levantamento original: 2026-07-31.** **Remedido e reescrito em
+> 2026-08-09**, após a execução das Frentes 2, 3 e 4. Todos os números
+> abaixo vêm de medição direta (cobertura real de `pytest --cov`, contagem
+> de statements, endpoints, tabelas e testes), não de estimativa. Onde algo
+> não pôde ser medido, está dito.
 >
-> **Revisado em 2026-08-08**, após a execução das Frentes 2, 3 e da parte
-> construível da Frente 4. Os números de scorecard abaixo foram
-> remedidos, não estimados: 209 testes backend, cobertura total 92%,
-> 50 Vitest, 5 E2E, 14 migrations. A Frente 1 segue integralmente aberta — e continua
-> sendo o que separa este sistema de ser usado.
+> O documento foi reescrito em vez de remendado: as tabelas da seção 2
+> descreviam o estado de julho e tinham virado ruído.
 
 ---
 
 ## 1. Retrato em uma frase
 
-O OrgCred tem **um núcleo de crédito sólido e provado** (capital, operações,
-cobrança de ponta a ponta, auditoria com hash-chain) envolto por **três
-módulos regulatórios bloqueados em decisão externa** — e continua **no ar em
-produção sem conseguir ser usado**, porque o teto de capital é R$ 0,00 e o
-login real nunca foi ativado.
+O OrgCred tem hoje **um sistema de crédito completo e provado** — capital,
+operações, cobrança de ponta a ponta, contratos, fiscal, compliance e
+auditoria com hash-chain — e **continua no ar sem conseguir ser usado**,
+porque o teto de capital é R$ 0,00 e o login real nunca foi ativado.
 
 O risco dominante nunca foi qualidade de código, e depois desta rodada é
-menos ainda. É que **o sistema parece pronto e não é operável**: tudo que
-foi construído nas Frentes 2, 3 e 4 está em `main` e em nenhum servidor.
+menos ainda: **o sistema parece pronto, é pronto, e não é operável.** Tudo
+que foi construído está em `main` e em nenhum servidor.
 
 ---
 
 ## 2. Mapa de módulos
 
-### 2.1 Backend — 4.0k linhas, 50 endpoints, 9 routers, 14 migrations
+### 2.1 Backend — 1.360 statements, 44 endpoints, 9 routers, 14 migrations
 
-> Contagens remedidas em 2026-08-08. As tabelas desta seção descrevem o
-> levantamento original de 2026-07-31; o estado atual de cada módulo está
-> no scorecard da seção 3, que foi refeito.
-
-| Módulo | Arquivos | Stmt | Endpoints | Cobertura |
+| Módulo | Arquivo | Stmt | Endpoints | Cobertura |
 |---|---|---:|---:|---:|
-| **Operações** | `routers/operacoes.py` | 108 | 9 | 84,3% |
-| **Motor de capital** | `capital_engine.py` | 85 | — | 58,8% |
-| **Tomadores** | `routers/tomadores.py` | 69 | 4 | 65,2% |
-| **Capital (API)** | `routers/capital.py` | 42 | 4 | 81,0% |
-| **Auditoria** | `routers/auditoria.py` + `core/ledger_integrity.py` | 48 | 1 | 100% |
-| **Identidade** | `routers/me.py` + `core/security.py` | 51 | 1 | 92,9% / 100% |
-| **Infra** | `main.py`, `db.py`, `config`, `logging`, `metrics`, `exceptions` | 231 | — | 72,4% – 100% |
-| **Modelos** | `models.py` | 73 | — | 100% |
-| Contratos | `routers/contratos.py` | 2 | **0** | — (stub) |
-| Fiscal | `routers/fiscal.py` | 2 | **0** | — (stub) |
-| Compliance | `routers/compliance.py` | 2 | **0** | — (stub) |
-| Cobrança | `routers/cobranca.py` | 2 | **0** | — (stub) |
-| ⚠️ Alertas | `core/alerts.py` | 37 | — | **0%** |
+| **Operações** | `routers/operacoes.py` | 156 | 10 | 90% |
+| **Contratos e registro** | `routers/contratos.py` + `contrato.py` | 217 | 8 | 96% / 99% |
+| **Compliance** | `routers/compliance.py` | 94 | 6 | **100%** |
+| **Fiscal** | `routers/fiscal.py` | 92 | 5 | **100%** |
+| **Cobrança** | `routers/cobranca.py` | 74 | 5 | **100%** |
+| **Motor de capital** | `capital_engine.py` | 114 | — | 90% |
+| **Tomadores** | `routers/tomadores.py` | 69 | 4 | 65% |
+| **Capital (API)** | `routers/capital.py` | 42 | 4 | 81% |
+| **Auditoria** | `routers/auditoria.py` + `core/ledger_integrity.py` | 48 | 1 | **100%** |
+| **Identidade** | `routers/me.py` + `core/security.py` | 51 | 1 | 93% / **100%** |
+| **Modelos** | `models.py` | 150 | — | **100%** |
+| **Infra** | `main.py`, `db.py`, `config`, `db_errors`, `logging`, `metrics`, `exceptions` | 253 | — | 64% – 100% |
 
-**5 tabelas:** `tomador`, `operacao_credito`, `capital_ledger`,
-`esc_capital_social`, `usuario`. **5 migrations**, ciclo
-downgrade→upgrade validado.
+**14 tabelas:** `tomador`, `operacao_credito`, `parcela`, `capital_ledger`,
+`operacao_evento`, `movimento_bancario`, `esc_capital_social`, `usuario`,
+`contrato_emprestimo`, `registro_operacao`, `tomador_documento`,
+`ocorrencia_atipicidade`, `parametro_fiscal`, `apuracao_fiscal`.
 
-**Invariantes no banco (o princípio "o banco decide"):** OC001 teto de
-capital · OC002 gate geográfico · OC003 máquina de estados · OC004 registro
-em entidade registradora · OC005 redução de capital · OC007 ledger
-append-only.
+### 2.2 Invariantes no banco — o princípio "o banco decide"
 
-### 2.2 Frontend — 8.267 linhas, 14 rotas
+18 SQLSTATEs da classe `OC`, todos com teste que falha se forem afrouxados:
 
-| Módulo | Arquivos principais | Linhas |
-|---|---|---:|
-| **Dashboard** | `_authenticated/index.tsx` | 404 |
-| **Operações** | `operacoes/{index,$id,nova}.tsx` | 770 |
-| **Tomadores** | `tomadores/{index,$id}.tsx` | 431 |
-| **Capital social** | `_authenticated/capital.tsx` | 213 |
-| **Auditoria** | `_authenticated/auditoria.tsx` | 168 |
-| **Auth** | `login.tsx`, `definir-senha.tsx`, `auth/sync.ts` | ~300 |
-| **App shell** | `_authenticated.tsx`, `app-sidebar`, `command-palette` | 389 |
-| **Design system** | `components/ui/*` (18 componentes) + `index.css` | ~2.700 |
+| Código | Invariante | Base |
+|---|---|---|
+| OC001 | Teto de capital | LC 167/2019, art. 5º |
+| OC002 | Gate geográfico | LC 167/2019, art. 1º |
+| OC003 | Máquina de estados da operação | — |
+| OC004 | **Registro CONFIRMADO** em entidade registradora | LC 167/2019, art. 5º §3º |
+| OC005 | Redução de capital abaixo do comprometido | LC 167/2019, art. 5º |
+| OC007 | Ledger de capital append-only | — |
+| OC008 | Renegociação só por novação atômica | LC 167/2019, art. 5º |
+| OC009 | Agenda de parcelas imutável | — |
+| OC010 | Trilha de estado append-only | — |
+| OC011 | Baixa exige lastro bancário | — |
+| OC012 | Movimento bancário imutável | — |
+| OC013 | Retenção de 5 anos da evidência | Lei 9.613/98, art. 10, III |
+| OC014 | Ocorrência de atipicidade append-only | — |
+| OC015 | Apuração fiscal exige parâmetro vigente | — |
+| OC016 | Apuração fiscal imutável (retificação versiona) | — |
+| OC017 | Instrumento contratual imutável | — |
+| OC018 | Máquina de estados do registro | — |
+| OC019 | **Identificação do tomador** com evidência arquivada | Lei 9.613/98, art. 10, I |
 
-### 2.3 Testes — 209 backend + 50 Vitest + 5 E2E
+**Os três gates legais de ativação estão LIGADOS:** teto (OC001), registro
+confirmado (OC004) e identificação (OC019). Nenhum é retroativo — todos
+rodam na transição, e reativar inadimplente não revalida.
 
-> Eram 52 + 32 + 1 em 2026-07-31. Cobertura backend total: 92%.
+### 2.3 Frontend — 9.302 linhas, 15 rotas
+
+| Módulo | Arquivos principais |
+|---|---|
+| **Dashboard** | `_authenticated/index.tsx` |
+| **Operações** | `operacoes/{index,$id,nova}.tsx` + agenda, contrato, registro, diálogos |
+| **Cobrança** | `_authenticated/cobranca.tsx` (aging, régua, extrato) |
+| **Compliance** | `_authenticated/compliance.tsx` (identificação, registro, atipicidades) |
+| **Fiscal** | `_authenticated/fiscal.tsx` (parâmetros, apurações) |
+| **Tomadores** | `tomadores/{index,$id}.tsx` |
+| **Capital social** | `_authenticated/capital.tsx` |
+| **Auditoria** | `_authenticated/auditoria.tsx` |
+| **Auth** | `login.tsx`, `definir-senha.tsx`, `auth/sync.ts` |
+| **App shell** | `_authenticated.tsx`, `app-sidebar`, `command-palette` |
+| **Design system** | `components/ui/*` + `index.css` (DS ORGATEC) |
+
+### 2.4 Testes — 209 backend + 50 Vitest + 5 E2E
+
+> Eram **52 + 32 + 1** em 2026-07-31. Cobertura backend total: **92%**.
 
 | Suíte | Testes | Onde concentra | Onde **não** cobre |
 |---|---:|---|---|
-| Backend | 52 | `capital_engine` (15), `security` (12), `operacoes` (8) | `alerts` (0), tomadores (24 stmt sem cobertura) |
-| Vitest | 32 | erros (6), ativar-dialog (5), rótulos (3), badge (2) | 5 das 10 rotas sem teste algum |
-| Playwright | **1** | login → dashboard → ativação → bloqueio OC001 | criação, liquidação, tomadores, capital |
+| Backend | 209 | capital (30), contratos (27), compliance (22), cobrança (21), fiscal (18), parcelas (18), aging (22) | `tomadores` (24 stmt), `main.py` (27 stmt) |
+| Vitest | 50 | dicionário de erro, derivações de capital, rótulos, diálogos | telas em si, cobertas indiretamente pelos E2E |
+| Playwright | 5 | ciclo completo, OC001, OC002, régua de aging, baixa com lastro | tomadores, capital social, fiscal |
+
+Todos os E2E assertam **zero erro de console** — foi assim que apareceram o
+`TooltipProvider` ausente, HTML inválido no breadcrumb e três bugs de
+invalidação de query nesta rodada.
 
 ---
 
@@ -92,234 +116,166 @@ Escala: 🟢 sólido · 🟡 funcional com lacuna · 🔴 crítico/ausente
 | # | Módulo | Função | Testes | Prod | Nota | Justificativa medida |
 |---|---|:---:|:---:|:---:|:---:|---|
 | 1 | Auditoria / hash-chain | 🟢 | 🟢 | 🟢 | **9,0** | 100% cobertura, ledger append-only por trigger, UI em duas camadas |
-| 2 | Identidade / Zero-Trust | 🟢 | 🟢 | 🔴 | **7,5** | `security.py` 100% coberto, papéis aplicados; **login real nunca funcionou em prod** |
-| 3 | Operações | 🟢 | 🟢 | 🔴 | **8,5** | 11 endpoints, ciclo completo, 87% cobertura; E2E cobre criar→registrar→ativar→liquidar e OC002 |
-| 4 | Motor de capital | 🟢 | 🟢 | 🔴 | **8,5** | 90% cobertura (era 58,8%); **dois furos do Art. 5º fechados** (inadimplência e novação); teto R$ 0,00 em prod |
-| 5 | Modelos / migrations | 🟢 | 🟢 | 🟢 | **9,0** | 100% cobertura, 10 migrations com ciclo up/down validado |
-| 6 | Capital (API + tela) | 🟢 | 🟡 | 🔴 | **6,5** | 81% cobertura, tela admin pronta; sem nenhum evento de constituição em prod |
-| 7 | Design system | 🟢 | 🟡 | 🟡 | **7,0** | DS canônico ORGATEC, 14 pares de contraste ≥4,5:1 medidos; sem regressão visual |
-| 8 | App shell | 🟢 | 🟡 | 🟡 | **7,0** | Sidebar, ⌘K, temas; coberto indiretamente por 5 E2E com asserção de erro de console |
-| 9 | Tomadores | 🟡 | 🟡 | 🟡 | **6,5** | CRUD + gate OC002; 65% cobertura; **KYC agora existe** (via Compliance), mas sem tela própria |
-| 10 | Dashboard | 🟡 | 🟡 | 🟡 | **6,0** | KPIs, 2 gráficos, banners; derivações extraídas para `lib/capital.ts` e cobertas por Vitest |
-| 11 | Observabilidade | 🟡 | 🟡 | 🟡 | **6,0** | Prometheus + logging estruturado ativos; `alerts.py` arquivado (era código morto) |
-| 12 | CI/CD | 🟡 | — | 🔴 | **4,0** | CircleCI configurado, mas **nunca executou** — aguarda autorização do GitHub App |
-| 13 | **Cobrança** | 🟢 | 🟢 | 🔴 | **8,5** | Agenda PRICE/SAC imutável, novação atômica, aging com trilha de autoria, baixa com lastro bancário; 100% cobertura |
-| 14 | **Contratos** | 🟢 | 🟢 | 🔴 | **7,0** | Instrumento com hash do banco, registro com protocolo obrigatório e **gate do Art. 5º §3º LIGADO** (migration 013), 96% coberto; API da registradora e assinatura seguem bloqueadas |
-| 15 | **Fiscal** | 🟡 | 🟢 | 🔴 | **5,5** | Apuração IRPJ/CSLL/PIS/COFINS no Lucro Presumido pronta e 100% coberta, alíquotas em configuração; **IOF segue bloqueado em parecer** |
-| 16 | **Compliance** | 🟢 | 🟢 | 🔴 | **7,0** | Identificação com evidência, retenção de 5 anos, detecção de atipicidade e **gate de identificação LIGADO** (migration 014); canal COAF segue adaptador desligado |
+| 2 | Modelos / migrations | 🟢 | 🟢 | 🟢 | **9,0** | 100% cobertura, 14 migrations com ciclo up/down validado |
+| 3 | Operações | 🟢 | 🟢 | 🔴 | **8,5** | 10 endpoints, ciclo completo, 90% cobertura, E2E ponta a ponta |
+| 4 | Motor de capital | 🟢 | 🟢 | 🔴 | **8,5** | 90% cobertura; **dois furos do Art. 5º fechados**; teto R$ 0,00 em prod |
+| 5 | **Cobrança** | 🟢 | 🟢 | 🔴 | **8,5** | Agenda imutável, novação atômica, aging com autoria, baixa com lastro; 100% |
+| 6 | Identidade / Zero-Trust | 🟢 | 🟢 | 🔴 | **7,5** | `security.py` 100%, papéis aplicados; **login real nunca funcionou em prod** |
+| 7 | **Contratos** | 🟢 | 🟢 | 🔴 | **7,0** | Instrumento com hash do banco, registro com protocolo, gate ligado; 96% |
+| 8 | **Compliance** | 🟢 | 🟢 | 🔴 | **7,0** | Identificação, retenção, atipicidade, gate ligado; 100% |
+| 9 | Design system | 🟢 | 🟡 | 🟡 | **7,0** | DS ORGATEC, 14 pares de contraste ≥4,5:1 medidos; sem regressão visual |
+| 10 | App shell | 🟢 | 🟡 | 🟡 | **7,0** | Sidebar, ⌘K, temas; coberto indiretamente por 5 E2E |
+| 11 | Capital (API + tela) | 🟢 | 🟡 | 🔴 | **6,5** | 81% cobertura, tela admin pronta; sem evento de constituição em prod |
+| 12 | Tomadores | 🟡 | 🟡 | 🟡 | **6,5** | CRUD + gate OC002; 65% cobertura; KYC existe via Compliance, sem tela própria |
+| 13 | Dashboard | 🟡 | 🟡 | 🟡 | **6,0** | KPIs e gráficos; derivações extraídas para `lib/capital.ts` e cobertas |
+| 14 | Observabilidade | 🟡 | 🟡 | 🟡 | **6,0** | Prometheus + logging estruturado; `alerts.py` arquivado (era código morto) |
+| 15 | **Fiscal** | 🟡 | 🟢 | 🔴 | **5,5** | Apuração no Lucro Presumido, 100% coberta; **IOF bloqueado em parecer** |
+| 16 | CI/CD | 🟡 | — | 🔴 | **4,0** | CircleCI configurado, **nunca executou** — aguarda autorização do GitHub App |
 
-**Média ponderada por criticidade: 7,7/10** (era 5,4).
-Núcleo (1–8): **7,9** (era 7,5). Periferia regulatória (13–16): **7,1** (era 0,6).
+**Média ponderada por criticidade: 7,3/10** (era 5,4 em julho).
+Núcleo: **8,0**. Periferia regulatória (Cobrança, Contratos, Fiscal,
+Compliance): **7,0** — era **0,6**.
 
-**Os três gates legais estão ligados**: teto de capital (Art. 5º), registro
-em entidade registradora (Art. 5º §3º) e identificação do cliente
-(Lei 9.613/98) — todos no banco, todos com teste que falha se forem
-afrouxados.
-
-A periferia deixou de ser casca vazia: os quatro módulos têm agora a parte
-que **não dependia de terceiro** construída e coberta. O que resta em cada
-um é decisão externa, não código:
+Nenhum módulo é mais casca vazia. O que resta em cada um é decisão externa:
 
 | Módulo | O que falta | Quem decide |
 |---|---|---|
 | Cobrança | nada | — |
-| Contratos | escolher a registradora (API) e o provedor de assinatura | você |
-| Contratos | preencher `ORGCRED_ESC_*` com os dados reais da ESC | você |
-| Fiscal | parecer de IOF; preencher alíquotas na tela | advogado/contador |
+| Contratos | escolher registradora (API) e provedor de assinatura; preencher `ORGCRED_ESC_*` | você |
+| Fiscal | parecer de IOF; preencher alíquotas na tela | advogado / contador |
 | Compliance | regime PLD/COAF para ligar o canal externo | advogado |
 
 ---
 
 ## 4. Achados — o que aconteceu com cada um
 
-Os cinco achados de 2026-07-31, e o estado deles em 2026-08-08:
+Os cinco achados de 2026-07-31:
 
-1. ~~**`app/core/alerts.py` é código morto.**~~ **RESOLVIDO** (`a7b5e01`):
-   arquivado. Alerta que ninguém invoca dá falsa sensação de que existe.
+1. ~~**`alerts.py` é código morto.**~~ **RESOLVIDO** (`a7b5e01`): arquivado.
+   Alerta que ninguém invoca dá falsa sensação de que existe.
 
-2. ~~**Motor de capital com a menor cobertura entre os módulos ativos
-   (58,8%).**~~ **RESOLVIDO**: 90%. E a investigação que a cobertura
-   forçou encontrou **dois furos do Art. 5º já em produção** (`bdccab5`):
-   marcar inadimplência e renegociar liberavam capital de empréstimo não
-   pago. Nenhum dos dois exigia má-fé — eram consequência da definição de
-   "comprometido" contar só `ativa`.
+2. ~~**Motor de capital com a menor cobertura (58,8%).**~~ **RESOLVIDO**:
+   90%. E a investigação que a cobertura forçou encontrou **dois furos do
+   Art. 5º já em produção** (`bdccab5`): marcar inadimplência e renegociar
+   liberavam capital de empréstimo não pago. Nenhum exigia má-fé — eram
+   consequência de "comprometido" contar só `ativa`.
 
-3. **Produção serve bundle antigo.** **ABERTO.** O Railway não faz deploy
-   de `main`. Tudo entregue de F5 até aqui — inclusive os dois furos
-   fechados — segue fora do ar. É o item de maior risco do projeto agora:
-   a produção roda a versão COM os furos.
+3. **Produção serve bundle antigo.** **ABERTO — e é o maior risco atual.**
+   O Railway não faz deploy de `main`. A produção roda a versão **com os
+   dois furos**, sem os gates e sem cobrança, contratos, fiscal e
+   compliance.
 
 4. ~~**1 teste E2E para 10 rotas.**~~ **MELHORADO**: 5 E2E, todos com
-   asserção de zero erro de console. Nesta rodada, o E2E pegou: query de
-   parcelas não invalidada, diálogo da régua que não fechava, e badge de
-   status ambíguo. Segue sendo o teste com maior retorno por esforço.
+   asserção de zero erro de console. Nesta rodada pegaram: query de parcelas
+   não invalidada, diálogo da régua que não fechava, badge de status
+   ambíguo e uma limpeza de seed incompleta.
 
-5. **Nenhuma das 5 telas principais tem teste de componente.**
-   **PARCIAL**: as derivações do dashboard foram extraídas para
-   `lib/capital.ts` e cobertas; as telas em si continuam sem teste próprio,
-   cobertas indiretamente pelos E2E.
+5. **Telas sem teste de componente.** **PARCIAL**: derivações extraídas para
+   `lib/capital.ts` e cobertas; as telas seguem cobertas indiretamente.
 
 ### Achados novos desta rodada
 
-6. **Regras de negócio críticas estavam sem trilha.** `ativa →
-   inadimplente` não deixava rastro em lugar nenhum — declarar alguém
-   inadimplente acontecia sem autor. Fechado pela `operacao_evento` (008).
+6. **Regras críticas sem trilha.** `ativa → inadimplente` não deixava rastro
+   em lugar nenhum — declarar alguém inadimplente acontecia sem autor.
+   Fechado pela `operacao_evento` (008).
 
-7. **Dois erros de Postgres que só produção teria mostrado**, ambos
-   pegos por teste antes de existirem: `NULL` não conflita em chave única
-   (a varredura de atipicidade duplicaria a cada execução), e `now()` é o
+7. **Gate legal honrado na palavra.** `registro_entidade_ref` era texto
+   livre: `"x"` passava pela exigência do Art. 5º §3º. Fechado pelas 012 e
+   013.
+
+8. **Três erros de Postgres que só produção teria mostrado**, todos pegos
+   por teste antes de existirem: `NULL` não conflita em chave única (a
+   varredura de atipicidade duplicaria a cada execução); `now()` é o
    timestamp da transação, não do statement (a trilha exibiria eventos em
-   ordem arbitrária).
+   ordem arbitrária); e `GET DIAGNOSTICS` não aceita expressão.
 
 ---
 
 ## 5. Plano de combate
 
-Ordenado por **risco removido por hora de trabalho**, não por conforto.
-
-### 🔴 Frente 1 — Tornar operável (bloqueia tudo)
-
-Sem isto, todo o resto é investimento em algo que ninguém usa.
+### 🔴 Frente 1 — Tornar operável — **ABERTA, e agora é tudo que importa**
 
 | # | Ação | Depende de | Esforço |
 |---|---|---|---|
-| 1.1 | Destravar o deploy do Railway a partir de `main` | reautenticar MCP ou dashboard | 30 min |
+| 1.1 | Reconectar o GitHub no Railway (`main`, builder Dockerfile) | você | 30 min |
 | 1.2 | Definir senha do admin no Supabase + inserir linha em `usuario` com o mesmo UUID | você | 15 min |
-| 1.3 | `insert into esc_capital_social` com o capital integralizado | **decisão dos sócios** | 5 min após a decisão |
-| 1.4 | Autorizar CircleCI no GitHub e validar o primeiro run | você (OAuth) | 20 min |
-| 1.5 | Smoke test end-to-end em produção: login real → criar → registrar → ativar | 1.1–1.3 | 1 h |
+| 1.3 | `insert into esc_capital_social` com o capital integralizado | **decisão dos sócios** | 5 min |
+| 1.4 | Autorizar o CircleCI no GitHub e validar o primeiro run | você (OAuth) | 20 min |
+| 1.5 | Preencher `ORGCRED_ESC_*` com os dados reais da ESC | você | 5 min |
+| 1.6 | Contador preenche presunção e alíquotas na tela Fiscal | contador | 15 min |
+| 1.7 | Smoke test em produção: login real → criar → registrar → ativar | 1.1–1.5 | 1 h |
 
-**Sem 1.3 o sistema é uma vitrine.** É a decisão de maior alavancagem do
-projeto inteiro e não depende de nenhuma linha de código.
+**Sem 1.3 o sistema é uma vitrine.** Continua sendo a decisão de maior
+alavancagem do projeto inteiro, e não depende de nenhuma linha de código.
 
-### ✅ Frente 2 — Fechar o flanco de testes — **CONCLUÍDA**
+**Antes do deploy, medir as duas lacunas dos gates:**
+
+```sql
+select * from v_operacoes_sem_registro_confirmado;
+select * from v_tomadores_sem_identificacao;
+```
+
+Operações já ativas não são afetadas — os gates rodam na transição.
+
+### ✅ Frente 2 — Testes — **CONCLUÍDA**
 
 | # | Ação | Estado |
 |---|---|---|
 | 2.1 | Cobertura de `capital_engine.py` ≥90% | ✅ 58,8% → 90% |
-| 2.2 | E2E de ciclo completo e OC002 | ✅ `68abb82` |
-| 2.3 | Teste de componente para as telas | 🟡 parcial — derivações extraídas e cobertas; telas ainda sem teste próprio |
-| 2.4 | Decidir `alerts.py` | ✅ arquivado em `a7b5e01` |
+| 2.2 | E2E de ciclo completo e OC002 | ✅ |
+| 2.3 | Teste de componente para as telas | 🟡 parcial — derivações cobertas; telas via E2E |
+| 2.4 | Decidir `alerts.py` | ✅ arquivado |
 
 ### ✅ Frente 3 — Cobrança — **CONCLUÍDA**
 
 | # | Ação | Commit |
 |---|---|---|
-| 3.1 | Agenda PRICE/SAC gerada no banco na ativação, imutável (OC009) | `4d5edc4` |
+| 3.1 | Agenda PRICE/SAC gerada no banco, imutável (OC009) | `4d5edc4` |
 | 3.2 | Novação atômica (OC008) + correção dos dois furos do Art. 5º | `bdccab5` |
 | 3.3 | Aging com transição automática e trilha de autoria (OC010) | `34b5b20` |
-| 3.4 | Baixa de recebimento amarrada a movimento bancário (OC011/OC012) | `39d29a1` |
+| 3.4 | Baixa amarrada a movimento bancário (OC011/OC012) | `39d29a1` |
 
 O ciclo fecha: a agenda define o que se cobra, o aging vê o atraso a partir
 dela, e só a baixa **com lastro bancário** tira a parcela do atraso.
 
-### 🟡 Frente 4 — Regulatório
+### 🟡 Frente 4 — Regulatório — **construível concluída**
 
-**Contratos — instrumento e registro construídos** (migration 012):
+| Módulo | Construído | Commit | Bloqueado |
+|---|---|---|---|
+| Compliance | Identificação com evidência (hash verificável), retenção de 5 anos (OC013), detecção de atipicidade (OC014), **gate OC019 ligado** | `ba3997b`, `2031798` | canal COAF (adaptador pronto e desligado) |
+| Fiscal | Apuração IRPJ/CSLL/PIS/COFINS no Lucro Presumido, alíquotas em configuração com vigência, retificação por versão | `ff02c19` | IOF-crédito |
+| Contratos | Contrato de Empréstimo ESC com hash do banco, registro com protocolo obrigatório (OC018), **gate OC004 ligado** | `3394487`, `8e5e6cc` | API da registradora, assinatura eletrônica |
 
-| Item | Estado |
-|---|---|
-| Contrato de Empréstimo ESC gerado da operação + agenda, determinístico | ✅ |
-| SHA-256 calculado pelo BANCO (corpo e hash não podem divergir) + conferência | ✅ |
-| Reemissão por versão (a via do tomador continua conferível) | ✅ |
-| Registro com entidade, protocolo obrigatório e máquina de estados (OC018) | ✅ |
-| Gate de ativação por registro confirmado | ✅ **LIGADO** (migration 013) |
-| Integração com a API da registradora | 🔴 sem entidade escolhida |
-| Assinatura eletrônica | 🔴 sem provedor escolhido |
+Três decisões de negócio tomadas nesta rodada, todas registradas em código:
 
-**O gate foi ligado na migration 013.** `registro_entidade_ref` virou campo
-informativo (aparece no corpo do contrato) e perdeu força de gate: ativar
-exige uma linha em `registro_operacao` com status `confirmado` — e
-confirmado, por constraint, exige protocolo. Escrever "x" não passa mais.
-
-Não é retroativo de propósito: operações já ativas seguem ativas (o trigger
-roda na transição, e revogar o que já foi emprestado não devolveria o
-dinheiro), e reativar inadimplente não revalida.
-
-TIPO DO INSTRUMENTO: "Contrato de Empréstimo ESC", **não CCB** — a CCB
-(Lei 10.931/2004) é instrumento de instituição financeira, e a própria
-pesquisa de registradoras mostra a CRDC tratando "Contratos ESC" como
-categoria de ativo separada. `tipo_instrumento` é coluna para o advogado
-mudar isso sem migration nova.
-
-
-**Construído sem depender de ninguém** (migration 010):
-
-| Item | Estado |
-|---|---|
-| Identificação com evidência arquivada (hash SHA-256 verificável) | ✅ |
-| Retenção de 5 anos garantida pelo banco (Lei 9.613/98, art. 10, III — OC013) | ✅ |
-| Detecção interna de atipicidade: fracionamento, liquidação antecipada, pagamento em excesso | ✅ |
-| Gate de ativação por identificação arquivada | ✅ **LIGADO** (migration 014, OC019) |
-| Canal externo COAF | 🔌 adaptador pronto e **desligado** |
-
-**Fiscal — apuração da receita da ESC construída** (migration 011):
-
-| Item | Estado |
-|---|---|
-| Regime Lucro Presumido, apuração trimestral | ✅ decidido pelo dono do negócio |
-| IRPJ, adicional, CSLL, PIS e COFINS sobre a receita de JUROS | ✅ |
-| Presunção, alíquotas e limite do adicional em configuração, com vigência | ✅ nada semeado no código |
-| Retificação por versão (a apuração original nunca é editada) | ✅ |
-| IOF-crédito | 🔴 bloqueado em parecer |
-
-A base é só o juro — a amortização devolve principal e não é resultado. Sem
-parâmetro configurado, apurar é **recusado** (OC015) em vez de devolver um
-número plausível calculado com alíquota escolhida pelo sistema.
+- **Lucro Presumido**, apuração trimestral, alíquotas em configuração.
+- **"Contrato de Empréstimo ESC"**, não CCB — a CCB é instrumento de
+  instituição financeira, e a pesquisa de registradoras mostra a CRDC
+  tratando "Contratos ESC" como categoria separada.
+- **Os dois gates ligados**, com a lacuna medida antes.
 
 **Continua bloqueado em ação externa:**
 
 | Módulo | Ação necessária | Quem |
 |---|---|---|
-| Contratos | Contato comercial: CRDC, SPC Grafeno (via ABRAFESC), CERC, B3 | você — formulários já mapeados |
-| Fiscal (só o IOF) | Parecer jurídico-tributário sobre IOF em ESC | contador/advogado |
-| Compliance (só o canal) | Confirmação do regime PLD/COAF para ESC | advogado |
-| Fiscal (para usar) | Preencher presunção e alíquotas na tela | contador |
-
-**Gate ligado na migration 014.** Ativar exige que o tomador tenha ao menos
-uma evidência arquivada (Lei 9.613/98, art. 10, I), com SQLSTATE próprio
-(OC019) — código separado do OC004 porque são leis e instruções diferentes.
-Mesma disciplina do gate de registro: não é retroativo, e reativar
-inadimplente não revalida.
-
-Regra mínima: UMA evidência de qualquer tipo. Exigir um tipo específico é
-política de KYC da ESC, e `tomador_documento.tipo` já existe para quando ela
-for definida.
+| Contratos | Contato comercial: CRDC, SPC Grafeno (via ABRAFESC), CERC, B3 | você — formulários mapeados |
+| Fiscal | Parecer jurídico-tributário sobre IOF em ESC | contador/advogado |
+| Compliance | Confirmação do regime PLD/COAF para ESC | advogado |
 
 ---
 
 ## 6. Sequência recomendada
 
 ```
-Frente 2 (testes)    ─── ✅ concluída
-Frente 3 (cobrança)  ─── ✅ concluída
-Frente 4 (construível) ─ ✅ concluída — compliance E fiscal
-Frente 1 (operável)  ─── 🔴 ABERTA — e agora é a ÚNICA coisa que importa
+Frente 2 (testes)      ─── ✅ concluída
+Frente 3 (cobrança)    ─── ✅ concluída
+Frente 4 (construível) ─── ✅ concluída
+Frente 1 (operável)    ─── 🔴 ABERTA — a única coisa que resta
 ```
 
 Não há mais nada de valor a construir sem você. Todo o trabalho técnico
-possível foi feito; o que resta é integralmente decisão ou credencial:
+possível foi feito; o que resta é integralmente decisão, credencial ou
+contato comercial.
 
-1. **Reconectar o GitHub no Railway** para `main`. Sem isso, produção segue
-   rodando a versão **com os dois furos do Art. 5º** que já foram
-   corrigidos aqui. Este é hoje o maior risco do projeto.
-2. **Valor do capital social integralizado** — decisão dos sócios. Uma
-   linha de SQL que transforma uma vitrine em uma ESC operante.
-3. **Senha do admin no Supabase** + linha em `usuario` com o mesmo UUID.
-4. **Autorizar o CircleCI** no GitHub.
-5. **Decidir** se identificação arquivada passa a ser pré-requisito de
-   ativação (ver Frente 4).
-6. **Contador preenche** presunção e alíquotas na tela Fiscal — sem isso a
-   apuração recusa, de propósito.
-7. **Configurar** `ORGCRED_ESC_*` com os dados reais da ESC — sem eles a
-   emissão de contrato recusa, e o compose só tem valores fictícios de dev.
-8. **Atenção ao subir para produção:** com os gates ativos (migrations 013
-   e 014), ativar exige registro confirmado E identificação arquivada.
-   Antes do deploy, medir as duas lacunas:
-
-   ```sql
-   select * from v_operacoes_sem_registro_confirmado;
-   select * from v_tomadores_sem_identificacao;
-   ```
-
-   Operações já ativas não são afetadas — os gates rodam na transição.
+**Se só uma coisa for feita:** reconectar o GitHub no Railway. Produção roda
+hoje a versão com os dois furos do Art. 5º que já foram corrigidos aqui.

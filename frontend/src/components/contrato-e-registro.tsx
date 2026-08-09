@@ -36,8 +36,8 @@ import { Skeleton } from '@/components/ui/skeleton'
  * status. O campo `registro_entidade_ref` da operação continua existindo e
  * continua sendo texto livre; é justamente o que esta seção substitui.
  *
- * O gate de ativação por registro confirmado está DESLIGADO: ligá-lo é
- * decisão de negócio (ver migration 012).
+ * O gate de ativação por registro confirmado está LIGADO desde a migration
+ * 013: sem um registro confirmado aqui, a operação não ativa (OC004).
  */
 export function ContratoERegistro({ operacaoId }: { operacaoId: string }) {
   const queryClient = useQueryClient()
@@ -157,8 +157,8 @@ export function ContratoERegistro({ operacaoId }: { operacaoId: string }) {
           )}
           {registros.data && registros.data.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              Nenhuma tentativa de registro. A ativação <strong>não</strong> exige registro
-              confirmado hoje — o gate está desligado.
+              Nenhuma tentativa de registro. A operação <strong>não poderá ser ativada</strong> até
+              haver um registro confirmado, com protocolo.
             </p>
           )}
           {registros.data?.map((r) => (

@@ -91,9 +91,9 @@ function CompliancePage() {
         <CardHeader>
           <CardTitle>Identificação pendente</CardTitle>
           <CardDescription>
-            Tomadores sem nenhuma evidência arquivada, com o capital já exposto a eles. O sistema{' '}
-            <strong>não bloqueia</strong> a ativação por falta de identificação — é decisão de
-            negócio, e esta lista existe para que ela seja tomada com o número na mão.
+            Tomadores sem nenhuma evidência arquivada (Lei 9.613/98, art. 10, I). Desde que o gate
+            foi ligado, <strong>nenhuma operação destes tomadores consegue ativar</strong> — o
+            capital exposto é o que já estava emprestado antes disso.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -236,9 +236,9 @@ function RegistroPendente() {
       <CardHeader>
         <CardTitle>Registro em entidade registradora pendente</CardTitle>
         <CardDescription>
-          Art. 5º, §3º, da LC 167/2019. Hoje o gate de ativação só verifica que o campo de
-          referência não está vazio — <strong>qualquer texto passa</strong>. Esta lista mostra o que
-          deixaria de ativar se a exigência de registro confirmado fosse ligada.
+          Art. 5º, §3º, da LC 167/2019. O gate está ligado: estas operações{' '}
+          <strong>não conseguem ativar</strong> enquanto não houver registro confirmado, com
+          protocolo. As que já estão ativas não foram afetadas — o gate roda na transição.
         </CardDescription>
       </CardHeader>
       <CardContent>
