@@ -7,8 +7,8 @@
 >
 > **Revisado em 2026-08-08**, após a execução das Frentes 2, 3 e da parte
 > construível da Frente 4. Os números de scorecard abaixo foram
-> remedidos, não estimados: 204 testes backend, cobertura total 92%,
-> 50 Vitest, 5 E2E, 13 migrations. A Frente 1 segue integralmente aberta — e continua
+> remedidos, não estimados: 209 testes backend, cobertura total 92%,
+> 50 Vitest, 5 E2E, 14 migrations. A Frente 1 segue integralmente aberta — e continua
 > sendo o que separa este sistema de ser usado.
 
 ---
@@ -29,7 +29,7 @@ foi construído nas Frentes 2, 3 e 4 está em `main` e em nenhum servidor.
 
 ## 2. Mapa de módulos
 
-### 2.1 Backend — 4.0k linhas, 50 endpoints, 9 routers, 13 migrations
+### 2.1 Backend — 4.0k linhas, 50 endpoints, 9 routers, 14 migrations
 
 > Contagens remedidas em 2026-08-08. As tabelas desta seção descrevem o
 > levantamento original de 2026-07-31; o estado atual de cada módulo está
@@ -73,7 +73,7 @@ append-only.
 | **App shell** | `_authenticated.tsx`, `app-sidebar`, `command-palette` | 389 |
 | **Design system** | `components/ui/*` (18 componentes) + `index.css` | ~2.700 |
 
-### 2.3 Testes — 204 backend + 50 Vitest + 5 E2E
+### 2.3 Testes — 209 backend + 50 Vitest + 5 E2E
 
 > Eram 52 + 32 + 1 em 2026-07-31. Cobertura backend total: 92%.
 
@@ -106,10 +106,15 @@ Escala: 🟢 sólido · 🟡 funcional com lacuna · 🔴 crítico/ausente
 | 13 | **Cobrança** | 🟢 | 🟢 | 🔴 | **8,5** | Agenda PRICE/SAC imutável, novação atômica, aging com trilha de autoria, baixa com lastro bancário; 100% cobertura |
 | 14 | **Contratos** | 🟢 | 🟢 | 🔴 | **7,0** | Instrumento com hash do banco, registro com protocolo obrigatório e **gate do Art. 5º §3º LIGADO** (migration 013), 96% coberto; API da registradora e assinatura seguem bloqueadas |
 | 15 | **Fiscal** | 🟡 | 🟢 | 🔴 | **5,5** | Apuração IRPJ/CSLL/PIS/COFINS no Lucro Presumido pronta e 100% coberta, alíquotas em configuração; **IOF segue bloqueado em parecer** |
-| 16 | **Compliance** | 🟡 | 🟢 | 🔴 | **6,0** | Identificação com evidência, retenção de 5 anos e detecção de atipicidade prontas e 100% cobertas; **canal COAF é adaptador desligado** |
+| 16 | **Compliance** | 🟢 | 🟢 | 🔴 | **7,0** | Identificação com evidência, retenção de 5 anos, detecção de atipicidade e **gate de identificação LIGADO** (migration 014); canal COAF segue adaptador desligado |
 
-**Média ponderada por criticidade: 7,6/10** (era 5,4).
-Núcleo (1–8): **7,9** (era 7,5). Periferia regulatória (13–16): **6,8** (era 0,6).
+**Média ponderada por criticidade: 7,7/10** (era 5,4).
+Núcleo (1–8): **7,9** (era 7,5). Periferia regulatória (13–16): **7,1** (era 0,6).
+
+**Os três gates legais estão ligados**: teto de capital (Art. 5º), registro
+em entidade registradora (Art. 5º §3º) e identificação do cliente
+(Lei 9.613/98) — todos no banco, todos com teste que falha se forem
+afrouxados.
 
 A periferia deixou de ser casca vazia: os quatro módulos têm agora a parte
 que **não dependia de terceiro** construída e coberta. O que resta em cada
@@ -121,7 +126,7 @@ um é decisão externa, não código:
 | Contratos | escolher a registradora (API) e o provedor de assinatura | você |
 | Contratos | preencher `ORGCRED_ESC_*` com os dados reais da ESC | você |
 | Fiscal | parecer de IOF; preencher alíquotas na tela | advogado/contador |
-| Compliance | regime PLD/COAF para ligar o canal | advogado |
+| Compliance | regime PLD/COAF para ligar o canal externo | advogado |
 
 ---
 
@@ -245,6 +250,7 @@ mudar isso sem migration nova.
 | Identificação com evidência arquivada (hash SHA-256 verificável) | ✅ |
 | Retenção de 5 anos garantida pelo banco (Lei 9.613/98, art. 10, III — OC013) | ✅ |
 | Detecção interna de atipicidade: fracionamento, liquidação antecipada, pagamento em excesso | ✅ |
+| Gate de ativação por identificação arquivada | ✅ **LIGADO** (migration 014, OC019) |
 | Canal externo COAF | 🔌 adaptador pronto e **desligado** |
 
 **Fiscal — apuração da receita da ESC construída** (migration 011):
@@ -270,11 +276,15 @@ número plausível calculado com alíquota escolhida pelo sistema.
 | Compliance (só o canal) | Confirmação do regime PLD/COAF para ESC | advogado |
 | Fiscal (para usar) | Preencher presunção e alíquotas na tela | contador |
 
-**Uma decisão de negócio pendente, agora com o número na mão:** exigir
-identificação arquivada antes de ativar uma operação. A amarra não foi
-ligada de propósito — hoje existem tomadores sem evidência, e ativá-la sem
-aviso pararia a operação. `GET /compliance/identificacao/pendencias` mostra
-quanto capital está exposto a tomadores sem identificação.
+**Gate ligado na migration 014.** Ativar exige que o tomador tenha ao menos
+uma evidência arquivada (Lei 9.613/98, art. 10, I), com SQLSTATE próprio
+(OC019) — código separado do OC004 porque são leis e instruções diferentes.
+Mesma disciplina do gate de registro: não é retroativo, e reativar
+inadimplente não revalida.
+
+Regra mínima: UMA evidência de qualquer tipo. Exigir um tipo específico é
+política de KYC da ESC, e `tomador_documento.tipo` já existe para quando ela
+for definida.
 
 ---
 
@@ -303,7 +313,13 @@ possível foi feito; o que resta é integralmente decisão ou credencial:
    apuração recusa, de propósito.
 7. **Configurar** `ORGCRED_ESC_*` com os dados reais da ESC — sem eles a
    emissão de contrato recusa, e o compose só tem valores fictícios de dev.
-8. **Atenção ao ligar em produção:** com o gate ativo (migration 013), toda
-   operação em 'registrada' precisa de registro confirmado para ativar.
-   Rodar `select * from v_operacoes_sem_registro_confirmado;` ANTES do
-   deploy mostra quais ficarão travadas.
+8. **Atenção ao subir para produção:** com os gates ativos (migrations 013
+   e 014), ativar exige registro confirmado E identificação arquivada.
+   Antes do deploy, medir as duas lacunas:
+
+   ```sql
+   select * from v_operacoes_sem_registro_confirmado;
+   select * from v_tomadores_sem_identificacao;
+   ```
+
+   Operações já ativas não são afetadas — os gates rodam na transição.

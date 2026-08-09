@@ -18,12 +18,18 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.capital_engine import ativar_operacao, baixar_parcela, registrar_movimento_bancario
+from app.capital_engine import (
+    ativar_operacao,
+    baixar_parcela,
+    registrar_movimento_bancario,
+    transicionar_operacao,
+)
+from app.core.exceptions import IdentificacaoAusente
 from app.core.security import get_admin_user, get_current_user, get_operador_user
 from app.db import get_db
 from app.main import app
 from app.models import Usuario
-from tests.conftest import confirmar_registro, sqlstate_de
+from tests.conftest import arquivar_identificacao, confirmar_registro, sqlstate_de
 
 
 @pytest.fixture()
@@ -58,11 +64,11 @@ def _sha(conteudo: bytes) -> str:
 
 class TestIdentificacao:
     def test_arquivar_e_listar(
-        self, admin_client: TestClient, tomador_autorizado: uuid.UUID
+        self, admin_client: TestClient, tomador_sem_identificacao: uuid.UUID
     ) -> None:
         conteudo = b"contrato social em pdf"
         resposta = admin_client.post(
-            f"/api/compliance/tomadores/{tomador_autorizado}/documentos",
+            f"/api/compliance/tomadores/{tomador_sem_identificacao}/documentos",
             json={
                 "tipo": "contrato_social",
                 "nome_arquivo": "contrato.pdf",
@@ -76,7 +82,7 @@ class TestIdentificacao:
         assert date.fromisoformat(corpo["retencao_ate"]) >= date.today() + timedelta(days=5 * 365)
 
         lista = admin_client.get(
-            f"/api/compliance/tomadores/{tomador_autorizado}/documentos"
+            f"/api/compliance/tomadores/{tomador_sem_identificacao}/documentos"
         ).json()
         assert [d["nome_arquivo"] for d in lista] == ["contrato.pdf"]
 
@@ -154,11 +160,15 @@ class TestIdentificacao:
         self,
         admin_client: TestClient,
         db_session: Session,
-        tomador_autorizado: uuid.UUID,
+        tomador_sem_identificacao: uuid.UUID,
         capital_constituido: None,
     ) -> None:
-        """A lista existe para embasar a decisão de exigir identificação
-        antes da ativação — por isso ordena por capital exposto."""
+        """A lista mostra quem NÃO tem evidência arquivada.
+
+        Desde a migration 014 a exigência está ligada, então esta lista
+        deixou de ser só informativa: é a relação de tomadores com quem não
+        se consegue mais ativar operação nenhuma."""
+        tomador_autorizado = tomador_sem_identificacao
         op_id = db_session.execute(
             text("""
             insert into operacao_credito
@@ -171,18 +181,25 @@ class TestIdentificacao:
         ).scalar_one()
         db_session.commit()
         confirmar_registro(db_session, op_id)
-        ativar_operacao(db_session, op_id)
+
+        # A operação NÃO consegue mais ativar: é exatamente o efeito do gate.
+        with pytest.raises(IdentificacaoAusente) as exc:
+            ativar_operacao(db_session, op_id)
+        assert exc.value.sqlstate == "OC019"
 
         pendencias = admin_client.get("/api/compliance/identificacao/pendencias").json()
         assert len(pendencias) == 1
-        assert Decimal(pendencias[0]["capital_exposto"]) == Decimal("30000.00")
+        # Capital exposto zero porque o gate impediu o comprometimento — que
+        # é o resultado desejado da migration 014.
+        assert Decimal(pendencias[0]["capital_exposto"]) == Decimal("0")
 
-        # Depois de arquivar, o tomador sai da lista.
+        # Depois de arquivar, o tomador sai da lista E a operação ativa.
         admin_client.post(
             f"/api/compliance/tomadores/{tomador_autorizado}/documentos",
             json={"tipo": "contrato_social", "nome_arquivo": "c.pdf", "sha256": _sha(b"c")},
         )
         assert admin_client.get("/api/compliance/identificacao/pendencias").json() == []
+        assert ativar_operacao(db_session, op_id).status == "ativa"
 
 
 class TestRetencao:
@@ -222,9 +239,14 @@ class TestRetencao:
         )
         db_session.commit()
 
-        db_session.execute(text("delete from tomador_documento"))
+        db_session.execute(text("delete from tomador_documento where nome_arquivo = 'antigo.pdf'"))
         db_session.commit()
-        assert db_session.execute(text("select count(*) from tomador_documento")).scalar_one() == 0
+        assert (
+            db_session.execute(
+                text("select count(*) from tomador_documento where nome_arquivo = 'antigo.pdf'")
+            ).scalar_one()
+            == 0
+        )
 
     def test_evidencia_nao_pode_ser_alterada(
         self, db_session: Session, tomador_autorizado: uuid.UUID
@@ -411,3 +433,107 @@ class TestAtipicidade:
         )
         app.dependency_overrides[get_current_user] = lambda: operador
         assert client.post("/api/compliance/atipicidades/detectar", json={}).status_code == 403
+
+
+class TestGateIdentificacao:
+    """Migration 014: emprestar para quem não se sabe quem é passou a ser
+    recusado pelo banco (Lei 9.613/98, art. 10, I)."""
+
+    def _operacao_pronta(self, db_session: Session, tomador_id: uuid.UUID) -> uuid.UUID:
+        """Operação registrada, com registro confirmado — só falta a
+        identificação. Isola OC019 de OC004."""
+        op_id = _operacao(db_session, tomador_id, "10000")
+        confirmar_registro(db_session, op_id)
+        return op_id
+
+    def test_sem_identificacao_bloqueia(
+        self,
+        db_session: Session,
+        tomador_sem_identificacao: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        op_id = self._operacao_pronta(db_session, tomador_sem_identificacao)
+
+        with pytest.raises(IdentificacaoAusente) as exc:
+            ativar_operacao(db_session, op_id)
+        assert exc.value.sqlstate == "OC019"
+        assert exc.value.http_status == 422
+
+    def test_qualquer_evidencia_basta(
+        self,
+        db_session: Session,
+        tomador_sem_identificacao: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """A regra mínima defensável é UMA evidência. Exigir um tipo
+        específico é política de KYC da ESC, não decisão de quem escreve o
+        sistema — `tomador_documento.tipo` existe para quando ela sair."""
+        op_id = self._operacao_pronta(db_session, tomador_sem_identificacao)
+        arquivar_identificacao(db_session, tomador_sem_identificacao, tipo="comprovante_endereco")
+
+        assert ativar_operacao(db_session, op_id).status == "ativa"
+
+    def test_evidencia_expurgada_volta_a_bloquear(
+        self,
+        db_session: Session,
+        tomador_sem_identificacao: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Documento apagado depois do prazo de retenção deixa de contar — e
+        é correto: se a evidência não existe mais, não há o que apresentar
+        numa fiscalização."""
+        db_session.execute(
+            text("""
+            insert into tomador_documento
+                (tomador_id, tipo, nome_arquivo, sha256, retencao_ate)
+            values (:t, 'contrato_social', 'vencido.pdf', :sha, current_date - 1)
+            """),
+            {"t": str(tomador_sem_identificacao), "sha": _sha(b"vencido")},
+        )
+        db_session.commit()
+
+        op_id = self._operacao_pronta(db_session, tomador_sem_identificacao)
+        assert ativar_operacao(db_session, op_id).status == "ativa"
+
+        # Expurgado o documento, uma NOVA operação já não ativa.
+        transicionar_operacao(db_session, op_id, "liquidada")
+        db_session.execute(text("delete from tomador_documento where nome_arquivo = 'vencido.pdf'"))
+        db_session.commit()
+
+        outra = self._operacao_pronta(db_session, tomador_sem_identificacao)
+        with pytest.raises(IdentificacaoAusente):
+            ativar_operacao(db_session, outra)
+
+    def test_reativar_inadimplente_nao_revalida(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Mesma disciplina do gate de registro: regularizar é ato sobre
+        operação que JÁ comprometia capital."""
+        op_id = self._operacao_pronta(db_session, tomador_autorizado)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        assert ativar_operacao(db_session, op_id).status == "ativa"
+
+    def test_identificacao_e_verificada_antes_do_gate_geografico(
+        self, db_session: Session, capital_constituido: None
+    ) -> None:
+        """Não saber quem é o tomador é falha mais grave do que ele estar
+        fora da área — e a mensagem mais útil é a da falha mais grave."""
+        tomador_id = db_session.execute(
+            text("""
+            insert into tomador (cnpj, razao_social, porte, municipio, uf, municipio_autorizado)
+            values (:cnpj, 'Fora e Sem Papel ME', 'ME', 'Goiania', 'GO', false)
+            returning id
+            """),
+            {"cnpj": f"{uuid.uuid4().int % 10**14:014d}"},
+        ).scalar_one()
+        db_session.commit()
+
+        op_id = self._operacao_pronta(db_session, tomador_id)
+
+        with pytest.raises(IdentificacaoAusente):
+            ativar_operacao(db_session, op_id)

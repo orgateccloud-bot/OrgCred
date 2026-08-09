@@ -22,6 +22,49 @@ async function confirmarRegistro(client: Client, operacaoId: string, entidade = 
   )
 }
 
+/**
+ * Arquiva uma evidência de identificação para o tomador.
+ *
+ * Desde a migration 014, ativar exige ao menos uma evidência arquivada
+ * (Lei 9.613/98, art. 10, I). Vale inclusive para os cenários que testam
+ * OUTROS bloqueios: sem isto, o gate geográfico e o de teto passariam a
+ * falhar por OC019 e deixariam de provar o que prometem.
+ */
+async function arquivarIdentificacao(client: Client, tomadorId: string) {
+  await client.query(
+    `insert into tomador_documento (tomador_id, tipo, nome_arquivo, sha256, retencao_ate)
+     values ($1, 'contrato_social', 'contrato-e2e.pdf', encode(digest($2, 'sha256'), 'hex'),
+             current_date + interval '5 years')`,
+    [tomadorId, `e2e:${tomadorId}`],
+  )
+}
+
+/**
+ * Limpa os tomadores de teste e o que pende deles.
+ *
+ * `tomador_documento` está sob retenção legal (OC013) e
+ * `ocorrencia_atipicidade` é append-only (OC014): apagar exige desligar os
+ * guards explicitamente. Ter que fazer isso é justamente a prova de que,
+ * pela aplicação, não existe caminho para destruir essas trilhas.
+ */
+async function limparTomadoresDeTeste(client: Client) {
+  await client.query('alter table tomador_documento disable trigger trg_documento_retencao')
+  await client.query(
+    'alter table ocorrencia_atipicidade disable trigger trg_ocorrencia_append_only',
+  )
+  await client.query(
+    `delete from tomador_documento
+      where tomador_id in (select id from tomador where cnpj like '9999%')`,
+  )
+  await client.query(
+    `delete from ocorrencia_atipicidade
+      where tomador_id in (select id from tomador where cnpj like '9999%')`,
+  )
+  await client.query('alter table tomador_documento enable trigger trg_documento_retencao')
+  await client.query('alter table ocorrencia_atipicidade enable trigger trg_ocorrencia_append_only')
+  await client.query("delete from tomador where cnpj like '9999%'")
+}
+
 export interface CenarioAtivacao {
   usuarioId: string
   accessToken: string
@@ -53,7 +96,7 @@ export async function semearCenarioAtivacao(): Promise<CenarioAtivacao> {
       // proxima falha com "ja existe um movimento".
       'truncate capital_ledger, operacao_credito, esc_capital_social, movimento_bancario cascade',
     )
-    await client.query("delete from tomador where cnpj like '9999%'")
+    await limparTomadoresDeTeste(client)
     await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
 
     const usuarioId = randomUUID()
@@ -68,6 +111,7 @@ export async function semearCenarioAtivacao(): Promise<CenarioAtivacao> {
       [`9999${String(Date.now()).slice(-10)}`],
     )
     const tomadorId = tomadorResult.rows[0].id
+    await arquivarIdentificacao(client, tomadorId)
 
     // Capital social de 50.000 — uma operação de 30.000 cabe; uma segunda
     // de 30.000 excede o disponível (20.000), provando o bloqueio OC001.
@@ -151,7 +195,7 @@ export async function semearCenarioAging(): Promise<CenarioAging> {
       // proxima falha com "ja existe um movimento".
       'truncate capital_ledger, operacao_credito, esc_capital_social, movimento_bancario cascade',
     )
-    await client.query("delete from tomador where cnpj like '9999%'")
+    await limparTomadoresDeTeste(client)
     await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
 
     const usuarioId = randomUUID()
@@ -169,6 +213,8 @@ export async function semearCenarioAging(): Promise<CenarioAging> {
        values ($1, 'Padaria Atrasada ME', 'ME', 'Formoso', 'GO', true) returning id`,
       [`9999${String(Date.now()).slice(-10)}`],
     )
+
+    await arquivarIdentificacao(client, tomador.rows[0].id)
 
     const op = await client.query<{ id: string }>(
       `insert into operacao_credito
@@ -241,7 +287,7 @@ export async function semearCenarioGeografico(): Promise<CenarioGeografico> {
       // proxima falha com "ja existe um movimento".
       'truncate capital_ledger, operacao_credito, esc_capital_social, movimento_bancario cascade',
     )
-    await client.query("delete from tomador where cnpj like '9999%'")
+    await limparTomadoresDeTeste(client)
     await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
 
     const usuarioId = randomUUID()
@@ -260,6 +306,10 @@ export async function semearCenarioGeografico(): Promise<CenarioGeografico> {
        values ($1, 'Mercado Fora da Area ME', 'ME', 'Sao Paulo', 'SP', false) returning id`,
       [`9999${String(Date.now()).slice(-10)}`],
     )
+
+    // O tomador fora da área também precisa de identificação: senão o
+    // bloqueio viria de OC019 e o cenário deixaria de provar OC002.
+    await arquivarIdentificacao(client, tomadorFora.rows[0].id)
 
     const opFora = await client.query<{ id: string }>(
       `insert into operacao_credito

@@ -8,6 +8,7 @@ precisam de commits reais (concorrência, trigger em nova conexão) — esses
 usam engines próprias.
 """
 
+import hashlib
 import os
 import uuid
 from pathlib import Path
@@ -49,6 +50,7 @@ MIGRATIONS = [
     "011_apuracao_fiscal",
     "012_contrato_e_registro",
     "013_gate_registro_confirmado",
+    "014_gate_identificacao",
 ]
 
 
@@ -127,21 +129,44 @@ def db_session(engine: Engine) -> Generator[Session, None, None]:
     connection.close()
 
 
-@pytest.fixture()
-def tomador_autorizado(db_session: Session) -> uuid.UUID:
-    """Cria um tomador no município autorizado; retorna seu id."""
+def _inserir_tomador(db_session: Session, razao_social: str, autorizado: bool = True) -> uuid.UUID:
     result = db_session.execute(
         text(
             """
             insert into tomador (cnpj, razao_social, porte, municipio, uf, municipio_autorizado)
-            values (:cnpj, 'Padaria Teste ME', 'ME', 'Formoso', 'GO', true)
+            values (:cnpj, :razao, 'ME', 'Formoso', 'GO', :autorizado)
             returning id
             """
         ),
-        {"cnpj": f"{uuid.uuid4().int % 10**14:014d}"},
+        {
+            "cnpj": f"{uuid.uuid4().int % 10**14:014d}",
+            "razao": razao_social,
+            "autorizado": autorizado,
+        },
     )
     db_session.commit()
     return result.scalar_one()
+
+
+@pytest.fixture()
+def tomador_autorizado(db_session: Session) -> uuid.UUID:
+    """Tomador no município autorizado E com identificação arquivada.
+
+    A identificação entra aqui porque, desde a migration 014, ativar exige
+    evidência arquivada (Lei 9.613/98, art. 10, I) — um tomador sem ela não
+    representa o caso comum, representa o caso bloqueado. Para testar o
+    bloqueio existe `tomador_sem_identificacao`.
+    """
+    tomador_id = _inserir_tomador(db_session, "Padaria Teste ME")
+    arquivar_identificacao(db_session, tomador_id)
+    return tomador_id
+
+
+@pytest.fixture()
+def tomador_sem_identificacao(db_session: Session) -> uuid.UUID:
+    """Tomador no município autorizado e SEM nenhuma evidência arquivada —
+    o cenário que a migration 014 passou a recusar."""
+    return _inserir_tomador(db_session, "Mercearia Sem Papel ME")
 
 
 def confirmar_registro(
@@ -164,6 +189,34 @@ def confirmar_registro(
     ).scalar_one()
     db_session.commit()
     return registro_id
+
+
+def arquivar_identificacao(
+    db_session: Session, tomador_id: uuid.UUID, tipo: str = "contrato_social"
+) -> uuid.UUID:
+    """Arquiva uma evidência de identificação para o tomador.
+
+    Desde a migration 014, ativar exige que o tomador tenha ao menos uma
+    evidência arquivada (Lei 9.613/98, art. 10, I). O hash é arbitrário aqui
+    — o que o gate verifica é a EXISTÊNCIA da evidência; a conferência de
+    conteúdo é assunto de `POST /compliance/documentos/{id}/verificar`.
+    """
+    documento_id = db_session.execute(
+        text("""
+        insert into tomador_documento
+            (tomador_id, tipo, nome_arquivo, sha256, retencao_ate)
+        values (:t, :tipo, :nome, :sha, current_date + interval '5 years')
+        returning id
+        """),
+        {
+            "t": str(tomador_id),
+            "tipo": tipo,
+            "nome": f"{tipo}.pdf",
+            "sha": hashlib.sha256(f"{tomador_id}:{tipo}".encode()).hexdigest(),
+        },
+    ).scalar_one()
+    db_session.commit()
+    return documento_id
 
 
 def baixar_parcelas(db_session: Session, operacao_id: uuid.UUID, numeros: list[int]) -> None:

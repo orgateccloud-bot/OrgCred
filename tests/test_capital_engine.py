@@ -29,7 +29,7 @@ from app.core.exceptions import (
     TetoCapitalExcedido,
     TransicaoInvalida,
 )
-from tests.conftest import confirmar_registro, sqlstate_de
+from tests.conftest import arquivar_identificacao, confirmar_registro, sqlstate_de
 
 
 def _criar_operacao(
@@ -134,6 +134,9 @@ class TestGateGeografico:
         )
         db_session.commit()
         tomador_fora_id = result.scalar_one()
+        # Sem identificação o bloqueio viria de OC019 (migration 014) e o
+        # teste deixaria de provar o que promete.
+        arquivar_identificacao(db_session, tomador_fora_id)
 
         op_id = _criar_operacao(db_session, tomador_fora_id, 5_000)
 

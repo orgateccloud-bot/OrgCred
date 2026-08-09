@@ -139,6 +139,19 @@ class RegistroTransicaoInvalida(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC018", http_status=409)
 
 
+class IdentificacaoAusente(RegraNegocioViolada):
+    """OC019: ativar operação de tomador sem evidência de identificação.
+
+    Código próprio, e não OC004: são regras e leis diferentes. OC004 é
+    registro em entidade registradora (LC 167/2019, art. 5º §3º); esta é
+    identificação do cliente (Lei 9.613/98, art. 10, I). Compartilhar código
+    faria a UI dar a instrução errada ao operador.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC019", http_status=422)
+
+
 class OperacaoNaoEncontrada(Exception):
     """Operação não existe."""
 
