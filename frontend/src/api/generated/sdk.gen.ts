@@ -17,6 +17,9 @@ import type {
   GetCapitalEventosApiCapitalEventosGetResponses,
   GetCapitalSnapshotApiCapitalSnapshotGetData,
   GetCapitalSnapshotApiCapitalSnapshotGetResponses,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetData,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses,
@@ -39,6 +42,11 @@ import type {
   GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses,
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetData,
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses,
   GetTomadorApiTomadoresTomadorIdGetData,
   GetTomadorApiTomadoresTomadorIdGetErrors,
   GetTomadorApiTomadoresTomadorIdGetResponses,
@@ -51,6 +59,9 @@ import type {
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchData,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchErrors,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostErrors,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponses,
   PostApurarApiFiscalApuracoesPostData,
   PostApurarApiFiscalApuracoesPostErrors,
   PostApurarApiFiscalApuracoesPostResponses,
@@ -66,6 +77,9 @@ import type {
   PostCapitalEventoApiCapitalEventosPostData,
   PostCapitalEventoApiCapitalEventosPostErrors,
   PostCapitalEventoApiCapitalEventosPostResponses,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses,
   PostCriarOperacaoApiOperacoesPostData,
   PostCriarOperacaoApiOperacoesPostErrors,
   PostCriarOperacaoApiOperacoesPostResponses,
@@ -78,6 +92,9 @@ import type {
   PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData,
   PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostErrors,
   PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostErrors,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponses,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostData,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostErrors,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponses,
@@ -96,9 +113,15 @@ import type {
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostData,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostErrors,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostResponses,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostErrors,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponses,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostData,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostErrors,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostResponses,
+  PostVerificarContratoApiContratosContratoIdVerificarPostData,
+  PostVerificarContratoApiContratosContratoIdVerificarPostErrors,
+  PostVerificarContratoApiContratosContratoIdVerificarPostResponses,
   PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData,
   PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostErrors,
   PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses,
@@ -574,6 +597,249 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch = <
       'Content-Type': 'application/json',
       ...options.headers,
     },
+  })
+
+/**
+ * Get Contrato
+ *
+ * Contrato vigente (última versão) da operação, com o corpo.
+ *
+ * Devolve `null` quando ainda não houve emissão — a tela precisa
+ * distinguir 'não emitido' de 'erro ao carregar'.
+ */
+export const getContratoApiContratosOperacoesOperacaoIdContratoGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetContratoApiContratosOperacoesOperacaoIdContratoGetData, ThrowOnError>,
+): RequestResult<
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses,
+    GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/operacoes/{operacao_id}/contrato',
+    ...options,
+  })
+
+/**
+ * Post Emitir Contrato
+ *
+ * Emite o instrumento a partir dos dados da operação e da agenda.
+ *
+ * Reemitir gera uma NOVA VERSÃO: o contrato anterior permanece, porque o
+ * tomador tem uma via dele e editar o original destruiria a prova do que
+ * foi acordado.
+ *
+ * Exige a ESC identificada em configuração. Sem isso, o contrato sairia
+ * com credora em branco — um documento com efeito jurídico e sem uma das
+ * partes.
+ */
+export const postEmitirContratoApiContratosOperacoesOperacaoIdContratoPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData, ThrowOnError>,
+): RequestResult<
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponses,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponses,
+    PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/operacoes/{operacao_id}/contrato',
+    ...options,
+  })
+
+/**
+ * Post Verificar Contrato
+ *
+ * Confere se um arquivo é bit a bit o instrumento emitido.
+ *
+ * É o que dá utilidade ao hash: sem esta conferência, ele seria um número
+ * guardado sem uso — e a via que o tomador apresenta não teria como ser
+ * confrontada com a do sistema.
+ */
+export const postVerificarContratoApiContratosContratoIdVerificarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostVerificarContratoApiContratosContratoIdVerificarPostData, ThrowOnError>,
+): RequestResult<
+  PostVerificarContratoApiContratosContratoIdVerificarPostResponses,
+  PostVerificarContratoApiContratosContratoIdVerificarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostVerificarContratoApiContratosContratoIdVerificarPostResponses,
+    PostVerificarContratoApiContratosContratoIdVerificarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/{contrato_id}/verificar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Registros
+ */
+export const getRegistrosApiContratosOperacoesOperacaoIdRegistrosGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData, ThrowOnError>,
+): RequestResult<
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses,
+    GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/operacoes/{operacao_id}/registros',
+    ...options,
+  })
+
+/**
+ * Post Abrir Registro
+ *
+ * Abre um registro em 'pendente'.
+ *
+ * Hoje o envio à entidade é manual — não há integração porque não há
+ * entidade escolhida. Quando houver, este endpoint chama o adaptador e o
+ * resto do fluxo permanece igual.
+ */
+export const postAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData, ThrowOnError>,
+): RequestResult<
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponses,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponses,
+    PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/operacoes/{operacao_id}/registros',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Post Confirmar Registro
+ *
+ * Confirma o registro com o protocolo devolvido pela entidade.
+ *
+ * Protocolo é obrigatório por constraint no banco: registro confirmado sem
+ * número é indistinguível de alguém marcando a caixinha — que é
+ * exatamente o problema do `registro_entidade_ref` de texto livre.
+ *
+ * Confirmado é estado TERMINAL (OC018): reverter apagaria a prova de que a
+ * operação existe legalmente.
+ */
+export const postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData,
+    ThrowOnError
+  >,
+): RequestResult<
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses,
+    PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/registros/{registro_id}/confirmar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Post Rejeitar Registro
+ *
+ * Rejeição exige motivo: sem ele, a próxima tentativa repete o erro.
+ */
+export const postRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData,
+    ThrowOnError
+  >,
+): RequestResult<
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponses,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponses,
+    PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/registros/{registro_id}/rejeitar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Pendencias Registro
+ *
+ * Operações registradas, ativas ou inadimplentes SEM registro confirmado.
+ *
+ * É a medida da lacuna: hoje `registro_entidade_ref` é texto livre e o
+ * gate aceita qualquer string. Esta lista existe para embasar a decisão de
+ * ligar a exigência de registro confirmado na ativação — com o número na
+ * mão, e não no escuro.
+ */
+export const getPendenciasRegistroApiContratosRegistrosPendenciasGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<GetPendenciasRegistroApiContratosRegistrosPendenciasGetData, ThrowOnError>,
+): RequestResult<
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses,
+  unknown,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/registros/pendencias',
+    ...options,
   })
 
 /**

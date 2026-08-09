@@ -5,6 +5,20 @@ export type ClientOptions = {
 }
 
 /**
+ * AbrirRegistroIn
+ *
+ * `entidade` é texto livre porque a escolha entre CRDC, Núclea, SPC
+ * Grafeno, B3 e CERC não foi feita — e um enum obrigaria mudança de código
+ * a cada troca de fornecedor, inclusive durante um piloto com duas.
+ */
+export type AbrirRegistroIn = {
+  /**
+   * Entidade
+   */
+  entidade: string
+}
+
+/**
  * AgendaOut
  *
  * Agenda + totais.
@@ -332,6 +346,50 @@ export type CapitalSnapshotOut = {
    * Disponivel
    */
   disponivel: string
+}
+
+/**
+ * ConfirmarRegistroIn
+ */
+export type ConfirmarRegistroIn = {
+  /**
+   * Protocolo
+   */
+  protocolo: string
+}
+
+/**
+ * ContratoDetalheOut
+ */
+export type ContratoDetalheOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Operacao Id
+   */
+  operacao_id: string
+  /**
+   * Versao
+   */
+  versao: number
+  /**
+   * Tipo Instrumento
+   */
+  tipo_instrumento: string
+  /**
+   * Sha256
+   */
+  sha256: string
+  /**
+   * Emitido Em
+   */
+  emitido_em: string
+  /**
+   * Corpo
+   */
+  corpo: string
 }
 
 /**
@@ -1011,6 +1069,40 @@ export type PendenciaIdentificacaoOut = {
 }
 
 /**
+ * PendenciaRegistroOut
+ */
+export type PendenciaRegistroOut = {
+  /**
+   * Operacao Id
+   */
+  operacao_id: string
+  /**
+   * Status
+   */
+  status: string
+  /**
+   * Valor Principal
+   */
+  valor_principal: string
+  /**
+   * Registro Entidade Ref
+   */
+  registro_entidade_ref: string | null
+  /**
+   * Tomador Razao Social
+   */
+  tomador_razao_social: string
+  /**
+   * Tem Registro Pendente
+   */
+  tem_registro_pendente: boolean
+  /**
+   * Tem Contrato
+   */
+  tem_contrato: boolean
+}
+
+/**
  * ProcessarAgingIn
  */
 export type ProcessarAgingIn = {
@@ -1078,6 +1170,54 @@ export type RegistrarOperacaoIn = {
    * Registro Entidade Ref
    */
   registro_entidade_ref: string
+}
+
+/**
+ * RegistroOut
+ */
+export type RegistroOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Operacao Id
+   */
+  operacao_id: string
+  /**
+   * Entidade
+   */
+  entidade: string
+  /**
+   * Protocolo
+   */
+  protocolo: string | null
+  /**
+   * Status
+   */
+  status: string
+  /**
+   * Enviado Em
+   */
+  enviado_em: string
+  /**
+   * Confirmado Em
+   */
+  confirmado_em: string | null
+  /**
+   * Motivo Rejeicao
+   */
+  motivo_rejeicao: string | null
+}
+
+/**
+ * RejeitarRegistroIn
+ */
+export type RejeitarRegistroIn = {
+  /**
+   * Motivo
+   */
+  motivo: string
 }
 
 /**
@@ -1232,6 +1372,32 @@ export type ValidationError = {
    * Error Type
    */
   type: string
+}
+
+/**
+ * VerificacaoContratoIn
+ *
+ * Conteúdo em base64 do arquivo a conferir contra o que foi emitido.
+ */
+export type VerificacaoContratoIn = {
+  /**
+   * Conteudo Base64
+   */
+  conteudo_base64: string
+}
+
+/**
+ * VerificacaoContratoOut
+ */
+export type VerificacaoContratoOut = {
+  /**
+   * Sha256 Calculado
+   */
+  sha256_calculado: string
+  /**
+   * Confere
+   */
+  confere: boolean
 }
 
 /**
@@ -1751,6 +1917,253 @@ export type PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses = {
 
 export type PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponse =
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses[keyof PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses]
+
+export type GetContratoApiContratosOperacoesOperacaoIdContratoGetData = {
+  body?: never
+  path: {
+    /**
+     * Operacao Id
+     */
+    operacao_id: string
+  }
+  query?: never
+  url: '/api/contratos/operacoes/{operacao_id}/contrato'
+}
+
+export type GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetContratoApiContratosOperacoesOperacaoIdContratoGetError =
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors[keyof GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors]
+
+export type GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses = {
+  /**
+   * Response Get Contrato Api Contratos Operacoes  Operacao Id  Contrato Get
+   *
+   * Successful Response
+   */
+  200: ContratoDetalheOut | null
+}
+
+export type GetContratoApiContratosOperacoesOperacaoIdContratoGetResponse =
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses[keyof GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses]
+
+export type PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData = {
+  body?: never
+  path: {
+    /**
+     * Operacao Id
+     */
+    operacao_id: string
+  }
+  query?: never
+  url: '/api/contratos/operacoes/{operacao_id}/contrato'
+}
+
+export type PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostError =
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostErrors[keyof PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostErrors]
+
+export type PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: ContratoDetalheOut
+}
+
+export type PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponse =
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponses[keyof PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponses]
+
+export type PostVerificarContratoApiContratosContratoIdVerificarPostData = {
+  body: VerificacaoContratoIn
+  path: {
+    /**
+     * Contrato Id
+     */
+    contrato_id: string
+  }
+  query?: never
+  url: '/api/contratos/{contrato_id}/verificar'
+}
+
+export type PostVerificarContratoApiContratosContratoIdVerificarPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostVerificarContratoApiContratosContratoIdVerificarPostError =
+  PostVerificarContratoApiContratosContratoIdVerificarPostErrors[keyof PostVerificarContratoApiContratosContratoIdVerificarPostErrors]
+
+export type PostVerificarContratoApiContratosContratoIdVerificarPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: VerificacaoContratoOut
+}
+
+export type PostVerificarContratoApiContratosContratoIdVerificarPostResponse =
+  PostVerificarContratoApiContratosContratoIdVerificarPostResponses[keyof PostVerificarContratoApiContratosContratoIdVerificarPostResponses]
+
+export type GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData = {
+  body?: never
+  path: {
+    /**
+     * Operacao Id
+     */
+    operacao_id: string
+  }
+  query?: never
+  url: '/api/contratos/operacoes/{operacao_id}/registros'
+}
+
+export type GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetError =
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors[keyof GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors]
+
+export type GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses = {
+  /**
+   * Response Get Registros Api Contratos Operacoes  Operacao Id  Registros Get
+   *
+   * Successful Response
+   */
+  200: Array<RegistroOut>
+}
+
+export type GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponse =
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses[keyof GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses]
+
+export type PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData = {
+  body: AbrirRegistroIn
+  path: {
+    /**
+     * Operacao Id
+     */
+    operacao_id: string
+  }
+  query?: never
+  url: '/api/contratos/operacoes/{operacao_id}/registros'
+}
+
+export type PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostError =
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostErrors[keyof PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostErrors]
+
+export type PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: RegistroOut
+}
+
+export type PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponse =
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponses[keyof PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponses]
+
+export type PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData = {
+  body: ConfirmarRegistroIn
+  path: {
+    /**
+     * Registro Id
+     */
+    registro_id: string
+  }
+  query?: never
+  url: '/api/contratos/registros/{registro_id}/confirmar'
+}
+
+export type PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostError =
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors[keyof PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors]
+
+export type PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: RegistroOut
+}
+
+export type PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponse =
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses[keyof PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses]
+
+export type PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData = {
+  body: RejeitarRegistroIn
+  path: {
+    /**
+     * Registro Id
+     */
+    registro_id: string
+  }
+  query?: never
+  url: '/api/contratos/registros/{registro_id}/rejeitar'
+}
+
+export type PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostError =
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostErrors[keyof PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostErrors]
+
+export type PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: RegistroOut
+}
+
+export type PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponse =
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponses[keyof PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponses]
+
+export type GetPendenciasRegistroApiContratosRegistrosPendenciasGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/contratos/registros/pendencias'
+}
+
+export type GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses = {
+  /**
+   * Response Get Pendencias Registro Api Contratos Registros Pendencias Get
+   *
+   * Successful Response
+   */
+  200: Array<PendenciaRegistroOut>
+}
+
+export type GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponse =
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses[keyof GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses]
 
 export type GetParametrosApiFiscalParametrosGetData = {
   body?: never

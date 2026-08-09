@@ -16,6 +16,7 @@ import { narrativa } from '@/lib/ledger'
 import { rotuloOrigemEvento, rotuloStatus, rotuloTipo } from '@/lib/rotulos'
 import { AgendaParcelas } from '@/components/agenda-parcelas'
 import { AtivarOperacaoDialog } from '@/components/ativar-operacao-dialog'
+import { ContratoERegistro } from '@/components/contrato-e-registro'
 import { NovarOperacaoDialog } from '@/components/novar-operacao-dialog'
 import { RegistrarOperacaoDialog } from '@/components/registrar-operacao-dialog'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
@@ -258,6 +259,8 @@ function OperacaoDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <ContratoERegistro operacaoId={data.id} />
 
       <AgendaParcelas operacaoId={data.id} onBaixa={invalidar} />
 

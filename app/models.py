@@ -84,6 +84,53 @@ class OperacaoCredito(Base):
     tomador = relationship("Tomador", back_populates="operacoes")
 
 
+class ContratoEmprestimo(Base):
+    """Instrumento contratual emitido (migration 012).
+
+    "Contrato de Empréstimo ESC", não CCB: a CCB (Lei 10.931/2004) é
+    instrumento de instituição financeira, e uma ESC não é. `tipo_instrumento`
+    é coluna para o advogado poder mudar isso sem migration nova.
+
+    O `sha256` é calculado pelo BANCO no INSERT (trigger `trg_contrato_hash`),
+    nunca enviado pela aplicação: assim corpo e hash não podem divergir nem
+    ser forjados. Imutável depois de emitido (OC017) — reemitir cria versão.
+    """
+
+    __tablename__ = "contrato_emprestimo"
+
+    id = Column(PG_UUID(as_uuid=True), primary_key=True)
+    operacao_id = Column(PG_UUID(as_uuid=True), ForeignKey("operacao_credito.id"), nullable=False)
+    versao = Column(Integer, nullable=False, default=1)
+    tipo_instrumento = Column(String(50), nullable=False)
+    corpo = Column(String, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    emitido_em = Column(DateTime, nullable=False, default=datetime.utcnow)
+    usuario_id = Column(String(255), nullable=True)
+
+
+class RegistroOperacao(Base):
+    """Registro em entidade registradora (migration 012).
+
+    Substitui o `operacao_credito.registro_entidade_ref` de texto livre, que
+    o trigger OC004 só checava por não-vazio — escrever "x" passava pelo
+    gate do Art. 5º §3º.
+
+    `confirmado` exige protocolo por constraint, e é terminal (OC018).
+    """
+
+    __tablename__ = "registro_operacao"
+
+    id = Column(PG_UUID(as_uuid=True), primary_key=True)
+    operacao_id = Column(PG_UUID(as_uuid=True), ForeignKey("operacao_credito.id"), nullable=False)
+    entidade = Column(String(100), nullable=False)
+    protocolo = Column(String(255), nullable=True)
+    status = Column(String(20), nullable=False, default="pendente")
+    enviado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
+    confirmado_em = Column(DateTime, nullable=True)
+    motivo_rejeicao = Column(String, nullable=True)
+    usuario_id = Column(String(255), nullable=True)
+
+
 class TomadorDocumento(Base):
     """Evidência de identificação arquivada (migration 010).
 

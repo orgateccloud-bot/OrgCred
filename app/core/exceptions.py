@@ -116,6 +116,29 @@ class ApuracaoImutavel(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC016", http_status=422)
 
 
+class ContratoImutavel(RegraNegocioViolada):
+    """OC017: instrumento emitido não se edita — reemitir cria nova versão.
+
+    O tomador tem uma via do documento antigo; editar o original destruiria
+    a prova do que foi efetivamente acordado.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC017", http_status=422)
+
+
+class RegistroTransicaoInvalida(RegraNegocioViolada):
+    """OC018: transição inválida no registro em entidade registradora.
+
+    Confirmado e rejeitado são terminais: reverter um registro confirmado
+    apagaria a prova de que a operação existe legalmente (Art. 5º §3º,
+    LC 167/2019).
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC018", http_status=409)
+
+
 class OperacaoNaoEncontrada(Exception):
     """Operação não existe."""
 

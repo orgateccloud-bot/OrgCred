@@ -11,6 +11,7 @@ import {
   getCapitalDisponivelApiCapitalDisponivelGet,
   getCapitalEventosApiCapitalEventosGet,
   getCapitalSnapshotApiCapitalSnapshotGet,
+  getContratoApiContratosOperacoesOperacaoIdContratoGet,
   getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet,
   getMeApiMeGet,
   getMovimentosApiCobrancaMovimentosGet,
@@ -20,28 +21,35 @@ import {
   getParametroVigenteApiFiscalParametrosVigenteGet,
   getParcelasApiOperacoesOperacaoIdParcelasGet,
   getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet,
+  getPendenciasRegistroApiContratosRegistrosPendenciasGet,
+  getRegistrosApiContratosOperacoesOperacaoIdRegistrosGet,
   getTomadorApiTomadoresTomadorIdGet,
   getTomadoresApiTomadoresGet,
   healthCheckHealthGet,
   metricsMetricsGet,
   type Options,
   patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch,
+  postAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPost,
   postApurarApiFiscalApuracoesPost,
   postAtivarOperacaoApiOperacoesOperacaoIdAtivarPost,
   postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPost,
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPost,
   postCapitalEventoApiCapitalEventosPost,
+  postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPost,
   postCriarOperacaoApiOperacoesPost,
   postCriarTomadorApiTomadoresPost,
   postDetectarApiComplianceAtipicidadesDetectarPost,
   postDocumentoApiComplianceTomadoresTomadorIdDocumentosPost,
+  postEmitirContratoApiContratosOperacoesOperacaoIdContratoPost,
   postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPost,
   postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePost,
   postMovimentoApiCobrancaMovimentosPost,
   postParametroApiFiscalParametrosPost,
   postProcessarAgingApiCobrancaAgingProcessarPost,
   postRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPost,
+  postRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPost,
   postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost,
+  postVerificarContratoApiContratosContratoIdVerificarPost,
   postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost,
   readinessCheckHealthReadyGet,
 } from '../sdk.gen'
@@ -60,6 +68,9 @@ import type {
   GetCapitalEventosApiCapitalEventosGetResponse,
   GetCapitalSnapshotApiCapitalSnapshotGetData,
   GetCapitalSnapshotApiCapitalSnapshotGetResponse,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetData,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetError,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetResponse,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetError,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse,
@@ -82,6 +93,11 @@ import type {
   GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponse,
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetData,
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponse,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetError,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponse,
   GetTomadorApiTomadoresTomadorIdGetData,
   GetTomadorApiTomadoresTomadorIdGetError,
   GetTomadorApiTomadoresTomadorIdGetResponse,
@@ -93,6 +109,9 @@ import type {
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchData,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchError,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponse,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostError,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponse,
   PostApurarApiFiscalApuracoesPostData,
   PostApurarApiFiscalApuracoesPostError,
   PostApurarApiFiscalApuracoesPostResponse,
@@ -108,6 +127,9 @@ import type {
   PostCapitalEventoApiCapitalEventosPostData,
   PostCapitalEventoApiCapitalEventosPostError,
   PostCapitalEventoApiCapitalEventosPostResponse,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostError,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponse,
   PostCriarOperacaoApiOperacoesPostData,
   PostCriarOperacaoApiOperacoesPostError,
   PostCriarOperacaoApiOperacoesPostResponse,
@@ -120,6 +142,9 @@ import type {
   PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData,
   PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostError,
   PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponse,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostError,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponse,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostData,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostError,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponse,
@@ -138,9 +163,15 @@ import type {
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostData,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostError,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostResponse,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostError,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponse,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostData,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostError,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostResponse,
+  PostVerificarContratoApiContratosContratoIdVerificarPostData,
+  PostVerificarContratoApiContratosContratoIdVerificarPostError,
+  PostVerificarContratoApiContratosContratoIdVerificarPostResponse,
   PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData,
   PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostError,
   PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponse,
@@ -760,6 +791,270 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchMutation = (
   }
   return mutationOptions
 }
+
+export const getContratoApiContratosOperacoesOperacaoIdContratoGetQueryKey = (
+  options: Options<GetContratoApiContratosOperacoesOperacaoIdContratoGetData>,
+) => createQueryKey('getContratoApiContratosOperacoesOperacaoIdContratoGet', options)
+
+/**
+ * Get Contrato
+ *
+ * Contrato vigente (última versão) da operação, com o corpo.
+ *
+ * Devolve `null` quando ainda não houve emissão — a tela precisa
+ * distinguir 'não emitido' de 'erro ao carregar'.
+ */
+export const getContratoApiContratosOperacoesOperacaoIdContratoGetOptions = (
+  options: Options<GetContratoApiContratosOperacoesOperacaoIdContratoGetData>,
+) =>
+  queryOptions<
+    GetContratoApiContratosOperacoesOperacaoIdContratoGetResponse,
+    GetContratoApiContratosOperacoesOperacaoIdContratoGetError,
+    GetContratoApiContratosOperacoesOperacaoIdContratoGetResponse,
+    ReturnType<typeof getContratoApiContratosOperacoesOperacaoIdContratoGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getContratoApiContratosOperacoesOperacaoIdContratoGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getContratoApiContratosOperacoesOperacaoIdContratoGetQueryKey(options),
+  })
+
+/**
+ * Post Emitir Contrato
+ *
+ * Emite o instrumento a partir dos dados da operação e da agenda.
+ *
+ * Reemitir gera uma NOVA VERSÃO: o contrato anterior permanece, porque o
+ * tomador tem uma via dele e editar o original destruiria a prova do que
+ * foi acordado.
+ *
+ * Exige a ESC identificada em configuração. Sem isso, o contrato sairia
+ * com credora em branco — um documento com efeito jurídico e sem uma das
+ * partes.
+ */
+export const postEmitirContratoApiContratosOperacoesOperacaoIdContratoPostMutation = (
+  options?: Partial<Options<PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData>>,
+): UseMutationOptions<
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponse,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostError,
+  Options<PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponse,
+    PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostError,
+    Options<PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postEmitirContratoApiContratosOperacoesOperacaoIdContratoPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Verificar Contrato
+ *
+ * Confere se um arquivo é bit a bit o instrumento emitido.
+ *
+ * É o que dá utilidade ao hash: sem esta conferência, ele seria um número
+ * guardado sem uso — e a via que o tomador apresenta não teria como ser
+ * confrontada com a do sistema.
+ */
+export const postVerificarContratoApiContratosContratoIdVerificarPostMutation = (
+  options?: Partial<Options<PostVerificarContratoApiContratosContratoIdVerificarPostData>>,
+): UseMutationOptions<
+  PostVerificarContratoApiContratosContratoIdVerificarPostResponse,
+  PostVerificarContratoApiContratosContratoIdVerificarPostError,
+  Options<PostVerificarContratoApiContratosContratoIdVerificarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostVerificarContratoApiContratosContratoIdVerificarPostResponse,
+    PostVerificarContratoApiContratosContratoIdVerificarPostError,
+    Options<PostVerificarContratoApiContratosContratoIdVerificarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postVerificarContratoApiContratosContratoIdVerificarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getRegistrosApiContratosOperacoesOperacaoIdRegistrosGetQueryKey = (
+  options: Options<GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData>,
+) => createQueryKey('getRegistrosApiContratosOperacoesOperacaoIdRegistrosGet', options)
+
+/**
+ * Get Registros
+ */
+export const getRegistrosApiContratosOperacoesOperacaoIdRegistrosGetOptions = (
+  options: Options<GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData>,
+) =>
+  queryOptions<
+    GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponse,
+    GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetError,
+    GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponse,
+    ReturnType<typeof getRegistrosApiContratosOperacoesOperacaoIdRegistrosGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getRegistrosApiContratosOperacoesOperacaoIdRegistrosGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getRegistrosApiContratosOperacoesOperacaoIdRegistrosGetQueryKey(options),
+  })
+
+/**
+ * Post Abrir Registro
+ *
+ * Abre um registro em 'pendente'.
+ *
+ * Hoje o envio à entidade é manual — não há integração porque não há
+ * entidade escolhida. Quando houver, este endpoint chama o adaptador e o
+ * resto do fluxo permanece igual.
+ */
+export const postAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostMutation = (
+  options?: Partial<Options<PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData>>,
+): UseMutationOptions<
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponse,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostError,
+  Options<PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponse,
+    PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostError,
+    Options<PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Confirmar Registro
+ *
+ * Confirma o registro com o protocolo devolvido pela entidade.
+ *
+ * Protocolo é obrigatório por constraint no banco: registro confirmado sem
+ * número é indistinguível de alguém marcando a caixinha — que é
+ * exatamente o problema do `registro_entidade_ref` de texto livre.
+ *
+ * Confirmado é estado TERMINAL (OC018): reverter apagaria a prova de que a
+ * operação existe legalmente.
+ */
+export const postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostMutation = (
+  options?: Partial<Options<PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData>>,
+): UseMutationOptions<
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponse,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostError,
+  Options<PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponse,
+    PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostError,
+    Options<PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Rejeitar Registro
+ *
+ * Rejeição exige motivo: sem ele, a próxima tentativa repete o erro.
+ */
+export const postRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostMutation = (
+  options?: Partial<Options<PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData>>,
+): UseMutationOptions<
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponse,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostError,
+  Options<PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponse,
+    PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostError,
+    Options<PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getPendenciasRegistroApiContratosRegistrosPendenciasGetQueryKey = (
+  options?: Options<GetPendenciasRegistroApiContratosRegistrosPendenciasGetData>,
+) => createQueryKey('getPendenciasRegistroApiContratosRegistrosPendenciasGet', options)
+
+/**
+ * Get Pendencias Registro
+ *
+ * Operações registradas, ativas ou inadimplentes SEM registro confirmado.
+ *
+ * É a medida da lacuna: hoje `registro_entidade_ref` é texto livre e o
+ * gate aceita qualquer string. Esta lista existe para embasar a decisão de
+ * ligar a exigência de registro confirmado na ativação — com o número na
+ * mão, e não no escuro.
+ */
+export const getPendenciasRegistroApiContratosRegistrosPendenciasGetOptions = (
+  options?: Options<GetPendenciasRegistroApiContratosRegistrosPendenciasGetData>,
+) =>
+  queryOptions<
+    GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponse,
+    DefaultError,
+    GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponse,
+    ReturnType<typeof getPendenciasRegistroApiContratosRegistrosPendenciasGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getPendenciasRegistroApiContratosRegistrosPendenciasGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getPendenciasRegistroApiContratosRegistrosPendenciasGetQueryKey(options),
+  })
 
 export const getParametrosApiFiscalParametrosGetQueryKey = (
   options?: Options<GetParametrosApiFiscalParametrosGetData>,

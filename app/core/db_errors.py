@@ -18,12 +18,14 @@ from app.core.exceptions import (
     ApuracaoImutavel,
     ApuracaoSemParametro,
     BaixaInvalida,
+    ContratoImutavel,
     MovimentoImutavel,
     MunicipioNaoAutorizado,
     NovacaoForaDaTransacaoAtomica,
     ParcelaImutavel,
     ReducaoCapitalBloqueada,
     RegistroEntidadeAusente,
+    RegistroTransicaoInvalida,
     TetoCapitalExcedido,
     TransicaoInvalida,
 )
@@ -41,6 +43,8 @@ PGCODE_MAP: Dict[str, Type[Exception]] = {
     "OC012": MovimentoImutavel,
     "OC015": ApuracaoSemParametro,
     "OC016": ApuracaoImutavel,
+    "OC017": ContratoImutavel,
+    "OC018": RegistroTransicaoInvalida,
 }
 
 

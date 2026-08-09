@@ -24,6 +24,20 @@ class Settings(BaseSettings):
     debug: bool = False
     supabase_jwt_secret: str = "dev-secret-key-change-in-prod"
 
+    # Identificação da própria ESC, usada como CREDORA no instrumento
+    # contratual. Vazio por padrão de propósito: um default plausível
+    # ("ORGATEC ESC LTDA", um CNPJ qualquer) entraria num documento com
+    # efeito jurídico como se fosse dado real. Sem configuração, a emissão
+    # do contrato é recusada — ver app/routers/contratos.py.
+    esc_razao_social: str = ""
+    esc_cnpj: str = ""
+    esc_municipio: str = ""
+    esc_uf: str = ""
+
+    @property
+    def esc_identificada(self) -> bool:
+        return all([self.esc_razao_social, self.esc_cnpj, self.esc_municipio, self.esc_uf])
+
     class Config:
         env_prefix = "ORGCRED_"
         env_file = ".env"

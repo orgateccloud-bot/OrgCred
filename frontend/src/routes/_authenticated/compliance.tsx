@@ -6,11 +6,13 @@ import {
   getAtipicidadesApiComplianceAtipicidadesGetOptions,
   getAtipicidadesApiComplianceAtipicidadesGetQueryKey,
   getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetOptions,
+  getPendenciasRegistroApiContratosRegistrosPendenciasGetOptions,
   postDetectarApiComplianceAtipicidadesDetectarPostMutation,
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { rotuloRegraAtipicidade, rotuloSeveridade } from '@/lib/rotulos'
+import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -148,6 +150,8 @@ function CompliancePage() {
         </CardContent>
       </Card>
 
+      <RegistroPendente />
+
       <Card>
         <CardHeader>
           <CardTitle>Atipicidades detectadas</CardTitle>
@@ -209,5 +213,110 @@ function CompliancePage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+/**
+ * Operações sem registro CONFIRMADO em entidade registradora.
+ *
+ * Fica ao lado da identificação pendente de propósito: são as duas amarras
+ * legais que existem no sistema mas estão DESLIGADAS, ambas por serem
+ * decisão de negócio. Juntá-las numa tela só evita que uma delas seja
+ * esquecida por estar num canto diferente.
+ */
+function RegistroPendente() {
+  const { data, error, isPending } = useQuery(
+    getPendenciasRegistroApiContratosRegistrosPendenciasGetOptions(),
+  )
+
+  const exposto = (data ?? []).reduce((soma, p) => soma + Number(p.valor_principal), 0)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Registro em entidade registradora pendente</CardTitle>
+        <CardDescription>
+          Art. 5º, §3º, da LC 167/2019. Hoje o gate de ativação só verifica que o campo de
+          referência não está vazio — <strong>qualquer texto passa</strong>. Esta lista mostra o que
+          deixaria de ativar se a exigência de registro confirmado fosse ligada.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isPending && <Skeleton className="h-24" />}
+        {error && <p className="text-sm text-destructive">{mensagemDeErro(error)}</p>}
+        {data && data.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Todas as operações têm registro confirmado.
+          </p>
+        )}
+        {data && data.length > 0 && (
+          <>
+            <p className="mb-4 flex gap-2 text-sm">
+              <ShieldQuestion className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              <span>
+                <strong>{formatarMoeda(String(exposto))}</strong> em operações sem registro
+                confirmado.
+              </span>
+            </p>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tomador</TableHead>
+                    <TableHead>Situação</TableHead>
+                    <TableHead className="text-right">Principal</TableHead>
+                    <TableHead>Referência atual</TableHead>
+                    <TableHead>Contrato</TableHead>
+                    <TableHead>Registro</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.map((p) => (
+                    <TableRow key={p.operacao_id}>
+                      <TableCell>
+                        <Link
+                          to="/operacoes/$id"
+                          params={{ id: p.operacao_id }}
+                          className="text-primary hover:underline"
+                        >
+                          {p.tomador_razao_social}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <StatusOperacaoBadge status={p.status} />
+                      </TableCell>
+                      <TableCell className="text-right font-mono tabular-nums">
+                        {formatarMoeda(String(p.valor_principal))}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {p.registro_entidade_ref ?? '—'}
+                      </TableCell>
+                      <TableCell>
+                        {p.tem_contrato ? (
+                          <Badge variant="outline" className="text-success">
+                            Emitido
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">Não emitido</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {p.tem_registro_pendente ? (
+                          <Badge variant="outline">Pendente</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-destructive">
+                            Sem tentativa
+                          </Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
