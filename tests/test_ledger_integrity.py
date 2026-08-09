@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.capital_engine import ativar_operacao
 from app.core.ledger_integrity import verificar_integridade_ledger
-from tests.conftest import sqlstate_de
+from tests.conftest import confirmar_registro, sqlstate_de
 
 
 def _criar_operacao(db_session: Session, tomador_id: uuid.UUID, valor: int) -> uuid.UUID:
@@ -30,7 +30,9 @@ def _criar_operacao(db_session: Session, tomador_id: uuid.UUID, valor: int) -> u
         {"tomador_id": str(tomador_id), "valor": valor},
     )
     db_session.commit()
-    return result.scalar_one()
+    op_id = result.scalar_one()
+    confirmar_registro(db_session, op_id)
+    return op_id
 
 
 class TestProtecaoAppendOnly:

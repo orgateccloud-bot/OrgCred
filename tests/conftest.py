@@ -48,6 +48,7 @@ MIGRATIONS = [
     "010_compliance_interno",
     "011_apuracao_fiscal",
     "012_contrato_e_registro",
+    "013_gate_registro_confirmado",
 ]
 
 
@@ -141,6 +142,28 @@ def tomador_autorizado(db_session: Session) -> uuid.UUID:
     )
     db_session.commit()
     return result.scalar_one()
+
+
+def confirmar_registro(
+    db_session: Session, operacao_id: uuid.UUID, entidade: str = "CRDC"
+) -> uuid.UUID:
+    """Cria e confirma o registro em entidade registradora.
+
+    Desde a migration 013, ativar exige registro CONFIRMADO — o gate do
+    Art. 5º §3º deixou de aceitar texto livre. Todo teste que ativa uma
+    operação passa por aqui, o que também significa que o gate é exercido
+    dezenas de vezes por execução da suíte.
+    """
+    registro_id = db_session.execute(
+        text("""
+        insert into registro_operacao (operacao_id, entidade, status, protocolo, confirmado_em)
+        values (:o, :e, 'confirmado', :p, clock_timestamp())
+        returning id
+        """),
+        {"o": str(operacao_id), "e": entidade, "p": f"PROTO-{uuid.uuid4().hex[:10]}"},
+    ).scalar_one()
+    db_session.commit()
+    return registro_id
 
 
 def baixar_parcelas(db_session: Session, operacao_id: uuid.UUID, numeros: list[int]) -> None:

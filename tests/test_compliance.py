@@ -23,7 +23,7 @@ from app.core.security import get_admin_user, get_current_user, get_operador_use
 from app.db import get_db
 from app.main import app
 from app.models import Usuario
-from tests.conftest import sqlstate_de
+from tests.conftest import confirmar_registro, sqlstate_de
 
 
 @pytest.fixture()
@@ -170,6 +170,7 @@ class TestIdentificacao:
             {"t": str(tomador_autorizado)},
         ).scalar_one()
         db_session.commit()
+        confirmar_registro(db_session, op_id)
         ativar_operacao(db_session, op_id)
 
         pendencias = admin_client.get("/api/compliance/identificacao/pendencias").json()
@@ -338,6 +339,7 @@ class TestAtipicidade:
         capital_constituido: None,
     ) -> None:
         op_id = _operacao(db_session, tomador_autorizado, "12000")
+        confirmar_registro(db_session, op_id)
         ativar_operacao(db_session, op_id)
         parcela = db_session.execute(
             text("select id, valor_total from parcela where operacao_id = :o and numero = 1"),

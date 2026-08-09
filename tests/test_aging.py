@@ -17,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.capital_engine import ativar_operacao, processar_aging, transicionar_operacao
-from tests.conftest import baixar_parcelas, sqlstate_de
+from tests.conftest import baixar_parcelas, confirmar_registro, sqlstate_de
 
 
 def _criar_ativa(
@@ -38,6 +38,7 @@ def _criar_ativa(
         {"t": str(tomador_id), "v": valor, "n": parcelas},
     ).scalar_one()
     db_session.commit()
+    confirmar_registro(db_session, op_id)
     ativar_operacao(db_session, op_id, usuario_id=usuario_id)
     return op_id
 

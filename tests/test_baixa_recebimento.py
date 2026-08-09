@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.capital_engine import ativar_operacao, baixar_parcela, registrar_movimento_bancario
 from app.core.exceptions import BaixaInvalida
-from tests.conftest import sqlstate_de
+from tests.conftest import confirmar_registro, sqlstate_de
 
 
 def _operacao_ativa(db_session: Session, tomador_id: uuid.UUID, parcelas: int = 12) -> uuid.UUID:
@@ -32,6 +32,7 @@ def _operacao_ativa(db_session: Session, tomador_id: uuid.UUID, parcelas: int = 
         {"t": str(tomador_id), "n": parcelas},
     ).scalar_one()
     db_session.commit()
+    confirmar_registro(db_session, op_id)
     ativar_operacao(db_session, op_id)
     return op_id
 

@@ -29,7 +29,7 @@ from app.core.exceptions import (
     TetoCapitalExcedido,
     TransicaoInvalida,
 )
-from tests.conftest import sqlstate_de
+from tests.conftest import confirmar_registro, sqlstate_de
 
 
 def _criar_operacao(
@@ -58,7 +58,14 @@ def _criar_operacao(
         },
     )
     db_session.commit()
-    return result.scalar_one()
+    op_id = result.scalar_one()
+
+    # Desde a migration 013, ativar exige registro CONFIRMADO. `registro_ref
+    # is None` passou a significar "operação sem registro" — que é
+    # exatamente o cenário do teste de OC004.
+    if registro_ref is not None:
+        confirmar_registro(db_session, op_id)
+    return op_id
 
 
 def _criar_e_ativar_operacao_direto(
@@ -370,8 +377,11 @@ class TestTransicionarOperacao:
     def test_registrar_grava_referencia_e_habilita_ativacao(
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
     ) -> None:
-        """proposta -> registrada gravando registro_entidade_ref (Art. 5o §3o):
-        sem ele a ativacao seria bloqueada por OC004."""
+        """proposta -> registrada gravando registro_entidade_ref.
+
+        Desde a migration 013 essa referência é INFORMATIVA: quem destrava a
+        ativação é o registro confirmado em entidade registradora. O teste
+        guarda essa mudança — antes bastava o texto."""
         op = criar_operacao(
             db_session,
             tomador_id=tomador_autorizado,
@@ -387,7 +397,13 @@ class TestTransicionarOperacao:
         assert registrada.status == "registrada"
         assert registrada.registro_entidade_ref == "B3-REG-2026-0001"
 
-        # Prova que a referencia realmente destrava a ativacao.
+        # A referência sozinha NÃO destrava mais.
+        with pytest.raises(RegistroEntidadeAusente) as exc_info:
+            ativar_operacao(db_session, op.id)
+        assert exc_info.value.sqlstate == "OC004"
+
+        # Com registro confirmado, ativa.
+        confirmar_registro(db_session, op.id)
         ativa = ativar_operacao(db_session, op.id)
         assert ativa.status == "ativa"
 
@@ -686,6 +702,8 @@ class TestNovacaoAtomica:
             numero_parcelas=24,
             registro_entidade_ref="REG-NOVA",
         )
+        # A substituta é um título novo: precisa do próprio registro.
+        confirmar_registro(db_session, nova.id)
         ativar_operacao(db_session, nova.id)
 
         assert consultar_capital_snapshot(db_session).comprometido == Decimal("25000.00")

@@ -24,7 +24,7 @@ from app.core.security import get_admin_user, get_current_user
 from app.db import get_db
 from app.main import app
 from app.models import Usuario
-from tests.conftest import sqlstate_de
+from tests.conftest import confirmar_registro, sqlstate_de
 
 
 # Valores de teste, escolhidos por serem fáceis de conferir a olho — NÃO são
@@ -87,6 +87,7 @@ def _operacao_com_agenda(
         {"t": str(tomador_id), "v": valor, "taxa": taxa},
     ).scalar_one()
     db_session.commit()
+    confirmar_registro(db_session, op_id)
     ativar_operacao(db_session, op_id)
     return op_id
 

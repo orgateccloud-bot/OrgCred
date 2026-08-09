@@ -7,6 +7,21 @@ const DB_URL =
   process.env.E2E_DATABASE_URL ??
   'postgresql://orgcred:orgcred_dev_password@localhost:5433/orgcred_dev'
 
+/**
+ * Confirma o registro em entidade registradora de uma operação.
+ *
+ * Desde a migration 013 o gate do Art. 5º §3º exige registro CONFIRMADO
+ * para ativar — `registro_entidade_ref` de texto livre deixou de bastar.
+ * Todo cenário que ativa (ou que oferece o botão Ativar) passa por aqui.
+ */
+async function confirmarRegistro(client: Client, operacaoId: string, entidade = 'CRDC') {
+  await client.query(
+    `insert into registro_operacao (operacao_id, entidade, status, protocolo, confirmado_em)
+     values ($1, $2, 'confirmado', $3, now())`,
+    [operacaoId, entidade, `PROTO-E2E-${operacaoId.slice(0, 8)}`],
+  )
+}
+
 export interface CenarioAtivacao {
   usuarioId: string
   accessToken: string
@@ -77,6 +92,11 @@ export async function semearCenarioAtivacao(): Promise<CenarioAtivacao> {
        returning id`,
       [tomadorId],
     )
+
+    // As duas precisam de registro confirmado: a segunda tem que ser
+    // barrada pelo TETO (OC001), não pela falta de registro (OC004).
+    await confirmarRegistro(client, opAtivavel.rows[0].id)
+    await confirmarRegistro(client, opBloqueada.rows[0].id)
 
     const accessToken = jwt.sign(
       {
@@ -159,6 +179,8 @@ export async function semearCenarioAging(): Promise<CenarioAging> {
       [tomador.rows[0].id],
     )
     const operacaoAtrasadaId = op.rows[0].id
+
+    await confirmarRegistro(client, operacaoAtrasadaId)
 
     // Ativar gera a agenda (trigger da 007) e o evento de estado (008).
     await client.query(`update operacao_credito set status = 'ativa' where id = $1`, [
@@ -247,6 +269,10 @@ export async function semearCenarioGeografico(): Promise<CenarioGeografico> {
        returning id`,
       [tomadorFora.rows[0].id],
     )
+
+    // Sem registro confirmado o bloqueio viria de OC004 e o cenário deixaria
+    // de provar o que promete (OC002, gate geográfico).
+    await confirmarRegistro(client, opFora.rows[0].id)
 
     const accessToken = jwt.sign(
       {

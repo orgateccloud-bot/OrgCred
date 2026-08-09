@@ -16,6 +16,7 @@ from app.core.security import get_current_user, get_operador_user
 from app.db import get_db
 from app.main import app
 from app.models import Usuario
+from tests.conftest import confirmar_registro
 
 
 @pytest.fixture()
@@ -103,6 +104,7 @@ class TestAtivarOperacaoComPermissao:
         )
         db_session.commit()
         op_id = result.scalar_one()
+        confirmar_registro(db_session, op_id)
 
         response = authed_client.post(f"/api/operacoes/{op_id}/ativar")
 
@@ -132,6 +134,11 @@ class TestAtivarOperacaoComPermissao:
             ),
             {"tomador_id": str(tomador_autorizado)},
         )
+        db_session.commit()
+        primeira_id = db_session.execute(
+            text("select id from operacao_credito where registro_entidade_ref = 'REG-A'")
+        ).scalar_one()
+        confirmar_registro(db_session, primeira_id)
         db_session.execute(
             text(
                 "update operacao_credito set status = 'ativa' where registro_entidade_ref = 'REG-A'"
@@ -152,6 +159,9 @@ class TestAtivarOperacaoComPermissao:
         )
         db_session.commit()
         op_id = result.scalar_one()
+        # Registro confirmado também na segunda: sem ele o bloqueio viria de
+        # OC004 e o teste deixaria de provar o que promete (OC001).
+        confirmar_registro(db_session, op_id)
 
         response = authed_client.post(f"/api/operacoes/{op_id}/ativar")
 
@@ -266,6 +276,7 @@ class TestGetParcelas:
             {"t": str(tomador_autorizado)},
         ).scalar_one()
         db_session.commit()
+        confirmar_registro(db_session, op_id)
 
         assert authed_client.post(f"/api/operacoes/{op_id}/ativar").status_code == 200
 

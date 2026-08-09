@@ -102,6 +102,30 @@ test.describe('Ciclo de vida da operação de crédito', () => {
     // em que o crédito passa a existir de fato.
     await expect(page.getByText(/a agenda é emitida no momento da ativação/)).toBeVisible()
 
+    // --- Registro em entidade registradora (Art. 5º §3º) -------------------
+    // Desde a migration 013 o gate exige registro CONFIRMADO. A referência
+    // de texto livre gravada acima não basta mais.
+    await page.getByRole('button', { name: 'Ativar' }).click()
+    await page.getByRole('button', { name: 'Confirmar ativação' }).click()
+    await expect(page.getByText(/registro CONFIRMADO em entidade registradora/)).toBeVisible()
+    await page.getByRole('button', { name: 'Cancelar' }).click()
+
+    await page.getByRole('button', { name: 'Abrir registro' }).click()
+    await page.getByLabel('Entidade registradora').fill('CRDC')
+    await page.getByRole('button', { name: 'Abrir', exact: true }).click()
+    await expect(page.getByText('Registro aberto como pendente.')).toBeVisible()
+
+    // Pendente não basta: abrir é intenção, confirmar é fato.
+    await page.getByRole('button', { name: 'Ativar' }).click()
+    await page.getByRole('button', { name: 'Confirmar ativação' }).click()
+    await expect(page.getByText(/registro CONFIRMADO em entidade registradora/)).toBeVisible()
+    await page.getByRole('button', { name: 'Cancelar' }).click()
+
+    await page.getByRole('button', { name: 'Confirmar', exact: true }).click()
+    await page.getByLabel('Protocolo devolvido pela entidade').fill('CRDC-E2E-000123')
+    await page.getByRole('button', { name: 'Confirmar registro' }).click()
+    await expect(page.getByText('Registro confirmado.')).toBeVisible()
+
     // --- Ativar: passa a comprometer capital -------------------------------
     await page.getByRole('button', { name: 'Ativar' }).click()
     await page.getByRole('button', { name: 'Confirmar ativação' }).click()
@@ -136,9 +160,13 @@ test.describe('Ciclo de vida da operação de crédito', () => {
     await page.goto('/')
     await expect(page.getByText('0,0% de')).toBeVisible()
 
-    expect(errosConsole, `erros de console durante o ciclo: ${errosConsole.join(' | ')}`).toEqual(
-      [],
-    )
+    // Este teste PROVOCA dois 422 de propósito (ativar sem registro e com
+    // registro apenas pendente), e o navegador loga toda resposta 4xx como
+    // erro de console. Filtrar só essas linhas — em vez de abandonar a
+    // asserção — mantém o detector de erro de JavaScript, que é o que já
+    // pegou TooltipProvider ausente e HTML inválido nesta suíte.
+    const inesperados = errosConsole.filter((e) => !e.includes('422 (Unprocessable Entity)'))
+    expect(inesperados, `erros de console durante o ciclo: ${inesperados.join(' | ')}`).toEqual([])
   })
 
   test('gate geográfico bloqueia ativação de tomador fora da área (OC002)', async ({ page }) => {

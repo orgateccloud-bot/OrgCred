@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.capital_engine import ativar_operacao, novar_operacao, transicionar_operacao
-from tests.conftest import baixar_parcelas, sqlstate_de
+from tests.conftest import baixar_parcelas, confirmar_registro, sqlstate_de
 
 
 def _criar(
@@ -38,7 +38,9 @@ def _criar(
         {"t": str(tomador_id), "v": valor, "taxa": taxa, "sis": sistema, "n": parcelas},
     )
     db_session.commit()
-    return result.scalar_one()
+    op_id = result.scalar_one()
+    confirmar_registro(db_session, op_id)
+    return op_id
 
 
 def _agenda(db_session: Session, op_id: uuid.UUID) -> list:
@@ -193,6 +195,10 @@ def test_novacao_gera_agenda_propria_para_a_substituta(
         numero_parcelas=8,
         registro_entidade_ref="REG-NOVA",
     )
+    # A substituta é OUTRA operação: precisa do próprio registro confirmado.
+    # É a leitura correta da lei — a novação cria um novo título, e o novo
+    # título tem que ser registrado.
+    confirmar_registro(db_session, nova.id)
     ativar_operacao(db_session, nova.id)
 
     assert len(_agenda(db_session, op_id)) == 12  # original preservada

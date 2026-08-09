@@ -7,8 +7,8 @@
 >
 > **Revisado em 2026-08-08**, após a execução das Frentes 2, 3 e da parte
 > construível da Frente 4. Os números de scorecard abaixo foram
-> remedidos, não estimados: 199 testes backend, cobertura total 92%,
-> 50 Vitest, 5 E2E, 12 migrations. A Frente 1 segue integralmente aberta — e continua
+> remedidos, não estimados: 204 testes backend, cobertura total 92%,
+> 50 Vitest, 5 E2E, 13 migrations. A Frente 1 segue integralmente aberta — e continua
 > sendo o que separa este sistema de ser usado.
 
 ---
@@ -29,7 +29,7 @@ foi construído nas Frentes 2, 3 e 4 está em `main` e em nenhum servidor.
 
 ## 2. Mapa de módulos
 
-### 2.1 Backend — 4.0k linhas, 50 endpoints, 9 routers, 12 migrations
+### 2.1 Backend — 4.0k linhas, 50 endpoints, 9 routers, 13 migrations
 
 > Contagens remedidas em 2026-08-08. As tabelas desta seção descrevem o
 > levantamento original de 2026-07-31; o estado atual de cada módulo está
@@ -73,7 +73,7 @@ append-only.
 | **App shell** | `_authenticated.tsx`, `app-sidebar`, `command-palette` | 389 |
 | **Design system** | `components/ui/*` (18 componentes) + `index.css` | ~2.700 |
 
-### 2.3 Testes — 199 backend + 50 Vitest + 5 E2E
+### 2.3 Testes — 204 backend + 50 Vitest + 5 E2E
 
 > Eram 52 + 32 + 1 em 2026-07-31. Cobertura backend total: 92%.
 
@@ -104,12 +104,12 @@ Escala: 🟢 sólido · 🟡 funcional com lacuna · 🔴 crítico/ausente
 | 11 | Observabilidade | 🟡 | 🟡 | 🟡 | **6,0** | Prometheus + logging estruturado ativos; `alerts.py` arquivado (era código morto) |
 | 12 | CI/CD | 🟡 | — | 🔴 | **4,0** | CircleCI configurado, mas **nunca executou** — aguarda autorização do GitHub App |
 | 13 | **Cobrança** | 🟢 | 🟢 | 🔴 | **8,5** | Agenda PRICE/SAC imutável, novação atômica, aging com trilha de autoria, baixa com lastro bancário; 100% cobertura |
-| 14 | **Contratos** | 🟡 | 🟢 | 🔴 | **5,5** | Instrumento com hash do banco, registro com máquina de estados e protocolo obrigatório, 96% coberto; **API da registradora e assinatura seguem bloqueadas** |
+| 14 | **Contratos** | 🟢 | 🟢 | 🔴 | **7,0** | Instrumento com hash do banco, registro com protocolo obrigatório e **gate do Art. 5º §3º LIGADO** (migration 013), 96% coberto; API da registradora e assinatura seguem bloqueadas |
 | 15 | **Fiscal** | 🟡 | 🟢 | 🔴 | **5,5** | Apuração IRPJ/CSLL/PIS/COFINS no Lucro Presumido pronta e 100% coberta, alíquotas em configuração; **IOF segue bloqueado em parecer** |
 | 16 | **Compliance** | 🟡 | 🟢 | 🔴 | **6,0** | Identificação com evidência, retenção de 5 anos e detecção de atipicidade prontas e 100% cobertas; **canal COAF é adaptador desligado** |
 
-**Média ponderada por criticidade: 7,5/10** (era 5,4).
-Núcleo (1–8): **7,9** (era 7,5). Periferia regulatória (13–16): **6,4** (era 0,6).
+**Média ponderada por criticidade: 7,6/10** (era 5,4).
+Núcleo (1–8): **7,9** (era 7,5). Periferia regulatória (13–16): **6,8** (era 0,6).
 
 A periferia deixou de ser casca vazia: os quatro módulos têm agora a parte
 que **não dependia de terceiro** construída e coberta. O que resta em cada
@@ -119,6 +119,7 @@ um é decisão externa, não código:
 |---|---|---|
 | Cobrança | nada | — |
 | Contratos | escolher a registradora (API) e o provedor de assinatura | você |
+| Contratos | preencher `ORGCRED_ESC_*` com os dados reais da ESC | você |
 | Fiscal | parecer de IOF; preencher alíquotas na tela | advogado/contador |
 | Compliance | regime PLD/COAF para ligar o canal | advogado |
 
@@ -217,14 +218,18 @@ dela, e só a baixa **com lastro bancário** tira a parcela do atraso.
 | SHA-256 calculado pelo BANCO (corpo e hash não podem divergir) + conferência | ✅ |
 | Reemissão por versão (a via do tomador continua conferível) | ✅ |
 | Registro com entidade, protocolo obrigatório e máquina de estados (OC018) | ✅ |
-| Gate de ativação por registro confirmado | 🔌 **escrito e desligado** |
+| Gate de ativação por registro confirmado | ✅ **LIGADO** (migration 013) |
 | Integração com a API da registradora | 🔴 sem entidade escolhida |
 | Assinatura eletrônica | 🔴 sem provedor escolhido |
 
-O `registro_entidade_ref` de texto livre continua sendo o que o gate OC004
-checa — escrever "x" ali ainda passa. `v_operacoes_sem_registro_confirmado`
-mede a lacuna, e o trigger que a fecharia está escrito e comentado no fim da
-migration 012.
+**O gate foi ligado na migration 013.** `registro_entidade_ref` virou campo
+informativo (aparece no corpo do contrato) e perdeu força de gate: ativar
+exige uma linha em `registro_operacao` com status `confirmado` — e
+confirmado, por constraint, exige protocolo. Escrever "x" não passa mais.
+
+Não é retroativo de propósito: operações já ativas seguem ativas (o trigger
+roda na transição, e revogar o que já foi emprestado não devolveria o
+dinheiro), e reativar inadimplente não revalida.
 
 TIPO DO INSTRUMENTO: "Contrato de Empréstimo ESC", **não CCB** — a CCB
 (Lei 10.931/2004) é instrumento de instituição financeira, e a própria
@@ -296,7 +301,9 @@ possível foi feito; o que resta é integralmente decisão ou credencial:
    ativação (ver Frente 4).
 6. **Contador preenche** presunção e alíquotas na tela Fiscal — sem isso a
    apuração recusa, de propósito.
-7. **Decidir** se registro confirmado passa a ser pré-requisito de ativação
-   (ver Frente 4 — o trigger está escrito, só não está ligado).
-8. **Configurar** `ORGCRED_ESC_*` com os dados reais da ESC — sem eles a
+7. **Configurar** `ORGCRED_ESC_*` com os dados reais da ESC — sem eles a
    emissão de contrato recusa, e o compose só tem valores fictícios de dev.
+8. **Atenção ao ligar em produção:** com o gate ativo (migration 013), toda
+   operação em 'registrada' precisa de registro confirmado para ativar.
+   Rodar `select * from v_operacoes_sem_registro_confirmado;` ANTES do
+   deploy mostra quais ficarão travadas.

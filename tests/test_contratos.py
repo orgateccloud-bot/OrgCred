@@ -28,7 +28,7 @@ from app.core.security import get_current_user, get_operador_user
 from app.db import get_db
 from app.main import app
 from app.models import Usuario
-from tests.conftest import sqlstate_de
+from tests.conftest import confirmar_registro, sqlstate_de
 
 
 @pytest.fixture()
@@ -90,6 +90,7 @@ def _operacao(db_session: Session, tomador_id: uuid.UUID, ativar: bool = False) 
     ).scalar_one()
     db_session.commit()
     if ativar:
+        confirmar_registro(db_session, op_id)
         ativar_operacao(db_session, op_id)
     return op_id
 
@@ -430,9 +431,9 @@ class TestPendencias:
         tomador_autorizado: uuid.UUID,
         capital_constituido: None,
     ) -> None:
-        """Hoje `registro_entidade_ref` é texto livre e o gate aceita
-        qualquer string — esta lista é a medida disso."""
-        op_id = _operacao(db_session, tomador_autorizado, ativar=True)
+        """Operação em 'registrada' sem registro confirmado: com o gate
+        ligado (migration 013), é exatamente o que NÃO consegue ativar."""
+        op_id = _operacao(db_session, tomador_autorizado)
 
         pendencias = operador_client.get("/api/contratos/registros/pendencias").json()
         assert len(pendencias) == 1
@@ -448,7 +449,7 @@ class TestPendencias:
         tomador_autorizado: uuid.UUID,
         capital_constituido: None,
     ) -> None:
-        op_id = _operacao(db_session, tomador_autorizado, ativar=True)
+        op_id = _operacao(db_session, tomador_autorizado)
         registro = operador_client.post(
             f"/api/contratos/operacoes/{op_id}/registros", json={"entidade": "CRDC"}
         ).json()
@@ -460,23 +461,111 @@ class TestPendencias:
         )
         assert operador_client.get("/api/contratos/registros/pendencias").json() == []
 
-    def test_gate_continua_desligado(
+
+class TestGateAtivacao:
+    """Migration 013: o Art. 5º §3º deixou de ser honrado na palavra."""
+
+    def test_ativar_sem_registro_confirmado_e_bloqueado(
         self,
         operador_client: TestClient,
         db_session: Session,
         tomador_autorizado: uuid.UUID,
         capital_constituido: None,
     ) -> None:
-        """Prova explícita da decisão: ativar SEM registro confirmado ainda
-        funciona. Quando o gate for ligado, este teste deve falhar — e é
-        justamente esse o sinal de que ele foi ligado."""
+        """A operação tem `registro_entidade_ref = 'REG-CONTRATO'` — texto
+        que antes bastava. Agora não basta."""
         op_id = _operacao(db_session, tomador_autorizado)
 
-        assert operador_client.post(f"/api/operacoes/{op_id}/ativar").status_code == 200
-        assert (
-            db_session.execute(
-                text("select count(*) from registro_operacao where operacao_id = :o"),
-                {"o": str(op_id)},
-            ).scalar_one()
-            == 0
+        resposta = operador_client.post(f"/api/operacoes/{op_id}/ativar")
+        assert resposta.status_code == 422
+        assert resposta.json()["codigo"] == "OC004"
+        assert "CONFIRMADO" in resposta.json()["detail"]
+
+    def test_registro_pendente_nao_basta(
+        self,
+        operador_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Abrir o registro é intenção; confirmar é fato. Só o fato ativa."""
+        op_id = _operacao(db_session, tomador_autorizado)
+        operador_client.post(
+            f"/api/contratos/operacoes/{op_id}/registros", json={"entidade": "CRDC"}
         )
+
+        assert operador_client.post(f"/api/operacoes/{op_id}/ativar").status_code == 422
+
+    def test_registro_rejeitado_nao_basta(
+        self,
+        operador_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        op_id = _operacao(db_session, tomador_autorizado)
+        registro = operador_client.post(
+            f"/api/contratos/operacoes/{op_id}/registros", json={"entidade": "CRDC"}
+        ).json()
+        operador_client.post(
+            f"/api/contratos/registros/{registro['id']}/rejeitar", json={"motivo": "CNPJ errado"}
+        )
+
+        assert operador_client.post(f"/api/operacoes/{op_id}/ativar").status_code == 422
+
+    def test_confirmado_libera_a_ativacao(
+        self,
+        operador_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        op_id = _operacao(db_session, tomador_autorizado)
+        registro = operador_client.post(
+            f"/api/contratos/operacoes/{op_id}/registros", json={"entidade": "CRDC"}
+        ).json()
+        operador_client.post(
+            f"/api/contratos/registros/{registro['id']}/confirmar",
+            json={"protocolo": "CRDC-2026-000123"},
+        )
+
+        assert operador_client.post(f"/api/operacoes/{op_id}/ativar").status_code == 200
+
+    def test_reativar_inadimplente_nao_revalida_o_registro(
+        self,
+        operador_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Regularizar uma inadimplente é ato sobre operação que JÁ comprometia
+        capital. Exigir registro de novo travaria a regularização por um ato
+        que já aconteceu — e o registro daquela operação continua válido."""
+        op_id = _operacao(db_session, tomador_autorizado, ativar=True)
+        operador_client.post(f"/api/operacoes/{op_id}/marcar-inadimplente")
+
+        assert operador_client.post(f"/api/operacoes/{op_id}/ativar").status_code == 200
+
+    def test_operacao_ja_ativa_nao_e_afetada(
+        self,
+        operador_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """O gate roda na TRANSIÇÃO. Uma operação já ativa segue ativa, e
+        alterações que não mexem no status não o revalidam — revogar
+        retroativamente o que já foi emprestado não devolveria o dinheiro,
+        só quebraria a carteira existente."""
+        op_id = _operacao(db_session, tomador_autorizado, ativar=True)
+
+        db_session.execute(
+            text("update operacao_credito set registro_entidade_ref = 'OUTRO' where id = :o"),
+            {"o": str(op_id)},
+        )
+        db_session.commit()
+
+        status = db_session.execute(
+            text("select status from operacao_credito where id = :o"), {"o": str(op_id)}
+        ).scalar_one()
+        assert status == "ativa"

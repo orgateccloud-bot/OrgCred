@@ -20,6 +20,7 @@ from app.core.security import get_admin_user, get_current_user
 from app.db import get_db
 from app.main import app
 from app.models import Usuario
+from tests.conftest import confirmar_registro
 
 
 @pytest.fixture()
@@ -65,6 +66,7 @@ def _operacao_atrasada(db_session: Session, tomador_id: uuid.UUID, dias: int) ->
         {"t": str(tomador_id)},
     ).scalar_one()
     db_session.commit()
+    confirmar_registro(db_session, op_id)
     ativar_operacao(db_session, op_id)
 
     # Vencimento é imutável (OC009); o trigger é desabilitado só para
