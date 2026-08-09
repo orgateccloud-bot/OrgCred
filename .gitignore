@@ -57,3 +57,8 @@ dist/
 # Claude Code — estado local/pessoal, não compartilhado (launch.json fica versionado)
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Mockups de UI gerados fora do projeto (protótipo do painel, com
+# node_modules próprio). Servem de referência visual, não são código do
+# sistema e não fazem parte do build — o frontend real vive em frontend/.
+_frontend-mockups/
