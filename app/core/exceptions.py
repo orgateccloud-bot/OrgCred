@@ -58,6 +58,100 @@ class ReducaoCapitalBloqueada(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC005", http_status=422)
 
 
+class NovacaoForaDaTransacaoAtomica(RegraNegocioViolada):
+    """OC008: renegociação ou substituta criada fora de fn_novar_operacao.
+
+    Renegociar em duas etapas separadas abre a janela em que a original e a
+    substituta contam capital ao mesmo tempo — dupla contagem que fura o
+    teto do Art. 5º sem ninguém agir de má-fé.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC008", http_status=422)
+
+
+class ParcelaImutavel(RegraNegocioViolada):
+    """OC009: tentativa de alterar ou apagar parcela já emitida."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC009", http_status=422)
+
+
+class BaixaInvalida(RegraNegocioViolada):
+    """OC011: baixa de recebimento sem lastro bancário válido.
+
+    Cobre os quatro caminhos: parcela inexistente ou já baixada, movimento
+    inexistente, movimento já usado em outra parcela, e movimento de valor
+    menor que a parcela. Dar uma parcela como paga sem lastro faria a régua
+    de inadimplência (migration 008) parar de ver o atraso.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC011", http_status=422)
+
+
+class MovimentoImutavel(RegraNegocioViolada):
+    """OC012: extrato bancário é fato de fora — registra-se, não se edita."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC012", http_status=422)
+
+
+class ApuracaoSemParametro(RegraNegocioViolada):
+    """OC015: apuração fiscal sem parâmetro vigente.
+
+    Percentuais de presunção e alíquotas são matéria tributária — sem eles,
+    recusar é a única resposta honesta. Calcular com um padrão embutido no
+    código produziria um valor plausível e errado, que é pior do que erro.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC015", http_status=422)
+
+
+class ApuracaoImutavel(RegraNegocioViolada):
+    """OC016: apuração fiscal não se edita — retificação cria nova versão."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC016", http_status=422)
+
+
+class ContratoImutavel(RegraNegocioViolada):
+    """OC017: instrumento emitido não se edita — reemitir cria nova versão.
+
+    O tomador tem uma via do documento antigo; editar o original destruiria
+    a prova do que foi efetivamente acordado.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC017", http_status=422)
+
+
+class RegistroTransicaoInvalida(RegraNegocioViolada):
+    """OC018: transição inválida no registro em entidade registradora.
+
+    Confirmado e rejeitado são terminais: reverter um registro confirmado
+    apagaria a prova de que a operação existe legalmente (Art. 5º §3º,
+    LC 167/2019).
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC018", http_status=409)
+
+
+class IdentificacaoAusente(RegraNegocioViolada):
+    """OC019: ativar operação de tomador sem evidência de identificação.
+
+    Código próprio, e não OC004: são regras e leis diferentes. OC004 é
+    registro em entidade registradora (LC 167/2019, art. 5º §3º); esta é
+    identificação do cliente (Lei 9.613/98, art. 10, I). Compartilhar código
+    faria a UI dar a instrução errada ao operador.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC019", http_status=422)
+
+
 class OperacaoNaoEncontrada(Exception):
     """Operação não existe."""
 

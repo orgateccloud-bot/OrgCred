@@ -1,6 +1,6 @@
 """Router: ciclo de vida de operações de crédito."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Literal, Optional
 from uuid import UUID
@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.capital_engine import ativar_operacao, criar_operacao, transicionar_operacao
+from app.capital_engine import (
+    ativar_operacao,
+    criar_operacao,
+    novar_operacao,
+    transicionar_operacao,
+)
 from app.core.exceptions import OperacaoNaoEncontrada
 from app.core.security import get_current_user, get_operador_user
 from app.db import get_db
@@ -127,6 +132,22 @@ class LedgerEventoResumoOut(BaseModel):
     created_at: datetime
 
 
+class EventoEstadoOut(BaseModel):
+    """Transição de estado da trilha `operacao_evento` (migration 008).
+
+    `usuario_nome` é nulo quando a transição foi da régua automática
+    (`origem = 'sistema'`) — por construção, e não por dado faltando.
+    """
+
+    id: UUID
+    status_anterior: Optional[str]
+    status_novo: str
+    origem: str
+    usuario_nome: Optional[str]
+    dias_atraso: Optional[int]
+    created_at: datetime
+
+
 class OperacaoDetailOut(BaseModel):
     id: UUID
     tomador: TomadorResumoOut
@@ -139,7 +160,9 @@ class OperacaoDetailOut(BaseModel):
     registro_entidade_ref: Optional[str]
     created_at: datetime
     updated_at: datetime
+    dias_atraso: int
     eventos: List[LedgerEventoResumoOut]
+    eventos_estado: List[EventoEstadoOut]
 
 
 class CriarOperacaoIn(BaseModel):
@@ -197,6 +220,22 @@ def get_operacao(
         {"operacao_id": str(operacao_id)},
     ).all()
 
+    eventos_estado = db.execute(
+        text("""
+        select oe.id, oe.status_anterior, oe.status_novo, oe.origem,
+               u.nome as usuario_nome, oe.dias_atraso, oe.created_at
+        from operacao_evento oe
+        left join usuario u on u.id::text = oe.usuario_id
+        where oe.operacao_id = :operacao_id
+        order by oe.created_at asc
+    """),
+        {"operacao_id": str(operacao_id)},
+    ).all()
+
+    dias_atraso = db.execute(
+        text("select fn_dias_atraso(:operacao_id)"), {"operacao_id": str(operacao_id)}
+    ).scalar_one()
+
     return OperacaoDetailOut(
         id=row.id,
         tomador=TomadorResumoOut(
@@ -227,6 +266,107 @@ def get_operacao(
             )
             for e in eventos
         ],
+        dias_atraso=dias_atraso,
+        eventos_estado=[
+            EventoEstadoOut(
+                id=e.id,
+                status_anterior=e.status_anterior,
+                status_novo=e.status_novo,
+                origem=e.origem,
+                usuario_nome=e.usuario_nome,
+                dias_atraso=e.dias_atraso,
+                created_at=e.created_at,
+            )
+            for e in eventos_estado
+        ],
+    )
+
+
+class ParcelaOut(BaseModel):
+    id: UUID
+    numero: int
+    vencimento: date
+    valor_amortizacao: Decimal
+    valor_juros: Decimal
+    valor_total: Decimal
+    saldo_devedor_pos: Decimal
+    status: str
+    # Lastro da baixa: presente só quando paga. Exposto para que a tela
+    # mostre CONTRA O QUE a parcela foi baixada — uma baixa sem origem
+    # visível é indistinguível de um "marcar como pago" sem lastro.
+    movimento_documento: Optional[str]
+
+
+class AgendaOut(BaseModel):
+    """Agenda + totais.
+
+    Os totais vêm somados do banco, e não do cliente: a régua de
+    arredondamento (resíduo na última parcela) é decidida em
+    `fn_gerar_parcelas`, e recalcular no frontend abriria espaço para
+    divergência de centavos entre o que a tela mostra e o que se cobra.
+    """
+
+    operacao_id: UUID
+    sistema_amortizacao: str
+    total_amortizacao: Decimal
+    total_juros: Decimal
+    total_geral: Decimal
+    parcelas: List[ParcelaOut]
+
+
+@router.get("/{operacao_id}/parcelas", response_model=AgendaOut)
+def get_parcelas(
+    operacao_id: UUID,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+) -> AgendaOut:
+    """Agenda de amortização emitida na ativação.
+
+    Operação que ainda não foi ativada não tem agenda — devolve lista vazia
+    em vez de 404, porque a operação existe e a ausência da agenda é um
+    estado legítimo do ciclo de vida, não um erro.
+    """
+    op = db.execute(
+        text("select sistema_amortizacao from operacao_credito where id = :id"),
+        {"id": str(operacao_id)},
+    ).first()
+    if op is None:
+        raise HTTPException(status_code=404, detail=f"Operação {operacao_id} não existe.")
+
+    rows = db.execute(
+        text("""
+        select p.id, p.numero, p.vencimento, p.valor_amortizacao, p.valor_juros,
+               p.valor_total, p.saldo_devedor_pos, p.status,
+               m.documento as movimento_documento
+        from parcela p
+        left join movimento_bancario m on m.id = p.movimento_id
+        where p.operacao_id = :id
+        order by p.numero asc
+    """),
+        {"id": str(operacao_id)},
+    ).all()
+
+    parcelas = [
+        ParcelaOut(
+            id=r.id,
+            numero=r.numero,
+            vencimento=r.vencimento,
+            valor_amortizacao=r.valor_amortizacao,
+            valor_juros=r.valor_juros,
+            valor_total=r.valor_total,
+            saldo_devedor_pos=r.saldo_devedor_pos,
+            status=r.status,
+            movimento_documento=r.movimento_documento,
+        )
+        for r in rows
+    ]
+    return AgendaOut(
+        operacao_id=operacao_id,
+        sistema_amortizacao=op.sistema_amortizacao,
+        total_amortizacao=sum((p.valor_amortizacao for p in parcelas), Decimal("0")),
+        total_juros=sum((p.valor_juros for p in parcelas), Decimal("0")),
+        total_geral=sum((p.valor_total for p in parcelas), Decimal("0")),
+        parcelas=parcelas,
     )
 
 
@@ -305,14 +445,56 @@ def post_cancelar_operacao(
     return _transicao(db, operacao_id, "cancelada", user)
 
 
-@router.post("/{operacao_id}/renegociar", response_model=OperacaoStatusOut)
+class NovarOperacaoIn(BaseModel):
+    """Condições da operação SUBSTITUTA."""
+
+    valor_principal: Decimal = Field(gt=0)
+    taxa_juros_mensal: Decimal = Field(ge=0)
+    sistema_amortizacao: Literal["PRICE", "SAC"]
+    numero_parcelas: int = Field(gt=0)
+    registro_entidade_ref: Optional[str] = Field(default=None, max_length=255)
+
+
+class NovacaoOut(BaseModel):
+    operacao_original_id: UUID
+    operacao_substituta_id: UUID
+    status_substituta: str
+
+
+@router.post("/{operacao_id}/renegociar", response_model=NovacaoOut)
 def post_renegociar_operacao(
     operacao_id: UUID,
+    body: NovarOperacaoIn,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_operador_user),
-) -> OperacaoStatusOut:
-    """ativa/inadimplente -> renegociada."""
-    return _transicao(db, operacao_id, "renegociada", user)
+) -> NovacaoOut:
+    """
+    Renegocia por novação atômica: baixa a original e cria a substituta na
+    mesma transação, sob o mesmo advisory lock do teto.
+
+    Não existe endpoint para "só marcar como renegociada": fazer a baixa sem
+    amarrar a substituta deixa a original fora do comprometido e nada
+    impediria criar a substituta depois, contando o capital duas vezes em
+    janelas diferentes (o banco recusa com OC008).
+
+    A substituta nasce em 'registrada' — ainda não compromete capital, e
+    ativá-la passa pelos gates normais.
+    """
+    nova = novar_operacao(
+        db,
+        operacao_id,
+        valor_principal=body.valor_principal,
+        taxa_juros_mensal=body.taxa_juros_mensal,
+        sistema_amortizacao=body.sistema_amortizacao,
+        numero_parcelas=body.numero_parcelas,
+        registro_entidade_ref=body.registro_entidade_ref,
+        usuario_id=str(user.id),
+    )
+    return NovacaoOut(
+        operacao_original_id=operacao_id,
+        operacao_substituta_id=nova.id,  # type: ignore[arg-type]
+        status_substituta=nova.status,  # type: ignore[arg-type]
+    )
 
 
 @router.post("/{operacao_id}/marcar-inadimplente", response_model=OperacaoStatusOut)

@@ -13,6 +13,7 @@ from app.core.security import get_current_user
 from app.db import get_db
 from app.main import app
 from app.models import Usuario
+from tests.conftest import confirmar_registro
 
 
 @pytest.fixture()
@@ -78,6 +79,7 @@ class TestAuditoria:
         db_session.commit()
         op_id = result.scalar_one()
 
+        confirmar_registro(db_session, op_id)
         ativar_operacao(db_session, op_id, usuario_id=str(uuid.UUID(int=1)))
 
         response = authed_client.get("/api/auditoria")

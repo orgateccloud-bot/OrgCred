@@ -19,6 +19,13 @@ import {
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa, type EventoNarravel } from '@/lib/ledger'
+import {
+  comprometidoPorTipo,
+  operacoesPorStatus,
+  percentualUtilizacao,
+  serieSaldoDisponivel,
+  somarValorPrincipal,
+} from '@/lib/capital'
 import { formatarPercentual } from '@/lib/rotulos'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -66,13 +73,12 @@ function DashboardPage() {
   if (!snapshot.data || !operacoes.data || !auditoria.data) return null
 
   const total = Number(snapshot.data.total)
-  const comprometido = Number(snapshot.data.comprometido)
-  const utilizacaoPct = total > 0 ? Math.min(100, (comprometido / total) * 100) : 0
-  const ativas = operacoes.data.filter((op) => op.status === 'ativa')
+  const utilizacaoPct = percentualUtilizacao(total, Number(snapshot.data.comprometido))
+  const ativas = operacoesPorStatus(operacoes.data, 'ativa')
   // "Registrada" é o estado imediatamente anterior à ativação: é o que o
   // operador precisa ver para saber quanto capital está prestes a sair.
-  const aguardando = operacoes.data.filter((op) => op.status === 'registrada')
-  const valorAguardando = aguardando.reduce((soma, op) => soma + Number(op.valor_principal), 0)
+  const aguardando = operacoesPorStatus(operacoes.data, 'registrada')
+  const valorAguardando = somarValorPrincipal(aguardando)
 
   return (
     <div className="space-y-6 p-6">
@@ -253,17 +259,7 @@ function EvolucaoSaldoCard({
   eventos: Array<{ created_at: string; saldo_disponivel_pos: string }>
   className?: string
 }) {
-  // Ledger vem do backend em ordem de cadeia (mais recente primeiro ou não —
-  // ordenar por data garante o eixo X correto independente disso).
-  const serie = [...eventos]
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .map((e) => ({
-      quando: new Date(e.created_at).toLocaleDateString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-      }),
-      saldo: Number(e.saldo_disponivel_pos),
-    }))
+  const serie = serieSaldoDisponivel(eventos)
 
   return (
     <Card className={className}>
@@ -330,11 +326,7 @@ function ComposicaoPorTipoCard({
 }: {
   operacoes: Array<{ tipo: string; valor_principal: string }>
 }) {
-  const porTipo = new Map<string, number>()
-  for (const op of operacoes) {
-    porTipo.set(op.tipo, (porTipo.get(op.tipo) ?? 0) + Number(op.valor_principal))
-  }
-  const dados = [...porTipo.entries()].map(([tipo, valor]) => ({ tipo, valor }))
+  const dados = comprometidoPorTipo(operacoes)
   const config = Object.fromEntries(
     dados.map((d, i) => [d.tipo, { label: d.tipo, color: CORES_TIPO[i % CORES_TIPO.length] }]),
   ) satisfies ChartConfig

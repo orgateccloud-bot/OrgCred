@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { createFileRoute, Outlet, redirect, useRouterState } from '@tanstack/react-router'
 import { AlertTriangle, Search } from 'lucide-react'
 import { getSession } from '@/auth/supabaseClient'
@@ -34,6 +34,9 @@ export const Route = createFileRoute('/_authenticated')({
  */
 const ROTULOS: Array<{ prefixo: string; rotulo: string }> = [
   { prefixo: '/auditoria', rotulo: 'Auditoria' },
+  { prefixo: '/cobranca', rotulo: 'Cobrança' },
+  { prefixo: '/compliance', rotulo: 'Compliance' },
+  { prefixo: '/fiscal', rotulo: 'Fiscal' },
   { prefixo: '/operacoes', rotulo: 'Operações' },
   { prefixo: '/', rotulo: 'Dashboard' },
 ]
@@ -62,15 +65,21 @@ function AuthenticatedLayout() {
           <Separator orientation="vertical" className="mr-2 h-4" />
           <Breadcrumb>
             <BreadcrumbList>
+              {/* Separador é IRMÃO do item, não filho: BreadcrumbItem e
+                  BreadcrumbSeparator renderizam ambos <li>, e aninhar um no
+                  outro é HTML inválido ("<li> cannot contain a nested <li>").
+                  O E2E pegou isso pelo console do React. */}
               {trilha.map((item, i) => (
-                <BreadcrumbItem key={`${item.rotulo}-${i}`}>
+                <Fragment key={`${item.rotulo}-${i}`}>
                   {i > 0 && <BreadcrumbSeparator />}
-                  {item.to ? (
-                    <BreadcrumbLink href={item.to}>{item.rotulo}</BreadcrumbLink>
-                  ) : (
-                    <BreadcrumbPage>{item.rotulo}</BreadcrumbPage>
-                  )}
-                </BreadcrumbItem>
+                  <BreadcrumbItem>
+                    {item.to ? (
+                      <BreadcrumbLink href={item.to}>{item.rotulo}</BreadcrumbLink>
+                    ) : (
+                      <BreadcrumbPage>{item.rotulo}</BreadcrumbPage>
+                    )}
+                  </BreadcrumbItem>
+                </Fragment>
               ))}
             </BreadcrumbList>
           </Breadcrumb>

@@ -23,9 +23,20 @@ const MENSAGENS_POR_CODIGO: Record<string, string> = {
   OC001: 'Esta operação excede o teto de capital disponível.',
   OC002: 'O tomador está fora da área de atuação autorizada.',
   OC003: 'Essa transição de status não é permitida no estado atual da operação.',
-  OC004: 'A operação precisa estar registrada na entidade registradora antes de ativar.',
+  // Desde a migration 013 não basta ter uma referência de registro
+  // preenchida: é preciso registro CONFIRMADO, com protocolo. A mensagem
+  // diz o que fazer, porque a ação fica noutra parte da tela.
+  OC004:
+    'A operação precisa de um registro CONFIRMADO em entidade registradora antes de ativar. Abra e confirme o registro na seção "Registro em entidade registradora".',
   OC005: 'Essa redução de capital deixaria o comprometido acima do saldo disponível.',
+  // Regra e lei diferentes do OC004 (que é registro em entidade
+  // registradora): esta é identificação do cliente, Lei 9.613/98. Por isso
+  // código próprio — a instrução ao operador é outra.
+  OC019:
+    'O tomador precisa ter evidência de identificação arquivada antes de ativar. Arquive o documento na ficha do tomador.',
   OC007: 'Falha de integridade na trilha de auditoria. Contate o suporte técnico.',
+  OC008:
+    'Renegociação exige informar as condições da nova operação — a baixa e a substituta são feitas juntas.',
 }
 
 const MENSAGEM_PADRAO = 'Ocorreu um erro inesperado. Tente novamente.'

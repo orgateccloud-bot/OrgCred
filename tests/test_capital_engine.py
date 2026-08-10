@@ -5,6 +5,7 @@ provando a tradução SQLSTATE -> exceção -> HTTP (RegraNegocioViolada).
 """
 
 import uuid
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
@@ -14,15 +15,21 @@ from app.capital_engine import (
     ativar_operacao,
     consultar_capital_disponivel,
     consultar_capital_snapshot,
+    criar_operacao,
+    novar_operacao,
+    registrar_evento_capital,
+    transicionar_operacao,
 )
 from app.core.exceptions import (
     MunicipioNaoAutorizado,
+    NovacaoForaDaTransacaoAtomica,
     OperacaoNaoEncontrada,
+    ReducaoCapitalBloqueada,
     RegistroEntidadeAusente,
     TetoCapitalExcedido,
     TransicaoInvalida,
 )
-from tests.conftest import sqlstate_de
+from tests.conftest import arquivar_identificacao, confirmar_registro, sqlstate_de
 
 
 def _criar_operacao(
@@ -51,7 +58,14 @@ def _criar_operacao(
         },
     )
     db_session.commit()
-    return result.scalar_one()
+    op_id = result.scalar_one()
+
+    # Desde a migration 013, ativar exige registro CONFIRMADO. `registro_ref
+    # is None` passou a significar "operação sem registro" — que é
+    # exatamente o cenário do teste de OC004.
+    if registro_ref is not None:
+        confirmar_registro(db_session, op_id)
+    return op_id
 
 
 def _criar_e_ativar_operacao_direto(
@@ -120,6 +134,9 @@ class TestGateGeografico:
         )
         db_session.commit()
         tomador_fora_id = result.scalar_one()
+        # Sem identificação o bloqueio viria de OC019 (migration 014) e o
+        # teste deixaria de provar o que promete.
+        arquivar_identificacao(db_session, tomador_fora_id)
 
         op_id = _criar_operacao(db_session, tomador_fora_id, 5_000)
 
@@ -308,3 +325,425 @@ class TestConsultarCapitalSnapshot:
         assert snapshot.total == 50_000
         assert snapshot.comprometido == 30_000
         assert snapshot.disponivel == 20_000
+
+
+# ---------------------------------------------------------------------------
+# criar_operacao / transicionar_operacao / registrar_evento_capital
+#
+# Adicionadas nas fases F7/F8 e até aqui sem nenhum teste direto — eram os
+# 35 statements que mantinham capital_engine.py em 58,8% de cobertura,
+# justamente no arquivo que carrega o peso legal do Art. 5º.
+# ---------------------------------------------------------------------------
+
+
+class TestCriarOperacao:
+    def test_cria_operacao_em_proposta(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Nasce em 'proposta' e NAO compromete capital — teto e gate
+        geografico so sao avaliados na ativacao."""
+        op = criar_operacao(
+            db_session,
+            tomador_id=tomador_autorizado,
+            tipo="emprestimo",
+            valor_principal=Decimal("10000.00"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=12,
+        )
+        assert op.status == "proposta"
+        assert op.id is not None
+        # Proposta nao entra no comprometido.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+
+    def test_operacao_criada_nao_gera_evento_no_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Criar nao movimenta capital — o ledger so registra ativacao e
+        liquidacao. Um evento aqui significaria capital comprometido cedo
+        demais."""
+        antes = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+        criar_operacao(
+            db_session,
+            tomador_id=tomador_autorizado,
+            tipo="financiamento",
+            valor_principal=Decimal("7500.00"),
+            taxa_juros_mensal=Decimal("1.9"),
+            sistema_amortizacao="SAC",
+            numero_parcelas=24,
+        )
+        depois = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+        assert depois == antes
+
+
+class TestTransicionarOperacao:
+    def test_registrar_grava_referencia_e_habilita_ativacao(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """proposta -> registrada gravando registro_entidade_ref.
+
+        Desde a migration 013 essa referência é INFORMATIVA: quem destrava a
+        ativação é o registro confirmado em entidade registradora. O teste
+        guarda essa mudança — antes bastava o texto."""
+        op = criar_operacao(
+            db_session,
+            tomador_id=tomador_autorizado,
+            tipo="emprestimo",
+            valor_principal=Decimal("5000.00"),
+            taxa_juros_mensal=Decimal("2.0"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=6,
+        )
+        registrada = transicionar_operacao(
+            db_session, op.id, "registrada", registro_entidade_ref="B3-REG-2026-0001"
+        )
+        assert registrada.status == "registrada"
+        assert registrada.registro_entidade_ref == "B3-REG-2026-0001"
+
+        # A referência sozinha NÃO destrava mais.
+        with pytest.raises(RegistroEntidadeAusente) as exc_info:
+            ativar_operacao(db_session, op.id)
+        assert exc_info.value.sqlstate == "OC004"
+
+        # Com registro confirmado, ativa.
+        confirmar_registro(db_session, op.id)
+        ativa = ativar_operacao(db_session, op.id)
+        assert ativa.status == "ativa"
+
+    def test_liquidar_devolve_capital_e_grava_no_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """ativa -> liquidada libera o capital comprometido e deixa rastro."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("20000.00")
+
+        liquidada = transicionar_operacao(db_session, op_id, "liquidada")
+        assert liquidada.status == "liquidada"
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+
+        eventos = (
+            db_session.execute(
+                text(
+                    "select evento_tipo from capital_ledger "
+                    "where operacao_id = :i order by created_at"
+                ),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert eventos == ["ativacao_operacao", "liquidacao"]
+
+    def test_transicao_invalida_e_bloqueada_pelo_banco(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A maquina de estados vive no trigger (OC003), nao no Python —
+        'registrada' nao pode saltar direto para 'liquidada'."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 3000)
+        with pytest.raises(TransicaoInvalida) as exc:
+            transicionar_operacao(db_session, op_id, "liquidada")
+        assert sqlstate_de(exc.value) == "OC003"
+
+    def test_operacao_inexistente(self, db_session: Session) -> None:
+        with pytest.raises(OperacaoNaoEncontrada):
+            transicionar_operacao(db_session, uuid.uuid4(), "cancelada")
+
+    def test_cancelar_proposta_nao_toca_o_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Cancelar antes de ativar nao movimenta capital algum."""
+        op = criar_operacao(
+            db_session,
+            tomador_id=tomador_autorizado,
+            tipo="emprestimo",
+            valor_principal=Decimal("1000.00"),
+            taxa_juros_mensal=Decimal("3.0"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=3,
+        )
+        antes = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+        cancelada = transicionar_operacao(db_session, op.id, "cancelada")
+        assert cancelada.status == "cancelada"
+        depois = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+        assert depois == antes
+
+    def test_registro_ref_ignorado_fora_da_transicao_registrada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """registro_entidade_ref so se aplica ao virar 'registrada' — passa-lo
+        em outra transicao nao deve sobrescrever nada."""
+        op = criar_operacao(
+            db_session,
+            tomador_id=tomador_autorizado,
+            tipo="emprestimo",
+            valor_principal=Decimal("2000.00"),
+            taxa_juros_mensal=Decimal("2.0"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=4,
+        )
+        cancelada = transicionar_operacao(
+            db_session, op.id, "cancelada", registro_entidade_ref="NAO-DEVE-GRAVAR"
+        )
+        assert cancelada.registro_entidade_ref is None
+
+
+class TestRegistrarEventoCapital:
+    def test_aporte_eleva_o_teto(self, db_session: Session, capital_constituido: None) -> None:
+        assert consultar_capital_snapshot(db_session).total == Decimal("50000.00")
+        registrar_evento_capital(db_session, valor=Decimal("25000"), tipo_evento="constituicao")
+        assert consultar_capital_snapshot(db_session).total == Decimal("75000.00")
+
+    def test_reducao_abaixo_do_comprometido_e_bloqueada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """OC005: com 40.000 comprometidos de 50.000, reduzir 20.000 deixaria
+        o capital abaixo do ja emprestado — o trigger recusa."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
+        ativar_operacao(db_session, op_id)
+
+        with pytest.raises(ReducaoCapitalBloqueada) as exc:
+            registrar_evento_capital(db_session, valor=Decimal("20000"), tipo_evento="reducao")
+        assert sqlstate_de(exc.value) == "OC005"
+
+    def test_reducao_dentro_da_folga_e_permitida(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        op_id = _criar_operacao(db_session, tomador_autorizado, 10000)
+        ativar_operacao(db_session, op_id)
+        registrar_evento_capital(db_session, valor=Decimal("5000"), tipo_evento="reducao")
+        assert consultar_capital_snapshot(db_session).total == Decimal("45000.00")
+
+
+# ---------------------------------------------------------------------------
+# Migration 006 — os dois furos de teto que ela fecha
+#
+# Ambos comprovados contra Postgres real ANTES da correção existir:
+#   ativa -> inadimplente  liberou R$ 40.000,00 | eventos no ledger: 0
+#   ativa -> renegociada   liberou R$ 40.000,00 | eventos no ledger: 0
+# ---------------------------------------------------------------------------
+
+
+class TestInadimplenteComprometeCapital:
+    def test_marcar_inadimplente_nao_libera_capital(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O dinheiro nao voltou: o titulo sai de 'ativa', mas continua
+        ocupando o teto do Art. 5o. Antes da 006 isso liberava o valor
+        inteiro e permitia emprestar de novo o mesmo capital."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
+        ativar_operacao(db_session, op_id)
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("40000.00")
+
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("40000.00")
+        assert consultar_capital_disponivel(db_session) == Decimal("10000.00")
+
+    def test_inadimplente_nao_gera_evento_no_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Nao ha movimento de capital, entao nao ha o que registrar no
+        ledger de CAPITAL. Quem marcou fica na trilha da aplicacao."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 10000)
+        ativar_operacao(db_session, op_id)
+        antes = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        depois = db_session.execute(text("select count(*) from capital_ledger")).scalar_one()
+        assert depois == antes
+
+    def test_teto_bloqueia_nova_operacao_com_capital_preso_em_inadimplente(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O teste que prova o furo fechado: com 40.000 inadimplentes de
+        50.000, uma nova operacao de 20.000 NAO cabe. Antes da 006 cabia."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        outra = _criar_operacao(db_session, tomador_autorizado, 20000)
+        with pytest.raises(TetoCapitalExcedido) as exc:
+            ativar_operacao(db_session, outra)
+        assert sqlstate_de(exc.value) == "OC001"
+
+    def test_liquidar_inadimplente_devolve_capital_com_evento(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """inadimplente -> liquidada e uma SAIDA real do comprometido, e
+        agora gera evento (antes da 006 esse caminho nao gerava nada)."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        transicionar_operacao(db_session, op_id, "liquidada")
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+        eventos = (
+            db_session.execute(
+                text(
+                    "select evento_tipo from capital_ledger where operacao_id = :i"
+                    " order by created_at"
+                ),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert eventos == ["ativacao_operacao", "liquidacao"]
+
+    def test_regularizar_inadimplente_nao_duplica_evento(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """inadimplente -> ativa nao muda o comprometido (os dois ocupam o
+        teto), entao nao pode gravar uma segunda ativacao — isso contaria o
+        mesmo dinheiro duas vezes no ledger."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 15000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        ativar_operacao(db_session, op_id)
+
+        eventos = (
+            db_session.execute(
+                text("select evento_tipo from capital_ledger where operacao_id = :i"),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert eventos == ["ativacao_operacao"]
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("15000.00")
+
+
+class TestNovacaoAtomica:
+    def test_renegociar_direto_e_bloqueado(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Sem a novacao atomica, a original sairia do comprometido e nada
+        impediria criar a substituta depois — capital contado duas vezes em
+        janelas diferentes."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+
+        with pytest.raises(NovacaoForaDaTransacaoAtomica) as exc:
+            transicionar_operacao(db_session, op_id, "renegociada")
+        assert sqlstate_de(exc.value) == "OC008"
+
+    def test_novacao_baixa_original_e_cria_substituta(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("25000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=24,
+            registro_entidade_ref="REG-NOVA",
+        )
+
+        original = db_session.execute(
+            text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
+        ).scalar_one()
+        assert original == "renegociada"
+        assert nova.status == "registrada"
+        assert str(nova.substitui_operacao_id) == str(op_id)
+
+        # A substituta ainda NAO compromete: nasce em 'registrada'.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+
+    def test_novacao_registra_evento_de_saida_no_ledger(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A renegociacao move capital (libera a original), entao TEM que
+        aparecer no ledger — antes da 006 nao aparecia, e a serie temporal
+        do dashboard mentia."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+
+        novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("10000"),
+            taxa_juros_mensal=Decimal("2.0"),
+            sistema_amortizacao="SAC",
+            numero_parcelas=12,
+        )
+
+        eventos = (
+            db_session.execute(
+                text(
+                    "select evento_tipo from capital_ledger where operacao_id = :i"
+                    " order by created_at"
+                ),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert eventos == ["ativacao_operacao", "renegociacao"]
+
+    def test_sem_dupla_contagem_ao_ativar_a_substituta(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O teste central da novacao: 40.000 originais + 25.000 substitutos
+        NAO podem somar 65.000 de comprometido."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("25000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=24,
+            registro_entidade_ref="REG-NOVA",
+        )
+        # A substituta é um título novo: precisa do próprio registro.
+        confirmar_registro(db_session, nova.id)
+        ativar_operacao(db_session, nova.id)
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("25000.00")
+
+    def test_novacao_de_operacao_nao_renegociavel_e_recusada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """So 'ativa' ou 'inadimplente' podem ser renegociadas."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 5000)  # fica em 'registrada'
+
+        with pytest.raises(TransicaoInvalida):
+            novar_operacao(
+                db_session,
+                op_id,
+                valor_principal=Decimal("1000"),
+                taxa_juros_mensal=Decimal("1.0"),
+                sistema_amortizacao="PRICE",
+                numero_parcelas=6,
+            )
+
+    def test_novacao_de_inadimplente_e_permitida(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Renegociar um inadimplente e o caso de uso mais comum de novacao."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("22000"),
+            taxa_juros_mensal=Decimal("3.0"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=36,
+        )
+
+        assert nova.status == "registrada"
+        # A original saiu do comprometido; a substituta ainda nao entrou.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")

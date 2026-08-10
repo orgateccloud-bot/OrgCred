@@ -1,13 +1,16 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
+  AlarmClock,
   Banknote,
   Building2,
+  Calculator,
   ChevronsUpDown,
   Coins,
   LayoutDashboard,
   Landmark,
   LogOut,
   ScrollText,
+  ShieldCheck,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -37,7 +40,10 @@ const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/operacoes', label: 'Operações', icon: Banknote, exact: false },
   { to: '/tomadores', label: 'Tomadores', icon: Building2, exact: false },
+  { to: '/cobranca', label: 'Cobrança', icon: AlarmClock, exact: false },
   { to: '/capital', label: 'Capital social', icon: Coins, exact: false },
+  { to: '/fiscal', label: 'Fiscal', icon: Calculator, exact: false },
+  { to: '/compliance', label: 'Compliance', icon: ShieldCheck, exact: false },
   { to: '/auditoria', label: 'Auditoria', icon: ScrollText, exact: false },
 ] as const
 
@@ -66,9 +72,16 @@ export function AppSidebar() {
                 >
                   <Landmark className="size-4" />
                 </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-heading font-bold">OrgCred</span>
-                  <span className="truncate text-xs text-muted-foreground">ESC · ORGATEC</span>
+                {/* A marca é Orgatec; OrgCred é o produto. Por isso o
+                    logotipo em cima e a linha do produto embaixo — inverter
+                    faria a empresa sumir da tela. */}
+                <div className="grid flex-1 gap-0.5 text-left leading-tight">
+                  <img
+                    src="/orgatec-logo.png"
+                    alt="Orgatec"
+                    className="h-5 w-auto object-contain object-left"
+                  />
+                  <span className="truncate text-xs text-muted-foreground">OrgCred · ESC</span>
                 </div>
               </Link>
             </SidebarMenuButton>

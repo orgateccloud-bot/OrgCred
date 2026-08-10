@@ -4,32 +4,62 @@ import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanst
 
 import { client } from '../client.gen'
 import {
+  getAgingApiCobrancaAgingGet,
+  getApuracoesApiFiscalApuracoesGet,
+  getAtipicidadesApiComplianceAtipicidadesGet,
   getAuditoriaApiAuditoriaGet,
   getCapitalDisponivelApiCapitalDisponivelGet,
   getCapitalEventosApiCapitalEventosGet,
   getCapitalSnapshotApiCapitalSnapshotGet,
+  getContratoApiContratosOperacoesOperacaoIdContratoGet,
+  getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet,
   getMeApiMeGet,
+  getMovimentosApiCobrancaMovimentosGet,
   getOperacaoApiOperacoesOperacaoIdGet,
   getOperacoesApiOperacoesGet,
+  getParametrosApiFiscalParametrosGet,
+  getParametroVigenteApiFiscalParametrosVigenteGet,
+  getParcelasApiOperacoesOperacaoIdParcelasGet,
+  getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet,
+  getPendenciasRegistroApiContratosRegistrosPendenciasGet,
+  getRegistrosApiContratosOperacoesOperacaoIdRegistrosGet,
   getTomadorApiTomadoresTomadorIdGet,
   getTomadoresApiTomadoresGet,
   healthCheckHealthGet,
   metricsMetricsGet,
   type Options,
   patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch,
+  postAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPost,
+  postApurarApiFiscalApuracoesPost,
   postAtivarOperacaoApiOperacoesOperacaoIdAtivarPost,
+  postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPost,
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPost,
   postCapitalEventoApiCapitalEventosPost,
+  postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPost,
   postCriarOperacaoApiOperacoesPost,
   postCriarTomadorApiTomadoresPost,
+  postDetectarApiComplianceAtipicidadesDetectarPost,
+  postDocumentoApiComplianceTomadoresTomadorIdDocumentosPost,
+  postEmitirContratoApiContratosOperacoesOperacaoIdContratoPost,
   postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPost,
   postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePost,
+  postMovimentoApiCobrancaMovimentosPost,
+  postParametroApiFiscalParametrosPost,
+  postProcessarAgingApiCobrancaAgingProcessarPost,
   postRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPost,
+  postRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPost,
   postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost,
+  postVerificarContratoApiContratosContratoIdVerificarPost,
+  postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost,
   readinessCheckHealthReadyGet,
-  rootGet,
 } from '../sdk.gen'
 import type {
+  GetAgingApiCobrancaAgingGetData,
+  GetAgingApiCobrancaAgingGetResponse,
+  GetApuracoesApiFiscalApuracoesGetData,
+  GetApuracoesApiFiscalApuracoesGetResponse,
+  GetAtipicidadesApiComplianceAtipicidadesGetData,
+  GetAtipicidadesApiComplianceAtipicidadesGetResponse,
   GetAuditoriaApiAuditoriaGetData,
   GetAuditoriaApiAuditoriaGetResponse,
   GetCapitalDisponivelApiCapitalDisponivelGetData,
@@ -38,13 +68,36 @@ import type {
   GetCapitalEventosApiCapitalEventosGetResponse,
   GetCapitalSnapshotApiCapitalSnapshotGetData,
   GetCapitalSnapshotApiCapitalSnapshotGetResponse,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetData,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetError,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetResponse,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetError,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse,
   GetMeApiMeGetData,
   GetMeApiMeGetResponse,
+  GetMovimentosApiCobrancaMovimentosGetData,
+  GetMovimentosApiCobrancaMovimentosGetError,
+  GetMovimentosApiCobrancaMovimentosGetResponse,
   GetOperacaoApiOperacoesOperacaoIdGetData,
   GetOperacaoApiOperacoesOperacaoIdGetError,
   GetOperacaoApiOperacoesOperacaoIdGetResponse,
   GetOperacoesApiOperacoesGetData,
   GetOperacoesApiOperacoesGetResponse,
+  GetParametrosApiFiscalParametrosGetData,
+  GetParametrosApiFiscalParametrosGetResponse,
+  GetParametroVigenteApiFiscalParametrosVigenteGetData,
+  GetParametroVigenteApiFiscalParametrosVigenteGetResponse,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetData,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetError,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponse,
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetData,
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponse,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetError,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponse,
   GetTomadorApiTomadoresTomadorIdGetData,
   GetTomadorApiTomadoresTomadorIdGetError,
   GetTomadorApiTomadoresTomadorIdGetResponse,
@@ -56,36 +109,73 @@ import type {
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchData,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchError,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponse,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostError,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponse,
+  PostApurarApiFiscalApuracoesPostData,
+  PostApurarApiFiscalApuracoesPostError,
+  PostApurarApiFiscalApuracoesPostResponse,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostError,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponse,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostError,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponse,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostData,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostError,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostResponse,
   PostCapitalEventoApiCapitalEventosPostData,
   PostCapitalEventoApiCapitalEventosPostError,
   PostCapitalEventoApiCapitalEventosPostResponse,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostError,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponse,
   PostCriarOperacaoApiOperacoesPostData,
   PostCriarOperacaoApiOperacoesPostError,
   PostCriarOperacaoApiOperacoesPostResponse,
   PostCriarTomadorApiTomadoresPostData,
   PostCriarTomadorApiTomadoresPostError,
   PostCriarTomadorApiTomadoresPostResponse,
+  PostDetectarApiComplianceAtipicidadesDetectarPostData,
+  PostDetectarApiComplianceAtipicidadesDetectarPostError,
+  PostDetectarApiComplianceAtipicidadesDetectarPostResponse,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostError,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponse,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostError,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponse,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostData,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostError,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponse,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostData,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostError,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostResponse,
+  PostMovimentoApiCobrancaMovimentosPostData,
+  PostMovimentoApiCobrancaMovimentosPostError,
+  PostMovimentoApiCobrancaMovimentosPostResponse,
+  PostParametroApiFiscalParametrosPostData,
+  PostParametroApiFiscalParametrosPostError,
+  PostParametroApiFiscalParametrosPostResponse,
+  PostProcessarAgingApiCobrancaAgingProcessarPostData,
+  PostProcessarAgingApiCobrancaAgingProcessarPostError,
+  PostProcessarAgingApiCobrancaAgingProcessarPostResponse,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostData,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostError,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostResponse,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostError,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponse,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostData,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostError,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostResponse,
+  PostVerificarContratoApiContratosContratoIdVerificarPostData,
+  PostVerificarContratoApiContratosContratoIdVerificarPostError,
+  PostVerificarContratoApiContratosContratoIdVerificarPostResponse,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostError,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponse,
   ReadinessCheckHealthReadyGetData,
-  RootGetData,
-  RootGetResponse,
 } from '../types.gen'
 
 export type QueryKey<TOptions extends Options> = [
@@ -394,6 +484,40 @@ export const getOperacaoApiOperacoesOperacaoIdGetOptions = (
     queryKey: getOperacaoApiOperacoesOperacaoIdGetQueryKey(options),
   })
 
+export const getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey = (
+  options: Options<GetParcelasApiOperacoesOperacaoIdParcelasGetData>,
+) => createQueryKey('getParcelasApiOperacoesOperacaoIdParcelasGet', options)
+
+/**
+ * Get Parcelas
+ *
+ * Agenda de amortização emitida na ativação.
+ *
+ * Operação que ainda não foi ativada não tem agenda — devolve lista vazia
+ * em vez de 404, porque a operação existe e a ausência da agenda é um
+ * estado legítimo do ciclo de vida, não um erro.
+ */
+export const getParcelasApiOperacoesOperacaoIdParcelasGetOptions = (
+  options: Options<GetParcelasApiOperacoesOperacaoIdParcelasGetData>,
+) =>
+  queryOptions<
+    GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
+    GetParcelasApiOperacoesOperacaoIdParcelasGetError,
+    GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
+    ReturnType<typeof getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getParcelasApiOperacoesOperacaoIdParcelasGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey(options),
+  })
+
 /**
  * Post Registrar Operacao
  *
@@ -486,7 +610,16 @@ export const postCancelarOperacaoApiOperacoesOperacaoIdCancelarPostMutation = (
 /**
  * Post Renegociar Operacao
  *
- * ativa/inadimplente -> renegociada.
+ * Renegocia por novação atômica: baixa a original e cria a substituta na
+ * mesma transação, sob o mesmo advisory lock do teto.
+ *
+ * Não existe endpoint para "só marcar como renegociada": fazer a baixa sem
+ * amarrar a substituta deixa a original fora do comprometido e nada
+ * impediria criar a substituta depois, contando o capital duas vezes em
+ * janelas diferentes (o banco recusa com OC008).
+ *
+ * A substituta nasce em 'registrada' — ainda não compromete capital, e
+ * ativá-la passa pelos gates normais.
  */
 export const postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostMutation = (
   options?: Partial<Options<PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostData>>,
@@ -659,6 +792,795 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchMutation = (
   return mutationOptions
 }
 
+export const getContratoApiContratosOperacoesOperacaoIdContratoGetQueryKey = (
+  options: Options<GetContratoApiContratosOperacoesOperacaoIdContratoGetData>,
+) => createQueryKey('getContratoApiContratosOperacoesOperacaoIdContratoGet', options)
+
+/**
+ * Get Contrato
+ *
+ * Contrato vigente (última versão) da operação, com o corpo.
+ *
+ * Devolve `null` quando ainda não houve emissão — a tela precisa
+ * distinguir 'não emitido' de 'erro ao carregar'.
+ */
+export const getContratoApiContratosOperacoesOperacaoIdContratoGetOptions = (
+  options: Options<GetContratoApiContratosOperacoesOperacaoIdContratoGetData>,
+) =>
+  queryOptions<
+    GetContratoApiContratosOperacoesOperacaoIdContratoGetResponse,
+    GetContratoApiContratosOperacoesOperacaoIdContratoGetError,
+    GetContratoApiContratosOperacoesOperacaoIdContratoGetResponse,
+    ReturnType<typeof getContratoApiContratosOperacoesOperacaoIdContratoGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getContratoApiContratosOperacoesOperacaoIdContratoGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getContratoApiContratosOperacoesOperacaoIdContratoGetQueryKey(options),
+  })
+
+/**
+ * Post Emitir Contrato
+ *
+ * Emite o instrumento a partir dos dados da operação e da agenda.
+ *
+ * Reemitir gera uma NOVA VERSÃO: o contrato anterior permanece, porque o
+ * tomador tem uma via dele e editar o original destruiria a prova do que
+ * foi acordado.
+ *
+ * Exige a ESC identificada em configuração. Sem isso, o contrato sairia
+ * com credora em branco — um documento com efeito jurídico e sem uma das
+ * partes.
+ */
+export const postEmitirContratoApiContratosOperacoesOperacaoIdContratoPostMutation = (
+  options?: Partial<Options<PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData>>,
+): UseMutationOptions<
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponse,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostError,
+  Options<PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponse,
+    PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostError,
+    Options<PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postEmitirContratoApiContratosOperacoesOperacaoIdContratoPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Verificar Contrato
+ *
+ * Confere se um arquivo é bit a bit o instrumento emitido.
+ *
+ * É o que dá utilidade ao hash: sem esta conferência, ele seria um número
+ * guardado sem uso — e a via que o tomador apresenta não teria como ser
+ * confrontada com a do sistema.
+ */
+export const postVerificarContratoApiContratosContratoIdVerificarPostMutation = (
+  options?: Partial<Options<PostVerificarContratoApiContratosContratoIdVerificarPostData>>,
+): UseMutationOptions<
+  PostVerificarContratoApiContratosContratoIdVerificarPostResponse,
+  PostVerificarContratoApiContratosContratoIdVerificarPostError,
+  Options<PostVerificarContratoApiContratosContratoIdVerificarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostVerificarContratoApiContratosContratoIdVerificarPostResponse,
+    PostVerificarContratoApiContratosContratoIdVerificarPostError,
+    Options<PostVerificarContratoApiContratosContratoIdVerificarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postVerificarContratoApiContratosContratoIdVerificarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getRegistrosApiContratosOperacoesOperacaoIdRegistrosGetQueryKey = (
+  options: Options<GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData>,
+) => createQueryKey('getRegistrosApiContratosOperacoesOperacaoIdRegistrosGet', options)
+
+/**
+ * Get Registros
+ */
+export const getRegistrosApiContratosOperacoesOperacaoIdRegistrosGetOptions = (
+  options: Options<GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData>,
+) =>
+  queryOptions<
+    GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponse,
+    GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetError,
+    GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponse,
+    ReturnType<typeof getRegistrosApiContratosOperacoesOperacaoIdRegistrosGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getRegistrosApiContratosOperacoesOperacaoIdRegistrosGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getRegistrosApiContratosOperacoesOperacaoIdRegistrosGetQueryKey(options),
+  })
+
+/**
+ * Post Abrir Registro
+ *
+ * Abre um registro em 'pendente'.
+ *
+ * Hoje o envio à entidade é manual — não há integração porque não há
+ * entidade escolhida. Quando houver, este endpoint chama o adaptador e o
+ * resto do fluxo permanece igual.
+ */
+export const postAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostMutation = (
+  options?: Partial<Options<PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData>>,
+): UseMutationOptions<
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponse,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostError,
+  Options<PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponse,
+    PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostError,
+    Options<PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Confirmar Registro
+ *
+ * Confirma o registro com o protocolo devolvido pela entidade.
+ *
+ * Protocolo é obrigatório por constraint no banco: registro confirmado sem
+ * número é indistinguível de alguém marcando a caixinha — que é
+ * exatamente o problema do `registro_entidade_ref` de texto livre.
+ *
+ * Confirmado é estado TERMINAL (OC018): reverter apagaria a prova de que a
+ * operação existe legalmente.
+ */
+export const postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostMutation = (
+  options?: Partial<Options<PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData>>,
+): UseMutationOptions<
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponse,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostError,
+  Options<PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponse,
+    PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostError,
+    Options<PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Rejeitar Registro
+ *
+ * Rejeição exige motivo: sem ele, a próxima tentativa repete o erro.
+ */
+export const postRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostMutation = (
+  options?: Partial<Options<PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData>>,
+): UseMutationOptions<
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponse,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostError,
+  Options<PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponse,
+    PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostError,
+    Options<PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getPendenciasRegistroApiContratosRegistrosPendenciasGetQueryKey = (
+  options?: Options<GetPendenciasRegistroApiContratosRegistrosPendenciasGetData>,
+) => createQueryKey('getPendenciasRegistroApiContratosRegistrosPendenciasGet', options)
+
+/**
+ * Get Pendencias Registro
+ *
+ * Operações registradas, ativas ou inadimplentes SEM registro confirmado.
+ *
+ * É a medida da lacuna: hoje `registro_entidade_ref` é texto livre e o
+ * gate aceita qualquer string. Esta lista existe para embasar a decisão de
+ * ligar a exigência de registro confirmado na ativação — com o número na
+ * mão, e não no escuro.
+ */
+export const getPendenciasRegistroApiContratosRegistrosPendenciasGetOptions = (
+  options?: Options<GetPendenciasRegistroApiContratosRegistrosPendenciasGetData>,
+) =>
+  queryOptions<
+    GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponse,
+    DefaultError,
+    GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponse,
+    ReturnType<typeof getPendenciasRegistroApiContratosRegistrosPendenciasGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getPendenciasRegistroApiContratosRegistrosPendenciasGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getPendenciasRegistroApiContratosRegistrosPendenciasGetQueryKey(options),
+  })
+
+export const getParametrosApiFiscalParametrosGetQueryKey = (
+  options?: Options<GetParametrosApiFiscalParametrosGetData>,
+) => createQueryKey('getParametrosApiFiscalParametrosGet', options)
+
+/**
+ * Get Parametros
+ *
+ * Histórico de parâmetros, vigência mais recente primeiro.
+ */
+export const getParametrosApiFiscalParametrosGetOptions = (
+  options?: Options<GetParametrosApiFiscalParametrosGetData>,
+) =>
+  queryOptions<
+    GetParametrosApiFiscalParametrosGetResponse,
+    DefaultError,
+    GetParametrosApiFiscalParametrosGetResponse,
+    ReturnType<typeof getParametrosApiFiscalParametrosGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getParametrosApiFiscalParametrosGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getParametrosApiFiscalParametrosGetQueryKey(options),
+  })
+
+/**
+ * Post Parametro
+ *
+ * Registra um conjunto de parâmetros com data de vigência.
+ *
+ * Vigência, e não edição de um registro único: alíquota muda por lei, e
+ * uma apuração de 2026 tem que continuar reproduzível com os números de
+ * 2026.
+ */
+export const postParametroApiFiscalParametrosPostMutation = (
+  options?: Partial<Options<PostParametroApiFiscalParametrosPostData>>,
+): UseMutationOptions<
+  PostParametroApiFiscalParametrosPostResponse,
+  PostParametroApiFiscalParametrosPostError,
+  Options<PostParametroApiFiscalParametrosPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostParametroApiFiscalParametrosPostResponse,
+    PostParametroApiFiscalParametrosPostError,
+    Options<PostParametroApiFiscalParametrosPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postParametroApiFiscalParametrosPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getParametroVigenteApiFiscalParametrosVigenteGetQueryKey = (
+  options?: Options<GetParametroVigenteApiFiscalParametrosVigenteGetData>,
+) => createQueryKey('getParametroVigenteApiFiscalParametrosVigenteGet', options)
+
+/**
+ * Get Parametro Vigente
+ *
+ * Devolve `null` quando nada foi configurado — a tela precisa
+ * distinguir 'não configurado' de 'erro ao carregar'.
+ */
+export const getParametroVigenteApiFiscalParametrosVigenteGetOptions = (
+  options?: Options<GetParametroVigenteApiFiscalParametrosVigenteGetData>,
+) =>
+  queryOptions<
+    GetParametroVigenteApiFiscalParametrosVigenteGetResponse,
+    DefaultError,
+    GetParametroVigenteApiFiscalParametrosVigenteGetResponse,
+    ReturnType<typeof getParametroVigenteApiFiscalParametrosVigenteGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getParametroVigenteApiFiscalParametrosVigenteGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getParametroVigenteApiFiscalParametrosVigenteGetQueryKey(options),
+  })
+
+export const getApuracoesApiFiscalApuracoesGetQueryKey = (
+  options?: Options<GetApuracoesApiFiscalApuracoesGetData>,
+) => createQueryKey('getApuracoesApiFiscalApuracoesGet', options)
+
+/**
+ * Get Apuracoes
+ *
+ * Última versão de cada trimestre — retificações substituem na tela,
+ * sem apagar o histórico no banco.
+ */
+export const getApuracoesApiFiscalApuracoesGetOptions = (
+  options?: Options<GetApuracoesApiFiscalApuracoesGetData>,
+) =>
+  queryOptions<
+    GetApuracoesApiFiscalApuracoesGetResponse,
+    DefaultError,
+    GetApuracoesApiFiscalApuracoesGetResponse,
+    ReturnType<typeof getApuracoesApiFiscalApuracoesGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getApuracoesApiFiscalApuracoesGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getApuracoesApiFiscalApuracoesGetQueryKey(options),
+  })
+
+/**
+ * Post Apurar
+ *
+ * Apura o trimestre com os parâmetros vigentes.
+ *
+ * A base é a RECEITA DE JUROS, tirada da agenda de parcelas — nunca a
+ * amortização, que é devolução de principal e não resultado.
+ *
+ * Reapurar o mesmo trimestre grava uma nova VERSÃO em vez de sobrescrever:
+ * retificação existe no mundo real, e editar a original apagaria o que já
+ * foi declarado.
+ */
+export const postApurarApiFiscalApuracoesPostMutation = (
+  options?: Partial<Options<PostApurarApiFiscalApuracoesPostData>>,
+): UseMutationOptions<
+  PostApurarApiFiscalApuracoesPostResponse,
+  PostApurarApiFiscalApuracoesPostError,
+  Options<PostApurarApiFiscalApuracoesPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostApurarApiFiscalApuracoesPostResponse,
+    PostApurarApiFiscalApuracoesPostError,
+    Options<PostApurarApiFiscalApuracoesPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postApurarApiFiscalApuracoesPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getDocumentosApiComplianceTomadoresTomadorIdDocumentosGetQueryKey = (
+  options: Options<GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData>,
+) => createQueryKey('getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet', options)
+
+/**
+ * Get Documentos
+ */
+export const getDocumentosApiComplianceTomadoresTomadorIdDocumentosGetOptions = (
+  options: Options<GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData>,
+) =>
+  queryOptions<
+    GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse,
+    GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetError,
+    GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse,
+    ReturnType<typeof getDocumentosApiComplianceTomadoresTomadorIdDocumentosGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getDocumentosApiComplianceTomadoresTomadorIdDocumentosGetQueryKey(options),
+  })
+
+/**
+ * Post Documento
+ *
+ * Arquiva a evidência de identificação.
+ *
+ * `retencao_ate` é gravado agora, e não calculado na leitura: se o prazo
+ * legal mudar, os documentos já arquivados mantêm a regra vigente à época
+ * — que é o que se defende numa fiscalização.
+ */
+export const postDocumentoApiComplianceTomadoresTomadorIdDocumentosPostMutation = (
+  options?: Partial<Options<PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData>>,
+): UseMutationOptions<
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponse,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostError,
+  Options<PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponse,
+    PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostError,
+    Options<PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postDocumentoApiComplianceTomadoresTomadorIdDocumentosPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Verificar Documento
+ *
+ * Confere se um arquivo é bit a bit o que foi arquivado.
+ *
+ * É o que dá sentido a guardar só o hash: sem esta conferência, o hash
+ * seria um número sem uso.
+ */
+export const postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostMutation = (
+  options?: Partial<
+    Options<PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData>
+  >,
+): UseMutationOptions<
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponse,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostError,
+  Options<PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponse,
+    PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostError,
+    Options<PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetQueryKey = (
+  options?: Options<GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData>,
+) => createQueryKey('getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet', options)
+
+/**
+ * Get Pendencias Identificacao
+ *
+ * Tomadores sem nenhuma evidência arquivada, com o capital exposto.
+ *
+ * Ordenado por exposição: é essa a lista que embasa a decisão de negócio
+ * sobre exigir identificação antes da ativação.
+ */
+export const getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetOptions = (
+  options?: Options<GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData>,
+) =>
+  queryOptions<
+    GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponse,
+    DefaultError,
+    GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponse,
+    ReturnType<typeof getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetQueryKey(options),
+  })
+
+export const getAtipicidadesApiComplianceAtipicidadesGetQueryKey = (
+  options?: Options<GetAtipicidadesApiComplianceAtipicidadesGetData>,
+) => createQueryKey('getAtipicidadesApiComplianceAtipicidadesGet', options)
+
+/**
+ * Get Atipicidades
+ *
+ * Ocorrências detectadas, mais graves e mais recentes primeiro.
+ */
+export const getAtipicidadesApiComplianceAtipicidadesGetOptions = (
+  options?: Options<GetAtipicidadesApiComplianceAtipicidadesGetData>,
+) =>
+  queryOptions<
+    GetAtipicidadesApiComplianceAtipicidadesGetResponse,
+    DefaultError,
+    GetAtipicidadesApiComplianceAtipicidadesGetResponse,
+    ReturnType<typeof getAtipicidadesApiComplianceAtipicidadesGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getAtipicidadesApiComplianceAtipicidadesGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getAtipicidadesApiComplianceAtipicidadesGetQueryKey(options),
+  })
+
+/**
+ * Post Detectar
+ *
+ * Roda a varredura de atipicidade sobre os dados existentes.
+ *
+ * Idempotente: a constraint `ocorrencia_unica` faz uma segunda passada no
+ * mesmo dia não duplicar nada. Sem isso o painel viraria ruído e o
+ * analista pararia de olhar — que é o pior resultado possível para um
+ * controle de PLD.
+ */
+export const postDetectarApiComplianceAtipicidadesDetectarPostMutation = (
+  options?: Partial<Options<PostDetectarApiComplianceAtipicidadesDetectarPostData>>,
+): UseMutationOptions<
+  PostDetectarApiComplianceAtipicidadesDetectarPostResponse,
+  PostDetectarApiComplianceAtipicidadesDetectarPostError,
+  Options<PostDetectarApiComplianceAtipicidadesDetectarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostDetectarApiComplianceAtipicidadesDetectarPostResponse,
+    PostDetectarApiComplianceAtipicidadesDetectarPostError,
+    Options<PostDetectarApiComplianceAtipicidadesDetectarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postDetectarApiComplianceAtipicidadesDetectarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getAgingApiCobrancaAgingGetQueryKey = (
+  options?: Options<GetAgingApiCobrancaAgingGetData>,
+) => createQueryKey('getAgingApiCobrancaAgingGet', options)
+
+/**
+ * Get Aging
+ *
+ * Aging de todas as operações que comprometem capital, mais atrasadas
+ * primeiro.
+ */
+export const getAgingApiCobrancaAgingGetOptions = (
+  options?: Options<GetAgingApiCobrancaAgingGetData>,
+) =>
+  queryOptions<
+    GetAgingApiCobrancaAgingGetResponse,
+    DefaultError,
+    GetAgingApiCobrancaAgingGetResponse,
+    ReturnType<typeof getAgingApiCobrancaAgingGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getAgingApiCobrancaAgingGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getAgingApiCobrancaAgingGetQueryKey(options),
+  })
+
+/**
+ * Post Processar Aging
+ *
+ * Executa a régua: 'ativa' com atraso >= limite passa a 'inadimplente'.
+ *
+ * Exige admin, não operador: declarar inadimplência em lote tem
+ * consequência jurídica e reputacional para os tomadores, e o efeito é
+ * irreversível sem que alguém assuma nominalmente a regularização.
+ *
+ * As transições ficam na trilha com `origem = 'sistema'` e autor nulo —
+ * o que a régua fez não é imputado a quem apertou o botão. A execução em
+ * si é rastreável por este endpoint estar sob autenticação de admin.
+ *
+ * Idempotente: rodar de novo no mesmo dia não transiciona nada, porque as
+ * operações já saíram de 'ativa'.
+ */
+export const postProcessarAgingApiCobrancaAgingProcessarPostMutation = (
+  options?: Partial<Options<PostProcessarAgingApiCobrancaAgingProcessarPostData>>,
+): UseMutationOptions<
+  PostProcessarAgingApiCobrancaAgingProcessarPostResponse,
+  PostProcessarAgingApiCobrancaAgingProcessarPostError,
+  Options<PostProcessarAgingApiCobrancaAgingProcessarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostProcessarAgingApiCobrancaAgingProcessarPostResponse,
+    PostProcessarAgingApiCobrancaAgingProcessarPostError,
+    Options<PostProcessarAgingApiCobrancaAgingProcessarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postProcessarAgingApiCobrancaAgingProcessarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getMovimentosApiCobrancaMovimentosGetQueryKey = (
+  options?: Options<GetMovimentosApiCobrancaMovimentosGetData>,
+) => createQueryKey('getMovimentosApiCobrancaMovimentosGet', options)
+
+/**
+ * Get Movimentos
+ *
+ * Extrato registrado, mais recente primeiro.
+ *
+ * `apenas_disponiveis=true` traz só os ainda não usados em nenhuma baixa —
+ * é o que o diálogo de baixa consome, para não oferecer um movimento que
+ * o banco recusaria.
+ */
+export const getMovimentosApiCobrancaMovimentosGetOptions = (
+  options?: Options<GetMovimentosApiCobrancaMovimentosGetData>,
+) =>
+  queryOptions<
+    GetMovimentosApiCobrancaMovimentosGetResponse,
+    GetMovimentosApiCobrancaMovimentosGetError,
+    GetMovimentosApiCobrancaMovimentosGetResponse,
+    ReturnType<typeof getMovimentosApiCobrancaMovimentosGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getMovimentosApiCobrancaMovimentosGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getMovimentosApiCobrancaMovimentosGetQueryKey(options),
+  })
+
+/**
+ * Post Movimento
+ *
+ * Registra uma linha de extrato.
+ *
+ * `documento` é único: reimportar o mesmo extrato não duplica crédito nem
+ * permite baixar duas parcelas com o mesmo dinheiro.
+ */
+export const postMovimentoApiCobrancaMovimentosPostMutation = (
+  options?: Partial<Options<PostMovimentoApiCobrancaMovimentosPostData>>,
+): UseMutationOptions<
+  PostMovimentoApiCobrancaMovimentosPostResponse,
+  PostMovimentoApiCobrancaMovimentosPostError,
+  Options<PostMovimentoApiCobrancaMovimentosPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostMovimentoApiCobrancaMovimentosPostResponse,
+    PostMovimentoApiCobrancaMovimentosPostError,
+    Options<PostMovimentoApiCobrancaMovimentosPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postMovimentoApiCobrancaMovimentosPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Baixar Parcela
+ *
+ * Baixa a parcela contra um movimento bancário.
+ *
+ * Não existe endpoint para "só marcar como paga": sem lastro, a régua de
+ * inadimplência pararia de ver o atraso de uma dívida que continua em
+ * aberto. O banco recusa com OC011.
+ *
+ * A baixa é terminal — não há estorno definido (ver migration 009).
+ */
+export const postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostMutation = (
+  options?: Partial<Options<PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData>>,
+): UseMutationOptions<
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponse,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostError,
+  Options<PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponse,
+    PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostError,
+    Options<PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
 export const getAuditoriaApiAuditoriaGetQueryKey = (
   options?: Options<GetAuditoriaApiAuditoriaGetData>,
 ) => createQueryKey('getAuditoriaApiAuditoriaGet', options)
@@ -796,26 +1718,4 @@ export const metricsMetricsGetOptions = (options?: Options<MetricsMetricsGetData
       return data
     },
     queryKey: metricsMetricsGetQueryKey(options),
-  })
-
-export const rootGetQueryKey = (options?: Options<RootGetData>) =>
-  createQueryKey('rootGet', options)
-
-/**
- * Root
- *
- * Raiz da API (dev/CI — sem build do frontend disponível).
- */
-export const rootGetOptions = (options?: Options<RootGetData>) =>
-  queryOptions<RootGetResponse, DefaultError, RootGetResponse, ReturnType<typeof rootGetQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-      const { data } = await rootGet({
-        ...options,
-        ...queryKey[0],
-        signal,
-        throwOnError: true,
-      })
-      return data
-    },
-    queryKey: rootGetQueryKey(options),
   })

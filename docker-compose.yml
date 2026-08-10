@@ -25,6 +25,14 @@ services:
       ORGCRED_DATABASE_URL: postgresql+psycopg://orgcred:orgcred_dev_password@postgres:5432/orgcred_dev
       ORGCRED_ENVIRONMENT: development
       ORGCRED_SUPABASE_JWT_SECRET: dev-secret-key-change-in-prod
+      # Identificação da ESC usada como CREDORA no instrumento contratual.
+      # Valores FICTÍCIOS de desenvolvimento — em produção vêm do ambiente.
+      # O código não tem default: sem estas variáveis, emitir contrato é
+      # recusado, e é assim que deve ser (ver app/routers/contratos.py).
+      ORGCRED_ESC_RAZAO_SOCIAL: ESC DE DESENVOLVIMENTO LTDA
+      ORGCRED_ESC_CNPJ: "00000000000191"
+      ORGCRED_ESC_MUNICIPIO: Formoso
+      ORGCRED_ESC_UF: GO
     depends_on:
       postgres:
         condition: service_healthy

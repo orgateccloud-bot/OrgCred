@@ -1,20 +1,23 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CircleDot, MapPin } from 'lucide-react'
+import { ArrowLeft, Bot, CircleDot, MapPin, UserRound } from 'lucide-react'
 import {
   getOperacaoApiOperacoesOperacaoIdGetOptions,
   getOperacoesApiOperacoesGetQueryKey,
+  getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey,
   getCapitalSnapshotApiCapitalSnapshotGetOptions,
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPostMutation,
   postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostMutation,
   postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostMutation,
-  postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostMutation,
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa } from '@/lib/ledger'
-import { rotuloTipo } from '@/lib/rotulos'
+import { rotuloOrigemEvento, rotuloStatus, rotuloTipo } from '@/lib/rotulos'
+import { AgendaParcelas } from '@/components/agenda-parcelas'
 import { AtivarOperacaoDialog } from '@/components/ativar-operacao-dialog'
+import { ContratoERegistro } from '@/components/contrato-e-registro'
+import { NovarOperacaoDialog } from '@/components/novar-operacao-dialog'
 import { RegistrarOperacaoDialog } from '@/components/registrar-operacao-dialog'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { TransicaoOperacaoDialog } from '@/components/transicao-operacao-dialog'
@@ -36,9 +39,6 @@ function OperacaoDetailPage() {
 
   const liquidar = useMutation(postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostMutation())
   const cancelar = useMutation(postCancelarOperacaoApiOperacoesOperacaoIdCancelarPostMutation())
-  const renegociar = useMutation(
-    postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostMutation(),
-  )
   const inadimplente = useMutation(
     postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostMutation(),
   )
@@ -48,6 +48,13 @@ function OperacaoDetailPage() {
       queryKey: getOperacaoApiOperacoesOperacaoIdGetOptions({ path: { operacao_id: id } }).queryKey,
     })
     queryClient.invalidateQueries({ queryKey: getOperacoesApiOperacoesGetQueryKey() })
+    // A agenda nasce na ativação — sem invalidar aqui, a tabela só aparece
+    // depois de um reload manual.
+    queryClient.invalidateQueries({
+      queryKey: getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey({
+        path: { operacao_id: id },
+      }),
+    })
     queryClient.invalidateQueries({
       queryKey: getCapitalSnapshotApiCapitalSnapshotGetOptions().queryKey,
     })
@@ -81,7 +88,12 @@ function OperacaoDetailPage() {
         <h1 className="font-heading text-2xl font-bold tracking-tight">
           {data.tomador.razao_social}
         </h1>
-        <StatusOperacaoBadge status={data.status} />
+        {/* Nomeado porque a página tem vários badges de status (a trilha
+            mostra um por transição): sem isto, nem leitor de tela nem
+            teste conseguem dizer qual deles é o estado atual. */}
+        <span aria-label={`Status atual: ${rotuloStatus(data.status)}`}>
+          <StatusOperacaoBadge status={data.status} />
+        </span>
         <div className="ml-auto flex flex-wrap gap-2">
           {data.status === 'proposta' && (
             <>
@@ -130,14 +142,10 @@ function OperacaoDetailPage() {
                 mutation={liquidar}
                 invalidar={invalidar}
               />
-              <TransicaoOperacaoDialog
+              <NovarOperacaoDialog
                 operacaoId={data.id}
-                titulo="Renegociar operação"
-                descricao="A operação sai do estado ativo para renegociada. Uma nova operação deverá formalizar as novas condições."
-                rotuloBotao="Renegociar"
-                rotuloConfirmar="Confirmar renegociação"
-                mutation={renegociar}
-                invalidar={invalidar}
+                valorOriginal={String(data.valor_principal)}
+                onSucesso={invalidar}
               />
               <TransicaoOperacaoDialog
                 operacaoId={data.id}
@@ -169,14 +177,10 @@ function OperacaoDetailPage() {
                 mutation={liquidar}
                 invalidar={invalidar}
               />
-              <TransicaoOperacaoDialog
+              <NovarOperacaoDialog
                 operacaoId={data.id}
-                titulo="Renegociar operação"
-                descricao="A operação inadimplente sai para renegociada. Uma nova operação deverá formalizar as novas condições."
-                rotuloBotao="Renegociar"
-                rotuloConfirmar="Confirmar renegociação"
-                mutation={renegociar}
-                invalidar={invalidar}
+                valorOriginal={String(data.valor_principal)}
+                onSucesso={invalidar}
               />
             </>
           )}
@@ -202,6 +206,15 @@ function OperacaoDetailPage() {
             <LinhaDado rotulo="Parcelas">{data.numero_parcelas}</LinhaDado>
             <LinhaDado rotulo="Registro externo">
               {data.registro_entidade_ref ?? <span className="text-muted-foreground">—</span>}
+            </LinhaDado>
+            <LinhaDado rotulo="Atraso">
+              {data.dias_atraso === 0 ? (
+                <span className="text-muted-foreground">Em dia</span>
+              ) : (
+                <span className="font-mono tabular-nums text-destructive">
+                  {data.dias_atraso} dias
+                </span>
+              )}
             </LinhaDado>
             <LinhaDado rotulo="Criada em">
               {new Date(data.created_at).toLocaleString('pt-BR')}
@@ -246,6 +259,62 @@ function OperacaoDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <ContratoERegistro operacaoId={data.id} />
+
+      <AgendaParcelas operacaoId={data.id} onBaixa={invalidar} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Trilha de estado</CardTitle>
+          <CardDescription>
+            Toda transição de status, com quem a praticou. Separada da linha do tempo de capital
+            porque nem toda mudança de estado move dinheiro — marcar inadimplência, por exemplo, não
+            movimenta capital, mas precisa ter autor.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ol className="relative space-y-4 border-l border-border pl-6">
+            {data.eventos_estado.map((evento) => (
+              <li key={evento.id} className="relative">
+                {evento.origem === 'sistema' ? (
+                  <Bot
+                    className="absolute -left-[31px] size-4 bg-background text-warning"
+                    aria-hidden
+                  />
+                ) : (
+                  <UserRound
+                    className="absolute -left-[31px] size-4 bg-background text-primary"
+                    aria-hidden
+                  />
+                )}
+                <p className="text-sm">
+                  {evento.status_anterior ? (
+                    <>
+                      <StatusOperacaoBadge status={evento.status_anterior} /> →{' '}
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">Criada como </span>
+                  )}
+                  <StatusOperacaoBadge status={evento.status_novo} />
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {rotuloOrigemEvento(evento.origem)}
+                  {evento.origem === 'sistema' ? (
+                    // Ausência de autor aqui é garantia da CHECK constraint,
+                    // não dado faltando: a régua não age em nome de ninguém.
+                    <> · sem autor, por construção</>
+                  ) : (
+                    <> · {evento.usuario_nome ?? 'autor não identificado'}</>
+                  )}
+                  {evento.dias_atraso ? <> · {evento.dias_atraso} dias de atraso</> : null} ·{' '}
+                  {new Date(evento.created_at).toLocaleString('pt-BR')}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

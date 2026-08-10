@@ -2,7 +2,13 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
+  // Execução serial, 1 worker: o seed (e2e/fixtures/seed.ts) TRUNCA tabelas
+  // compartilhadas para tornar cada cenário repetível. Com paralelismo, dois
+  // specs se atropelam — um trunca o banco enquanto o outro conta linhas.
+  // Isso já se manifestou: um spec temporário inflou a contagem de botões
+  // "Ativar" do spec de ativação e o derrubou.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? 'github' : 'html',

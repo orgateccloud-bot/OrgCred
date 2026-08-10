@@ -1,0 +1,279 @@
+version: 2.1
+
+# Substitui .github/workflows/{ci,frontend-ci}.yml — GitHub Actions saiu do
+# projeto porque o billing da conta bloqueava até jobs de lint/format
+# rodarem (falhavam em 1-3s, "recent account payments have failed"). Todo
+# job abaixo replica um job da versão anterior, com o mesmo nome de
+# propósito, para o histórico continuar legível.
+#
+# Setup manual necessário (não pode ser feito por automação):
+#   1. Instalar o app do CircleCI no GitHub para orgateccloud-bot/OrgCred
+#      em https://app.circleci.com/ (Projects → Set Up Project).
+#   2. Nenhuma variável de ambiente de projeto é necessária — os testes
+#      usam segredos de desenvolvimento hardcoded, os mesmos que
+#      docker-compose.yml já usa localmente (nunca os de produção).
+
+orbs:
+  node: circleci/node@5.2.0
+
+commands:
+  install_uv:
+    steps:
+      - run:
+          name: Instalar uv
+          command: pip install --upgrade uv
+
+  wait_for_postgres:
+    steps:
+      - run:
+          name: Aguardar Postgres aceitar conexões
+          command: dockerize -wait tcp://localhost:5432 -timeout 1m
+
+jobs:
+  lint-and-type:
+    parameters:
+      python-version:
+        type: string
+    docker:
+      - image: cimg/python:<< parameters.python-version >>
+    steps:
+      - checkout
+      - install_uv
+      - run:
+          name: Instalar dependências
+          command: uv sync --all-extras
+      - run:
+          name: Ruff lint
+          command: uv run ruff check app tests
+      - run:
+          name: Ruff format (check)
+          command: uv run ruff format --check app tests
+      - run:
+          name: MyPy type-check
+          command: uv run mypy app
+      - run:
+          name: Bandit security scan
+          command: uv run bandit -r app -ll
+
+  unit-tests:
+    docker:
+      - image: cimg/python:3.11
+      - image: postgres:16
+        environment:
+          POSTGRES_PASSWORD: postgres
+    steps:
+      - checkout
+      - install_uv
+      - wait_for_postgres
+      - run:
+          name: Instalar dependências
+          command: uv sync --all-extras
+      # tests/conftest.py cria e migra seu próprio banco isolado por sessão
+      # pytest (via ORGCRED_TEST_DATABASE_URL, usada só para descobrir o
+      # servidor admin) — não há migration para aplicar manualmente aqui.
+      - run:
+          name: Rodar pytest
+          environment:
+            ORGCRED_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+            SUPABASE_JWT_SECRET: ci-test-secret-not-for-production
+          command: uv run pytest tests/ -v --cov=app --cov-report=xml
+      - store_artifacts:
+          path: coverage.xml
+
+  alembic:
+    docker:
+      - image: cimg/python:3.11
+      - image: postgres:16
+        environment:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: orgcred_alembic_ci
+    steps:
+      - checkout
+      - install_uv
+      - wait_for_postgres
+      - run:
+          name: Instalar dependências
+          command: uv sync --all-extras
+      - run:
+          name: alembic upgrade head
+          environment:
+            ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_alembic_ci
+          command: uv run alembic upgrade head
+      - run:
+          name: alembic current aponta para o head
+          environment:
+            ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_alembic_ci
+          # Compara dinamicamente com `alembic heads` em vez de hardcodar um
+          # número de revisão — um valor fixo fica desatualizado a cada
+          # nova migration e falha silenciosamente até alguém notar.
+          command: |
+            CURRENT=$(uv run alembic current | grep "(head)" | awk '{print $1}')
+            HEAD=$(uv run alembic heads | grep "(head)" | awk '{print $1}')
+            echo "current=$CURRENT head=$HEAD"
+            [ "$CURRENT" = "$HEAD" ] && [ -n "$CURRENT" ]
+      - run:
+          name: alembic downgrade base (rollback completo)
+          environment:
+            ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_alembic_ci
+          command: uv run alembic downgrade base
+
+  integration:
+    docker:
+      - image: cimg/python:3.11
+      - image: postgres:16
+        environment:
+          POSTGRES_PASSWORD: postgres
+    steps:
+      - checkout
+      - wait_for_postgres
+      - run:
+          name: Instalar dependências (psql client + psycopg2)
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+            pip install psycopg2-binary
+      - run:
+          name: Criar banco de teste
+          environment:
+            PGPASSWORD: postgres
+          command: psql -h localhost -U postgres -c "CREATE DATABASE orgcred_regression;"
+      - run:
+          name: Rodar testes de regressão (bash)
+          environment:
+            PGHOST: localhost
+            PGUSER: postgres
+            PGPASSWORD: postgres
+          command: |
+            chmod +x tests/test_capital_invariant.sh
+            ./tests/test_capital_invariant.sh orgcred_regression
+      - run:
+          name: Rodar testes de concorrência (Python)
+          environment:
+            PGHOST: localhost
+            PGUSER: postgres
+            PGPASSWORD: postgres
+          command: python tests/test_concorrencia.py orgcred_conc_test
+
+  frontend-lint-and-build:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - node/install:
+          node-version: "24"
+      - run:
+          name: npm ci
+          command: cd frontend && npm ci
+      - run:
+          name: Lint
+          command: cd frontend && npm run lint
+      - run:
+          name: Format (check)
+          command: cd frontend && npm run format:check
+      - run:
+          name: Build
+          command: cd frontend && npm run build
+
+  frontend-unit-tests:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - node/install:
+          node-version: "24"
+      - run:
+          name: npm ci
+          command: cd frontend && npm ci
+      - run:
+          name: Vitest
+          command: cd frontend && npm run test
+
+  frontend-storybook-build:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - node/install:
+          node-version: "24"
+      - run:
+          name: npm ci
+          command: cd frontend && npm ci
+      - run:
+          name: Build Storybook
+          command: cd frontend && npm run build-storybook
+
+  frontend-e2e:
+    docker:
+      - image: cimg/python:3.11
+      - image: postgres:16
+        environment:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: orgcred_e2e
+    steps:
+      - checkout
+      - node/install:
+          node-version: "24"
+      - install_uv
+      - wait_for_postgres
+      - run:
+          name: Instalar dependências do backend
+          command: uv sync --all-extras
+      # Sem ORGCRED_SUPABASE_JWT_SECRET explícita: usa o mesmo default
+      # ("dev-secret-key-change-in-prod", ver app/core/config.py) que
+      # frontend/e2e/fixtures/seed.ts usa para mintar o JWT de teste — os
+      # dois lados precisam concordar na mesma secret.
+      - run:
+          name: Aplicar migrations
+          environment:
+            ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_e2e
+          command: uv run alembic upgrade head
+      - run:
+          name: Subir backend em background
+          background: true
+          environment:
+            ORGCRED_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/orgcred_e2e
+            ORGCRED_ENVIRONMENT: development
+          command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+      - run:
+          name: Aguardar backend ficar pronto
+          command: |
+            for i in $(seq 1 30); do
+              curl -sf http://localhost:8000/health/ready && exit 0
+              sleep 1
+            done
+            echo "Backend não respondeu a tempo" && exit 1
+      - run:
+          name: Instalar dependências do frontend
+          command: cd frontend && npm ci
+      - run:
+          name: Instalar browsers do Playwright
+          command: cd frontend && npx playwright install --with-deps chromium
+      - run:
+          name: Rodar E2E
+          environment:
+            E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orgcred_e2e
+            CI: "true"
+          command: cd frontend && npm run test:e2e
+      # store_artifacts não tem um "when: on_fail" nativo (isso existe só em
+      # `run`); sem o parâmetro, o passo simplesmente não sobe nada quando o
+      # diretório está vazio (sucesso) — mesmo efeito prático do original.
+      - store_artifacts:
+          path: frontend/playwright-report
+
+workflows:
+  backend:
+    jobs:
+      - lint-and-type:
+          matrix:
+            parameters:
+              python-version: ["3.11", "3.12"]
+      - unit-tests
+      - alembic
+      - integration
+
+  frontend:
+    jobs:
+      - frontend-lint-and-build
+      - frontend-unit-tests
+      - frontend-storybook-build
+      - frontend-e2e

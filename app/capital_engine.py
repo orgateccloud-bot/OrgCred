@@ -14,58 +14,37 @@ silenciosamente se a mensagem do trigger mudar. Códigos:
   OC003 transição de status inválida
   OC004 ativação sem registro na entidade registradora
   OC005 redução de capital abaixo do comprometido
+  OC008 renegociação/substituta fora da novação atômica
+
+Capital COMPROMETIDO = operações em 'ativa' OU 'inadimplente'. Inadimplente
+entra porque o dinheiro não voltou: o título saiu de 'ativa', mas continua
+ocupando o teto do Art. 5º até ser efetivamente liquidado. Antes da
+migration 006 o comprometido contava só 'ativa', e marcar inadimplência
+liberava o capital de um empréstimo não pago — permitindo emprestá-lo de
+novo (furo comprovado contra Postgres real, ver 006_novacao_e_inadimplencia.sql).
 """
 
+from datetime import date
 from decimal import Decimal
 from typing import NamedTuple, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import (
-    MunicipioNaoAutorizado,
-    OperacaoNaoEncontrada,
-    ReducaoCapitalBloqueada,
-    RegistroEntidadeAusente,
-    TetoCapitalExcedido,
-    TransicaoInvalida,
-)
+from app.core.db_errors import extrair_sqlstate, traduzir_erro_banco
+from app.core.exceptions import BaixaInvalida, OperacaoNaoEncontrada
 from app.core.metrics import registrar_ativacao
 from app.models import EscCapitalSocial, OperacaoCredito
 
 
-_PGCODE_MAP = {
-    "OC001": TetoCapitalExcedido,
-    "OC002": MunicipioNaoAutorizado,
-    "OC003": TransicaoInvalida,
-    "OC004": RegistroEntidadeAusente,
-    "OC005": ReducaoCapitalBloqueada,
-}
-
-
-def _extrair_sqlstate(exc: DBAPIError) -> Optional[str]:
-    """
-    Extrai o código SQLSTATE da exceção original do driver.
-
-    psycopg3 (psycopg, o driver em uso — ver pyproject.toml) expõe o código
-    via `.sqlstate`; psycopg2 expunha via `.pgcode`. Checa ambos para não
-    quebrar silenciosamente se o driver mudar de novo — um bug real desta
-    natureza (só `.pgcode`) já vazou para produção quando o projeto migrou
-    de psycopg2 para psycopg3 sem atualizar este ponto.
-    """
-    orig = getattr(exc, "orig", None)
-    return getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
-
-
-def _traduz_erro_banco(exc: DBAPIError) -> Exception:
-    sqlstate = _extrair_sqlstate(exc)
-    exc_cls = _PGCODE_MAP.get(sqlstate) if sqlstate else None
-    msg = str(getattr(exc, "orig", exc)).splitlines()[0]
-    if exc_cls:
-        return exc_cls(msg)
-    return exc
+# Tradução SQLSTATE -> exceção vive em app/core/db_errors.py desde que
+# cobrança e fiscal passaram a precisar dela. Os aliases privados ficam para
+# não reescrever as ~8 chamadas internas, e porque o docstring de conftest.py
+# referencia este nome.
+_extrair_sqlstate = extrair_sqlstate
+_traduz_erro_banco = traduzir_erro_banco
 
 
 def consultar_capital_disponivel(db: Session) -> Decimal:
@@ -81,7 +60,7 @@ def consultar_capital_disponivel(db: Session) -> Decimal:
         text("""
         select (select capital_atual from v_capital_atual)
              - coalesce((select sum(valor_principal) from operacao_credito
-                         where status = 'ativa'), 0) as disponivel
+                         where status in ('ativa', 'inadimplente')), 0) as disponivel
     """)
     ).first()
     if row is None:
@@ -108,7 +87,7 @@ def consultar_capital_snapshot(db: Session) -> CapitalSnapshot:
         select
             (select capital_atual from v_capital_atual) as total,
             coalesce((select sum(valor_principal) from operacao_credito
-                      where status = 'ativa'), 0) as comprometido
+                      where status in ('ativa', 'inadimplente')), 0) as comprometido
     """)
     ).first()
     if row is None:
@@ -265,3 +244,149 @@ def registrar_evento_capital(db: Session, *, valor: Decimal, tipo_evento: str) -
 
     db.refresh(evento)
     return evento
+
+
+def registrar_movimento_bancario(
+    db: Session,
+    *,
+    data_movimento: date,
+    valor: Decimal,
+    documento: str,
+    descricao: Optional[str] = None,
+    origem: str = "manual",
+    usuario_id: Optional[str] = None,
+) -> UUID:
+    """
+    Registra uma linha de extrato. Devolve o id do movimento.
+
+    `documento` é UNIQUE no banco: reimportar o mesmo extrato — coisa
+    rotineira na operação real — não duplica crédito. A violação de unique
+    sobe como IntegrityError e é traduzida aqui para uma mensagem que diz o
+    que de fato aconteceu, em vez de vazar o nome da constraint.
+    """
+    try:
+        movimento_id = db.execute(
+            text("""
+            insert into movimento_bancario
+                (data_movimento, valor, documento, descricao, origem, usuario_id)
+            values (:data, :valor, :documento, :descricao, :origem, :usuario)
+            returning id
+            """),
+            {
+                "data": data_movimento,
+                "valor": valor,
+                "documento": documento,
+                "descricao": descricao,
+                "origem": origem,
+                "usuario": usuario_id,
+            },
+        ).scalar_one()
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise BaixaInvalida(
+            f"Já existe um movimento bancário com o documento '{documento}'."
+        ) from exc
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+    return movimento_id  # type: ignore[no-any-return]
+
+
+def baixar_parcela(db: Session, parcela_id: UUID, movimento_id: UUID) -> None:
+    """
+    Dá uma parcela por paga, amarrada a um movimento bancário.
+
+    Toda a validação vive em `fn_baixar_parcela` (migration 009) — parcela
+    em aberto, movimento existente, movimento ainda não usado, valor
+    suficiente. Replicar essas checagens aqui criaria uma segunda fonte de
+    verdade que dessincroniza, e a aplicação não é a única porta do banco.
+    """
+    try:
+        db.execute(
+            text("select fn_baixar_parcela(:parcela, :movimento)"),
+            {"parcela": str(parcela_id), "movimento": str(movimento_id)},
+        )
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+
+
+def processar_aging(db: Session, limite_dias: int = 90) -> int:
+    """
+    Roda a régua automática: operações 'ativa' com atraso >= `limite_dias`
+    passam a 'inadimplente'. Devolve quantas foram transicionadas.
+
+    Toda a lógica vive em `fn_processar_aging` (migration 008). Fazer o
+    laço aqui exigiria ler as operações, decidir em Python e escrever de
+    volta — três viagens em que o atraso poderia mudar entre a leitura e a
+    escrita, e uma segunda definição de "estar em atraso" fora do banco.
+
+    Não existe caminho automático de volta: a regularização é decisão de
+    uma pessoa e fica na trilha com o nome dela.
+    """
+    try:
+        total = db.execute(
+            text("select fn_processar_aging(:limite)"), {"limite": limite_dias}
+        ).scalar_one()
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+    return int(total)
+
+
+def novar_operacao(
+    db: Session,
+    operacao_id: UUID,
+    *,
+    valor_principal: Decimal,
+    taxa_juros_mensal: Decimal,
+    sistema_amortizacao: str,
+    numero_parcelas: int,
+    registro_entidade_ref: Optional[str] = None,
+    usuario_id: Optional[str] = None,
+) -> OperacaoCredito:
+    """
+    Renegocia por novação ATÔMICA: baixa a original e cria a substituta na
+    mesma transação, sob o mesmo advisory lock do teto.
+
+    Toda a lógica vive em `fn_novar_operacao` (migration 006), não aqui. Se
+    a aplicação fizesse as duas etapas em chamadas separadas, existiria uma
+    janela em que a original e a substituta contam capital ao mesmo tempo —
+    dupla contagem que fura o Art. 5º. O banco decide, como no resto do
+    motor.
+
+    A substituta nasce em 'registrada': ainda não compromete capital, e a
+    ativação dela segue passando pelos gates normais (teto, município,
+    registro na entidade registradora).
+    """
+    db.execute(
+        text("select set_config('app.user_id', :usuario_id, true)"),
+        {"usuario_id": usuario_id},
+    )
+
+    try:
+        nova_id = db.execute(
+            text("select fn_novar_operacao(:op, :valor, :taxa, :sistema, :parcelas, :registro)"),
+            {
+                "op": str(operacao_id),
+                "valor": valor_principal,
+                "taxa": taxa_juros_mensal,
+                "sistema": sistema_amortizacao,
+                "parcelas": numero_parcelas,
+                "registro": registro_entidade_ref,
+            },
+        ).scalar_one()
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+
+    nova: Optional[OperacaoCredito] = (
+        db.query(OperacaoCredito).filter(OperacaoCredito.id == nova_id).one_or_none()
+    )
+    if nova is None:  # pragma: no cover - a função acabou de criar a linha
+        raise OperacaoNaoEncontrada(f"Substituta {nova_id} não encontrada após a novação.")
+    return nova

@@ -4,6 +4,7 @@ para status HTTP (404/409/422) e enforcement de autenticação/autorização.
 """
 
 import uuid
+from decimal import Decimal
 from typing import Generator
 
 import pytest
@@ -15,6 +16,7 @@ from app.core.security import get_current_user, get_operador_user
 from app.db import get_db
 from app.main import app
 from app.models import Usuario
+from tests.conftest import confirmar_registro
 
 
 @pytest.fixture()
@@ -102,6 +104,7 @@ class TestAtivarOperacaoComPermissao:
         )
         db_session.commit()
         op_id = result.scalar_one()
+        confirmar_registro(db_session, op_id)
 
         response = authed_client.post(f"/api/operacoes/{op_id}/ativar")
 
@@ -131,6 +134,11 @@ class TestAtivarOperacaoComPermissao:
             ),
             {"tomador_id": str(tomador_autorizado)},
         )
+        db_session.commit()
+        primeira_id = db_session.execute(
+            text("select id from operacao_credito where registro_entidade_ref = 'REG-A'")
+        ).scalar_one()
+        confirmar_registro(db_session, primeira_id)
         db_session.execute(
             text(
                 "update operacao_credito set status = 'ativa' where registro_entidade_ref = 'REG-A'"
@@ -151,6 +159,9 @@ class TestAtivarOperacaoComPermissao:
         )
         db_session.commit()
         op_id = result.scalar_one()
+        # Registro confirmado também na segunda: sem ele o bloqueio viria de
+        # OC004 e o teste deixaria de provar o que promete (OC001).
+        confirmar_registro(db_session, op_id)
 
         response = authed_client.post(f"/api/operacoes/{op_id}/ativar")
 
@@ -203,3 +214,81 @@ class TestListarOperacoes:
         assert body[0]["tipo"] == "financiamento"
         assert body[0]["tomador_razao_social"] == "Padaria Teste ME"
         assert body[1]["tipo"] == "emprestimo"
+
+
+class TestGetParcelas:
+    """GET /operacoes/{id}/parcelas — a agenda emitida na ativação."""
+
+    def test_exige_autenticacao(self, client: TestClient) -> None:
+        response = client.get(f"/api/operacoes/{uuid.uuid4()}/parcelas")
+        assert response.status_code == 401
+
+    def test_operacao_inexistente_404(self, authed_client: TestClient) -> None:
+        response = authed_client.get(f"/api/operacoes/{uuid.uuid4()}/parcelas")
+        assert response.status_code == 404
+
+    def test_operacao_sem_agenda_retorna_lista_vazia(
+        self,
+        authed_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+    ) -> None:
+        """Não ativada ainda não tem agenda — isso é estado legítimo do
+        ciclo de vida, não erro, então 200 com lista vazia e não 404."""
+        op_id = db_session.execute(
+            text(
+                """
+                insert into operacao_credito
+                    (tomador_id, tipo, valor_principal, taxa_juros_mensal,
+                     sistema_amortizacao, numero_parcelas, status, registro_entidade_ref)
+                values (:t, 'emprestimo', 12000, 2.5, 'PRICE', 12, 'registrada', 'REG-X')
+                returning id
+                """
+            ),
+            {"t": str(tomador_autorizado)},
+        ).scalar_one()
+        db_session.commit()
+
+        response = authed_client.get(f"/api/operacoes/{op_id}/parcelas")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["parcelas"] == []
+        assert body["total_geral"] == "0"
+
+    def test_agenda_apos_ativacao(
+        self,
+        authed_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        op_id = db_session.execute(
+            text(
+                """
+                insert into operacao_credito
+                    (tomador_id, tipo, valor_principal, taxa_juros_mensal,
+                     sistema_amortizacao, numero_parcelas, status, registro_entidade_ref)
+                values (:t, 'emprestimo', 12000, 0, 'PRICE', 12, 'registrada', 'REG-X')
+                returning id
+                """
+            ),
+            {"t": str(tomador_autorizado)},
+        ).scalar_one()
+        db_session.commit()
+        confirmar_registro(db_session, op_id)
+
+        assert authed_client.post(f"/api/operacoes/{op_id}/ativar").status_code == 200
+
+        response = authed_client.get(f"/api/operacoes/{op_id}/parcelas")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["parcelas"]) == 12
+        assert body["sistema_amortizacao"] == "PRICE"
+        # Taxa zero: total geral = principal, sem juros.
+        assert Decimal(body["total_amortizacao"]) == Decimal("12000.00")
+        assert Decimal(body["total_juros"]) == Decimal("0")
+        assert Decimal(body["total_geral"]) == Decimal("12000.00")
+        assert body["parcelas"][0]["numero"] == 1
+        assert body["parcelas"][0]["status"] == "aberta"

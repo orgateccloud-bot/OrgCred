@@ -3,6 +3,12 @@
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client'
 import { client } from './client.gen'
 import type {
+  GetAgingApiCobrancaAgingGetData,
+  GetAgingApiCobrancaAgingGetResponses,
+  GetApuracoesApiFiscalApuracoesGetData,
+  GetApuracoesApiFiscalApuracoesGetResponses,
+  GetAtipicidadesApiComplianceAtipicidadesGetData,
+  GetAtipicidadesApiComplianceAtipicidadesGetResponses,
   GetAuditoriaApiAuditoriaGetData,
   GetAuditoriaApiAuditoriaGetResponses,
   GetCapitalDisponivelApiCapitalDisponivelGetData,
@@ -11,13 +17,36 @@ import type {
   GetCapitalEventosApiCapitalEventosGetResponses,
   GetCapitalSnapshotApiCapitalSnapshotGetData,
   GetCapitalSnapshotApiCapitalSnapshotGetResponses,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetData,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses,
   GetMeApiMeGetData,
   GetMeApiMeGetResponses,
+  GetMovimentosApiCobrancaMovimentosGetData,
+  GetMovimentosApiCobrancaMovimentosGetErrors,
+  GetMovimentosApiCobrancaMovimentosGetResponses,
   GetOperacaoApiOperacoesOperacaoIdGetData,
   GetOperacaoApiOperacoesOperacaoIdGetErrors,
   GetOperacaoApiOperacoesOperacaoIdGetResponses,
   GetOperacoesApiOperacoesGetData,
   GetOperacoesApiOperacoesGetResponses,
+  GetParametrosApiFiscalParametrosGetData,
+  GetParametrosApiFiscalParametrosGetResponses,
+  GetParametroVigenteApiFiscalParametrosVigenteGetData,
+  GetParametroVigenteApiFiscalParametrosVigenteGetResponses,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetData,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetErrors,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses,
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetData,
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses,
   GetTomadorApiTomadoresTomadorIdGetData,
   GetTomadorApiTomadoresTomadorIdGetErrors,
   GetTomadorApiTomadoresTomadorIdGetResponses,
@@ -30,37 +59,74 @@ import type {
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchData,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchErrors,
   PatchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchResponses,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostErrors,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponses,
+  PostApurarApiFiscalApuracoesPostData,
+  PostApurarApiFiscalApuracoesPostErrors,
+  PostApurarApiFiscalApuracoesPostResponses,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostData,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostErrors,
   PostAtivarOperacaoApiOperacoesOperacaoIdAtivarPostResponses,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostErrors,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponses,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostData,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostErrors,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostResponses,
   PostCapitalEventoApiCapitalEventosPostData,
   PostCapitalEventoApiCapitalEventosPostErrors,
   PostCapitalEventoApiCapitalEventosPostResponses,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses,
   PostCriarOperacaoApiOperacoesPostData,
   PostCriarOperacaoApiOperacoesPostErrors,
   PostCriarOperacaoApiOperacoesPostResponses,
   PostCriarTomadorApiTomadoresPostData,
   PostCriarTomadorApiTomadoresPostErrors,
   PostCriarTomadorApiTomadoresPostResponses,
+  PostDetectarApiComplianceAtipicidadesDetectarPostData,
+  PostDetectarApiComplianceAtipicidadesDetectarPostErrors,
+  PostDetectarApiComplianceAtipicidadesDetectarPostResponses,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostErrors,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostErrors,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponses,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostData,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostErrors,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponses,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostData,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostErrors,
   PostMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostResponses,
+  PostMovimentoApiCobrancaMovimentosPostData,
+  PostMovimentoApiCobrancaMovimentosPostErrors,
+  PostMovimentoApiCobrancaMovimentosPostResponses,
+  PostParametroApiFiscalParametrosPostData,
+  PostParametroApiFiscalParametrosPostErrors,
+  PostParametroApiFiscalParametrosPostResponses,
+  PostProcessarAgingApiCobrancaAgingProcessarPostData,
+  PostProcessarAgingApiCobrancaAgingProcessarPostErrors,
+  PostProcessarAgingApiCobrancaAgingProcessarPostResponses,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostData,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostErrors,
   PostRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostResponses,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostErrors,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponses,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostData,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostErrors,
   PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostResponses,
+  PostVerificarContratoApiContratosContratoIdVerificarPostData,
+  PostVerificarContratoApiContratosContratoIdVerificarPostErrors,
+  PostVerificarContratoApiContratosContratoIdVerificarPostResponses,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostErrors,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses,
   ReadinessCheckHealthReadyGetData,
   ReadinessCheckHealthReadyGetResponses,
-  RootGetData,
-  RootGetResponses,
 } from './types.gen'
 
 export type Options<
@@ -278,6 +344,32 @@ export const getOperacaoApiOperacoesOperacaoIdGet = <ThrowOnError extends boolea
   })
 
 /**
+ * Get Parcelas
+ *
+ * Agenda de amortização emitida na ativação.
+ *
+ * Operação que ainda não foi ativada não tem agenda — devolve lista vazia
+ * em vez de 404, porque a operação existe e a ausência da agenda é um
+ * estado legítimo do ciclo de vida, não um erro.
+ */
+export const getParcelasApiOperacoesOperacaoIdParcelasGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetParcelasApiOperacoesOperacaoIdParcelasGetData, ThrowOnError>,
+): RequestResult<
+  GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
+  GetParcelasApiOperacoesOperacaoIdParcelasGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
+    GetParcelasApiOperacoesOperacaoIdParcelasGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/operacoes/{operacao_id}/parcelas',
+    ...options,
+  })
+
+/**
  * Post Registrar Operacao
  *
  * proposta -> registrada, gravando a referência do registro na entidade
@@ -358,7 +450,16 @@ export const postCancelarOperacaoApiOperacoesOperacaoIdCancelarPost = <
 /**
  * Post Renegociar Operacao
  *
- * ativa/inadimplente -> renegociada.
+ * Renegocia por novação atômica: baixa a original e cria a substituta na
+ * mesma transação, sob o mesmo advisory lock do teto.
+ *
+ * Não existe endpoint para "só marcar como renegociada": fazer a baixa sem
+ * amarrar a substituta deixa a original fora do comprometido e nada
+ * impediria criar a substituta depois, contando o capital duas vezes em
+ * janelas diferentes (o banco recusa com OC008).
+ *
+ * A substituta nasce em 'registrada' — ainda não compromete capital, e
+ * ativá-la passa pelos gates normais.
  */
 export const postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost = <
   ThrowOnError extends boolean = false,
@@ -377,6 +478,10 @@ export const postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost = <
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/operacoes/{operacao_id}/renegociar',
     ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
   })
 
 /**
@@ -495,6 +600,686 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch = <
   })
 
 /**
+ * Get Contrato
+ *
+ * Contrato vigente (última versão) da operação, com o corpo.
+ *
+ * Devolve `null` quando ainda não houve emissão — a tela precisa
+ * distinguir 'não emitido' de 'erro ao carregar'.
+ */
+export const getContratoApiContratosOperacoesOperacaoIdContratoGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetContratoApiContratosOperacoesOperacaoIdContratoGetData, ThrowOnError>,
+): RequestResult<
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses,
+  GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses,
+    GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/operacoes/{operacao_id}/contrato',
+    ...options,
+  })
+
+/**
+ * Post Emitir Contrato
+ *
+ * Emite o instrumento a partir dos dados da operação e da agenda.
+ *
+ * Reemitir gera uma NOVA VERSÃO: o contrato anterior permanece, porque o
+ * tomador tem uma via dele e editar o original destruiria a prova do que
+ * foi acordado.
+ *
+ * Exige a ESC identificada em configuração. Sem isso, o contrato sairia
+ * com credora em branco — um documento com efeito jurídico e sem uma das
+ * partes.
+ */
+export const postEmitirContratoApiContratosOperacoesOperacaoIdContratoPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData, ThrowOnError>,
+): RequestResult<
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponses,
+  PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponses,
+    PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/operacoes/{operacao_id}/contrato',
+    ...options,
+  })
+
+/**
+ * Post Verificar Contrato
+ *
+ * Confere se um arquivo é bit a bit o instrumento emitido.
+ *
+ * É o que dá utilidade ao hash: sem esta conferência, ele seria um número
+ * guardado sem uso — e a via que o tomador apresenta não teria como ser
+ * confrontada com a do sistema.
+ */
+export const postVerificarContratoApiContratosContratoIdVerificarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostVerificarContratoApiContratosContratoIdVerificarPostData, ThrowOnError>,
+): RequestResult<
+  PostVerificarContratoApiContratosContratoIdVerificarPostResponses,
+  PostVerificarContratoApiContratosContratoIdVerificarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostVerificarContratoApiContratosContratoIdVerificarPostResponses,
+    PostVerificarContratoApiContratosContratoIdVerificarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/{contrato_id}/verificar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Registros
+ */
+export const getRegistrosApiContratosOperacoesOperacaoIdRegistrosGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData, ThrowOnError>,
+): RequestResult<
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses,
+  GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses,
+    GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/operacoes/{operacao_id}/registros',
+    ...options,
+  })
+
+/**
+ * Post Abrir Registro
+ *
+ * Abre um registro em 'pendente'.
+ *
+ * Hoje o envio à entidade é manual — não há integração porque não há
+ * entidade escolhida. Quando houver, este endpoint chama o adaptador e o
+ * resto do fluxo permanece igual.
+ */
+export const postAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostData, ThrowOnError>,
+): RequestResult<
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponses,
+  PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostResponses,
+    PostAbrirRegistroApiContratosOperacoesOperacaoIdRegistrosPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/operacoes/{operacao_id}/registros',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Post Confirmar Registro
+ *
+ * Confirma o registro com o protocolo devolvido pela entidade.
+ *
+ * Protocolo é obrigatório por constraint no banco: registro confirmado sem
+ * número é indistinguível de alguém marcando a caixinha — que é
+ * exatamente o problema do `registro_entidade_ref` de texto livre.
+ *
+ * Confirmado é estado TERMINAL (OC018): reverter apagaria a prova de que a
+ * operação existe legalmente.
+ */
+export const postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData,
+    ThrowOnError
+  >,
+): RequestResult<
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses,
+  PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses,
+    PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/registros/{registro_id}/confirmar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Post Rejeitar Registro
+ *
+ * Rejeição exige motivo: sem ele, a próxima tentativa repete o erro.
+ */
+export const postRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostData,
+    ThrowOnError
+  >,
+): RequestResult<
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponses,
+  PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostResponses,
+    PostRejeitarRegistroApiContratosRegistrosRegistroIdRejeitarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/registros/{registro_id}/rejeitar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Pendencias Registro
+ *
+ * Operações registradas, ativas ou inadimplentes SEM registro confirmado.
+ *
+ * É a medida da lacuna: hoje `registro_entidade_ref` é texto livre e o
+ * gate aceita qualquer string. Esta lista existe para embasar a decisão de
+ * ligar a exigência de registro confirmado na ativação — com o número na
+ * mão, e não no escuro.
+ */
+export const getPendenciasRegistroApiContratosRegistrosPendenciasGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<GetPendenciasRegistroApiContratosRegistrosPendenciasGetData, ThrowOnError>,
+): RequestResult<
+  GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses,
+  unknown,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/contratos/registros/pendencias',
+    ...options,
+  })
+
+/**
+ * Get Parametros
+ *
+ * Histórico de parâmetros, vigência mais recente primeiro.
+ */
+export const getParametrosApiFiscalParametrosGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetParametrosApiFiscalParametrosGetData, ThrowOnError>,
+): RequestResult<GetParametrosApiFiscalParametrosGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetParametrosApiFiscalParametrosGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/parametros',
+    ...options,
+  })
+
+/**
+ * Post Parametro
+ *
+ * Registra um conjunto de parâmetros com data de vigência.
+ *
+ * Vigência, e não edição de um registro único: alíquota muda por lei, e
+ * uma apuração de 2026 tem que continuar reproduzível com os números de
+ * 2026.
+ */
+export const postParametroApiFiscalParametrosPost = <ThrowOnError extends boolean = false>(
+  options: Options<PostParametroApiFiscalParametrosPostData, ThrowOnError>,
+): RequestResult<
+  PostParametroApiFiscalParametrosPostResponses,
+  PostParametroApiFiscalParametrosPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostParametroApiFiscalParametrosPostResponses,
+    PostParametroApiFiscalParametrosPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/parametros',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Parametro Vigente
+ *
+ * Devolve `null` quando nada foi configurado — a tela precisa
+ * distinguir 'não configurado' de 'erro ao carregar'.
+ */
+export const getParametroVigenteApiFiscalParametrosVigenteGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<GetParametroVigenteApiFiscalParametrosVigenteGetData, ThrowOnError>,
+): RequestResult<
+  GetParametroVigenteApiFiscalParametrosVigenteGetResponses,
+  unknown,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    GetParametroVigenteApiFiscalParametrosVigenteGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/parametros/vigente',
+    ...options,
+  })
+
+/**
+ * Get Apuracoes
+ *
+ * Última versão de cada trimestre — retificações substituem na tela,
+ * sem apagar o histórico no banco.
+ */
+export const getApuracoesApiFiscalApuracoesGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetApuracoesApiFiscalApuracoesGetData, ThrowOnError>,
+): RequestResult<GetApuracoesApiFiscalApuracoesGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetApuracoesApiFiscalApuracoesGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/apuracoes',
+    ...options,
+  })
+
+/**
+ * Post Apurar
+ *
+ * Apura o trimestre com os parâmetros vigentes.
+ *
+ * A base é a RECEITA DE JUROS, tirada da agenda de parcelas — nunca a
+ * amortização, que é devolução de principal e não resultado.
+ *
+ * Reapurar o mesmo trimestre grava uma nova VERSÃO em vez de sobrescrever:
+ * retificação existe no mundo real, e editar a original apagaria o que já
+ * foi declarado.
+ */
+export const postApurarApiFiscalApuracoesPost = <ThrowOnError extends boolean = false>(
+  options: Options<PostApurarApiFiscalApuracoesPostData, ThrowOnError>,
+): RequestResult<
+  PostApurarApiFiscalApuracoesPostResponses,
+  PostApurarApiFiscalApuracoesPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostApurarApiFiscalApuracoesPostResponses,
+    PostApurarApiFiscalApuracoesPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/apuracoes',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Documentos
+ */
+export const getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData, ThrowOnError>,
+): RequestResult<
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses,
+  GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses,
+    GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/tomadores/{tomador_id}/documentos',
+    ...options,
+  })
+
+/**
+ * Post Documento
+ *
+ * Arquiva a evidência de identificação.
+ *
+ * `retencao_ate` é gravado agora, e não calculado na leitura: se o prazo
+ * legal mudar, os documentos já arquivados mantêm a regra vigente à época
+ * — que é o que se defende numa fiscalização.
+ */
+export const postDocumentoApiComplianceTomadoresTomadorIdDocumentosPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData, ThrowOnError>,
+): RequestResult<
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses,
+  PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses,
+    PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/tomadores/{tomador_id}/documentos',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Post Verificar Documento
+ *
+ * Confere se um arquivo é bit a bit o que foi arquivado.
+ *
+ * É o que dá sentido a guardar só o hash: sem esta conferência, o hash
+ * seria um número sem uso.
+ */
+export const postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData,
+    ThrowOnError
+  >,
+): RequestResult<
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses,
+  PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses,
+    PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/documentos/{documento_id}/verificar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Pendencias Identificacao
+ *
+ * Tomadores sem nenhuma evidência arquivada, com o capital exposto.
+ *
+ * Ordenado por exposição: é essa a lista que embasa a decisão de negócio
+ * sobre exigir identificação antes da ativação.
+ */
+export const getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<
+    GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
+    ThrowOnError
+  >,
+): RequestResult<
+  GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses,
+  unknown,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/identificacao/pendencias',
+    ...options,
+  })
+
+/**
+ * Get Atipicidades
+ *
+ * Ocorrências detectadas, mais graves e mais recentes primeiro.
+ */
+export const getAtipicidadesApiComplianceAtipicidadesGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAtipicidadesApiComplianceAtipicidadesGetData, ThrowOnError>,
+): RequestResult<GetAtipicidadesApiComplianceAtipicidadesGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetAtipicidadesApiComplianceAtipicidadesGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/atipicidades',
+    ...options,
+  })
+
+/**
+ * Post Detectar
+ *
+ * Roda a varredura de atipicidade sobre os dados existentes.
+ *
+ * Idempotente: a constraint `ocorrencia_unica` faz uma segunda passada no
+ * mesmo dia não duplicar nada. Sem isso o painel viraria ruído e o
+ * analista pararia de olhar — que é o pior resultado possível para um
+ * controle de PLD.
+ */
+export const postDetectarApiComplianceAtipicidadesDetectarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostDetectarApiComplianceAtipicidadesDetectarPostData, ThrowOnError>,
+): RequestResult<
+  PostDetectarApiComplianceAtipicidadesDetectarPostResponses,
+  PostDetectarApiComplianceAtipicidadesDetectarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostDetectarApiComplianceAtipicidadesDetectarPostResponses,
+    PostDetectarApiComplianceAtipicidadesDetectarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/atipicidades/detectar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Aging
+ *
+ * Aging de todas as operações que comprometem capital, mais atrasadas
+ * primeiro.
+ */
+export const getAgingApiCobrancaAgingGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAgingApiCobrancaAgingGetData, ThrowOnError>,
+): RequestResult<GetAgingApiCobrancaAgingGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<GetAgingApiCobrancaAgingGetResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/aging',
+    ...options,
+  })
+
+/**
+ * Post Processar Aging
+ *
+ * Executa a régua: 'ativa' com atraso >= limite passa a 'inadimplente'.
+ *
+ * Exige admin, não operador: declarar inadimplência em lote tem
+ * consequência jurídica e reputacional para os tomadores, e o efeito é
+ * irreversível sem que alguém assuma nominalmente a regularização.
+ *
+ * As transições ficam na trilha com `origem = 'sistema'` e autor nulo —
+ * o que a régua fez não é imputado a quem apertou o botão. A execução em
+ * si é rastreável por este endpoint estar sob autenticação de admin.
+ *
+ * Idempotente: rodar de novo no mesmo dia não transiciona nada, porque as
+ * operações já saíram de 'ativa'.
+ */
+export const postProcessarAgingApiCobrancaAgingProcessarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostProcessarAgingApiCobrancaAgingProcessarPostData, ThrowOnError>,
+): RequestResult<
+  PostProcessarAgingApiCobrancaAgingProcessarPostResponses,
+  PostProcessarAgingApiCobrancaAgingProcessarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostProcessarAgingApiCobrancaAgingProcessarPostResponses,
+    PostProcessarAgingApiCobrancaAgingProcessarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/aging/processar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Movimentos
+ *
+ * Extrato registrado, mais recente primeiro.
+ *
+ * `apenas_disponiveis=true` traz só os ainda não usados em nenhuma baixa —
+ * é o que o diálogo de baixa consome, para não oferecer um movimento que
+ * o banco recusaria.
+ */
+export const getMovimentosApiCobrancaMovimentosGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetMovimentosApiCobrancaMovimentosGetData, ThrowOnError>,
+): RequestResult<
+  GetMovimentosApiCobrancaMovimentosGetResponses,
+  GetMovimentosApiCobrancaMovimentosGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    GetMovimentosApiCobrancaMovimentosGetResponses,
+    GetMovimentosApiCobrancaMovimentosGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/movimentos',
+    ...options,
+  })
+
+/**
+ * Post Movimento
+ *
+ * Registra uma linha de extrato.
+ *
+ * `documento` é único: reimportar o mesmo extrato não duplica crédito nem
+ * permite baixar duas parcelas com o mesmo dinheiro.
+ */
+export const postMovimentoApiCobrancaMovimentosPost = <ThrowOnError extends boolean = false>(
+  options: Options<PostMovimentoApiCobrancaMovimentosPostData, ThrowOnError>,
+): RequestResult<
+  PostMovimentoApiCobrancaMovimentosPostResponses,
+  PostMovimentoApiCobrancaMovimentosPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostMovimentoApiCobrancaMovimentosPostResponses,
+    PostMovimentoApiCobrancaMovimentosPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/movimentos',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Post Baixar Parcela
+ *
+ * Baixa a parcela contra um movimento bancário.
+ *
+ * Não existe endpoint para "só marcar como paga": sem lastro, a régua de
+ * inadimplência pararia de ver o atraso de uma dívida que continua em
+ * aberto. O banco recusa com OC011.
+ *
+ * A baixa é terminal — não há estorno definido (ver migration 009).
+ */
+export const postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData, ThrowOnError>,
+): RequestResult<
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponses,
+  PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponses,
+    PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/parcelas/{parcela_id}/baixar',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
  * Get Auditoria
  *
  * Trilha de auditoria em duas camadas: eventos legíveis (com nome do
@@ -563,13 +1348,3 @@ export const metricsMetricsGet = <ThrowOnError extends boolean = false>(
     url: '/metrics',
     ...options,
   })
-
-/**
- * Root
- *
- * Raiz da API (dev/CI — sem build do frontend disponível).
- */
-export const rootGet = <ThrowOnError extends boolean = false>(
-  options?: Options<RootGetData, ThrowOnError>,
-): RequestResult<RootGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<RootGetResponses, unknown, ThrowOnError>({ url: '/', ...options })

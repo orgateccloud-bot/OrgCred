@@ -8,6 +8,7 @@ precisam de commits reais (concorrência, trigger em nova conexão) — esses
 usam engines próprias.
 """
 
+import hashlib
 import os
 import uuid
 from pathlib import Path
@@ -41,6 +42,15 @@ MIGRATIONS = [
     "003_hardening_capital",
     "004_auditoria_autor",
     "005_ledger_imutavel",
+    "006_novacao_e_inadimplencia",
+    "007_agenda_de_parcelas",
+    "008_aging_inadimplencia",
+    "009_baixa_de_recebimento",
+    "010_compliance_interno",
+    "011_apuracao_fiscal",
+    "012_contrato_e_registro",
+    "013_gate_registro_confirmado",
+    "014_gate_identificacao",
 ]
 
 
@@ -119,21 +129,121 @@ def db_session(engine: Engine) -> Generator[Session, None, None]:
     connection.close()
 
 
-@pytest.fixture()
-def tomador_autorizado(db_session: Session) -> uuid.UUID:
-    """Cria um tomador no município autorizado; retorna seu id."""
+def _inserir_tomador(db_session: Session, razao_social: str, autorizado: bool = True) -> uuid.UUID:
     result = db_session.execute(
         text(
             """
             insert into tomador (cnpj, razao_social, porte, municipio, uf, municipio_autorizado)
-            values (:cnpj, 'Padaria Teste ME', 'ME', 'Formoso', 'GO', true)
+            values (:cnpj, :razao, 'ME', 'Formoso', 'GO', :autorizado)
             returning id
             """
         ),
-        {"cnpj": f"{uuid.uuid4().int % 10**14:014d}"},
+        {
+            "cnpj": f"{uuid.uuid4().int % 10**14:014d}",
+            "razao": razao_social,
+            "autorizado": autorizado,
+        },
     )
     db_session.commit()
     return result.scalar_one()
+
+
+@pytest.fixture()
+def tomador_autorizado(db_session: Session) -> uuid.UUID:
+    """Tomador no município autorizado E com identificação arquivada.
+
+    A identificação entra aqui porque, desde a migration 014, ativar exige
+    evidência arquivada (Lei 9.613/98, art. 10, I) — um tomador sem ela não
+    representa o caso comum, representa o caso bloqueado. Para testar o
+    bloqueio existe `tomador_sem_identificacao`.
+    """
+    tomador_id = _inserir_tomador(db_session, "Padaria Teste ME")
+    arquivar_identificacao(db_session, tomador_id)
+    return tomador_id
+
+
+@pytest.fixture()
+def tomador_sem_identificacao(db_session: Session) -> uuid.UUID:
+    """Tomador no município autorizado e SEM nenhuma evidência arquivada —
+    o cenário que a migration 014 passou a recusar."""
+    return _inserir_tomador(db_session, "Mercearia Sem Papel ME")
+
+
+def confirmar_registro(
+    db_session: Session, operacao_id: uuid.UUID, entidade: str = "CRDC"
+) -> uuid.UUID:
+    """Cria e confirma o registro em entidade registradora.
+
+    Desde a migration 013, ativar exige registro CONFIRMADO — o gate do
+    Art. 5º §3º deixou de aceitar texto livre. Todo teste que ativa uma
+    operação passa por aqui, o que também significa que o gate é exercido
+    dezenas de vezes por execução da suíte.
+    """
+    registro_id = db_session.execute(
+        text("""
+        insert into registro_operacao (operacao_id, entidade, status, protocolo, confirmado_em)
+        values (:o, :e, 'confirmado', :p, clock_timestamp())
+        returning id
+        """),
+        {"o": str(operacao_id), "e": entidade, "p": f"PROTO-{uuid.uuid4().hex[:10]}"},
+    ).scalar_one()
+    db_session.commit()
+    return registro_id
+
+
+def arquivar_identificacao(
+    db_session: Session, tomador_id: uuid.UUID, tipo: str = "contrato_social"
+) -> uuid.UUID:
+    """Arquiva uma evidência de identificação para o tomador.
+
+    Desde a migration 014, ativar exige que o tomador tenha ao menos uma
+    evidência arquivada (Lei 9.613/98, art. 10, I). O hash é arbitrário aqui
+    — o que o gate verifica é a EXISTÊNCIA da evidência; a conferência de
+    conteúdo é assunto de `POST /compliance/documentos/{id}/verificar`.
+    """
+    documento_id = db_session.execute(
+        text("""
+        insert into tomador_documento
+            (tomador_id, tipo, nome_arquivo, sha256, retencao_ate)
+        values (:t, :tipo, :nome, :sha, current_date + interval '5 years')
+        returning id
+        """),
+        {
+            "t": str(tomador_id),
+            "tipo": tipo,
+            "nome": f"{tipo}.pdf",
+            "sha": hashlib.sha256(f"{tomador_id}:{tipo}".encode()).hexdigest(),
+        },
+    ).scalar_one()
+    db_session.commit()
+    return documento_id
+
+
+def baixar_parcelas(db_session: Session, operacao_id: uuid.UUID, numeros: list[int]) -> None:
+    """Baixa parcelas via `fn_baixar_parcela`, criando um movimento por parcela.
+
+    Existe porque, desde a migration 009, `update parcela set status='paga'`
+    é recusado pelo banco (OC011) — não há caminho para dar uma parcela por
+    paga sem lastro bancário, nem em teste. Cada baixa precisa do seu
+    próprio movimento: o índice único impede que um crédito baixe duas.
+    """
+    for numero in numeros:
+        parcela = db_session.execute(
+            text("select id, valor_total from parcela where operacao_id = :op and numero = :n"),
+            {"op": str(operacao_id), "n": numero},
+        ).one()
+        movimento_id = db_session.execute(
+            text("""
+            insert into movimento_bancario (data_movimento, valor, documento)
+            values (current_date, :valor, :doc) returning id
+            """),
+            {"valor": parcela.valor_total, "doc": f"DOC-{uuid.uuid4().hex[:12]}"},
+        ).scalar_one()
+        db_session.execute(
+            text("select fn_baixar_parcela(:p, :m)"),
+            {"p": str(parcela.id), "m": str(movimento_id)},
+        )
+    db_session.commit()
 
 
 @pytest.fixture()
