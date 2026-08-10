@@ -72,9 +72,16 @@ export function AppSidebar() {
                 >
                   <Landmark className="size-4" />
                 </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-heading font-bold">OrgCred</span>
-                  <span className="truncate text-xs text-muted-foreground">ESC · ORGATEC</span>
+                {/* A marca é Orgatec; OrgCred é o produto. Por isso o
+                    logotipo em cima e a linha do produto embaixo — inverter
+                    faria a empresa sumir da tela. */}
+                <div className="grid flex-1 gap-0.5 text-left leading-tight">
+                  <img
+                    src="/orgatec-logo.png"
+                    alt="Orgatec"
+                    className="h-5 w-auto object-contain object-left"
+                  />
+                  <span className="truncate text-xs text-muted-foreground">OrgCred · ESC</span>
                 </div>
               </Link>
             </SidebarMenuButton>

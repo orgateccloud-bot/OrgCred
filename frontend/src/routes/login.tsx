@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Landmark } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -84,9 +83,10 @@ function LoginPage() {
 
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Landmark className="size-6" aria-hidden />
-          </div>
+          {/* Aqui há espaço para a marca respirar, ao contrário da sidebar:
+              o logotipo entra em tamanho legível e o nome do produto vem
+              logo abaixo. */}
+          <img src="/orgatec-logo.png" alt="Orgatec" className="mb-3 h-10 w-auto object-contain" />
           <CardTitle className="font-heading text-2xl font-bold tracking-tight">OrgCred</CardTitle>
           <CardDescription>Painel de operações da ESC · ORGATEC</CardDescription>
         </CardHeader>
