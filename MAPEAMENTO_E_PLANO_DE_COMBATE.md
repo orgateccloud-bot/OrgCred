@@ -277,5 +277,14 @@ Não há mais nada de valor a construir sem você. Todo o trabalho técnico
 possível foi feito; o que resta é integralmente decisão, credencial ou
 contato comercial.
 
-**Se só uma coisa for feita:** reconectar o GitHub no Railway. Produção roda
-hoje a versão com os dois furos do Art. 5º que já foram corrigidos aqui.
+## 7. Fluxo de branches e deploy
+
+O repositório tem **uma branch só: `main`**. Ela é a default do GitHub, a
+branch de trabalho e a observada pelo Railway. `master` existiu em paralelo
+até 2026-08-11 e foi apagada — a coexistência das duas fez o trabalho ir para
+uma enquanto o deploy olhava a outra, e isso passou semanas sem ser notado.
+Não recriar.
+
+Produção roda a versão com os dois furos do Art. 5º já corrigidos e os três
+gates legais ativos (deploy de 2026-08-10). O que ainda impede **operar** não
+é código — está na Frente 1.
