@@ -205,6 +205,40 @@ um risco técnico latente por trás desta decisão de compliance.
 
 ---
 
+## 6. Política de liquidação — ✅ **DECIDIDA em 2026-08-12**
+
+Fecha o furo mais grave encontrado no mapeamento: `POST
+/operacoes/{id}/liquidar` permitia `ativa → liquidada` incondicionalmente,
+devolvendo **100% do capital ao teto** com todas as parcelas em aberto e zero
+centavo comprovado. Era o caminho mais curto para furar o Art. 5º, e alcançável
+por qualquer operador pela API.
+
+**A regra decidida:**
+
+| Caso | Condição | Devolve capital ao teto? |
+|---|---|---|
+| **Quitação** | **Todas** as parcelas pagas, cada uma com lastro bancário | **Sim** |
+| **Write-off** (perdão de dívida / baixa contábil) | decisão da gestão, sem exigência de pagamento | **Não** |
+
+**Por que write-off não devolve:** o dinheiro não voltou. Encerrar a cobrança é
+ato de gestão; o capital seguir comprometido é o reflexo honesto de que aquele
+montante foi consumido pela operação. Liberar teto por um empréstimo que nunca
+foi pago permitiria emprestar de novo o mesmo dinheiro que já se perdeu — que é
+exatamente o que o teto do Art. 5º existe para impedir.
+
+**Consequência que precisa estar clara:** o teto encolhe de forma permanente a
+cada write-off. Recuperar capacidade operacional exige **aporte de capital**
+(novo evento de constituição), não uma baixa contábil. Isso é intencional.
+
+**O que fica registrado:** os dois casos são estados terminais distintos, com
+eventos distintos no `capital_ledger` — quem auditar precisa conseguir separar
+"foi pago" de "foi perdoado" sem interpretar valores.
+
+**Implementação:** gate no banco (migration 017), não em Python, como todo
+invariante legal deste projeto.
+
+---
+
 ## O que NÃO está bloqueado (só não implementado ainda)
 
 Para não confundir bloqueio de decisão com trabalho técnico pendente:
