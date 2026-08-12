@@ -54,9 +54,48 @@ MIGRATIONS = [
 ]
 
 
+def _url_configurada() -> str:
+    """URL do Postgres de teste, ou string vazia se nenhuma variável estiver setada."""
+    return os.environ.get("ORGCRED_TEST_DATABASE_URL", os.environ.get("ORGCRED_DATABASE_URL", ""))
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Recusa a suíte-fantasma: sem banco, em CI, o pytest não roda.
+
+    Todo teste de invariante depende de `db_session`. Sem URL de banco os
+    ~200 viram skip e o pytest sai 0 (reproduzido em 2026-08-12). Em CI esse
+    zero é a única coisa que autoriza um deploy, e estaria dizendo "o schema
+    está provado" sobre uma execução que não abriu conexão nenhuma. Aqui
+    isso vira erro de uso, antes da coleta.
+
+    Fora da CI o skip continua — quem não tem Postgres local ainda consegue
+    rodar os testes que não dependem de banco. Mas então o --cov-fail-under
+    do pyproject.toml estaria medindo a cobertura de uma suíte que não rodou
+    (dois terços do total, contra os ~92% da execução real) e reprovaria por
+    um motivo falso; nesse caso, e só nesse, ele é desligado.
+    """
+    if _url_configurada():
+        return
+
+    if os.environ.get("CI"):
+        raise pytest.UsageError(
+            "CI detectada e ORGCRED_TEST_DATABASE_URL/ORGCRED_DATABASE_URL ausente. "
+            "Sem Postgres os testes de invariante (triggers PL/pgSQL, SQLSTATEs da "
+            "classe OC) viram skip e a suíte sai 0 sem provar nada — recusando rodar."
+        )
+
+    # Os dois namespaces, de propósito: o pytest-cov guarda `options =
+    # early_config.known_args_namespace` (plugin.py, pytest_cmdline_main), que
+    # é uma CÓPIA feita antes de `config.option` ser preenchido. Zerar só
+    # `config.option` não tem efeito nenhum — o piso continuava reprovando.
+    for namespace in (config.option, getattr(config, "known_args_namespace", None)):
+        if getattr(namespace, "cov_fail_under", None):
+            namespace.cov_fail_under = 0
+
+
 def _base_admin_url() -> str:
     """URL de conexão administrativa (banco 'postgres') para criar/dropar bancos de teste."""
-    base = os.environ.get("ORGCRED_TEST_DATABASE_URL", os.environ.get("ORGCRED_DATABASE_URL", ""))
+    base = _url_configurada()
     if not base:
         pytest.skip("ORGCRED_TEST_DATABASE_URL/ORGCRED_DATABASE_URL não configurada")
     # Troca o nome do banco por 'postgres' para poder criar/dropar o banco de teste

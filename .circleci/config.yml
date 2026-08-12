@@ -75,7 +75,12 @@ jobs:
           name: Rodar pytest
           environment:
             ORGCRED_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
-            SUPABASE_JWT_SECRET: ci-test-secret-not-for-production
+            # O prefixo ORGCRED_ não é decorativo: é o env_prefix de
+            # app/core/config.py. Sem ele a variável é ignorada e a
+            # Settings cai no default de desenvolvimento — foi o que
+            # aconteceu aqui até 2026-08-12, com o job passando enquanto
+            # testava uma secret diferente da que declarava.
+            ORGCRED_SUPABASE_JWT_SECRET: ci-test-secret-not-for-production
           command: uv run pytest tests/ -v --cov=app --cov-report=xml
       - store_artifacts:
           path: coverage.xml
@@ -153,6 +158,74 @@ jobs:
             PGUSER: postgres
             PGPASSWORD: postgres
           command: python tests/test_concorrencia.py orgcred_conc_test
+
+  docker-build-smoke:
+    # Executor `machine` em vez de `docker` + setup_remote_docker: com o
+    # remote docker as portas publicadas pelos containers NÃO são alcançáveis
+    # do container do job, e este job existe justamente para bater numa porta.
+    # Aqui o daemon roda na própria VM, então localhost é o localhost do curl.
+    machine:
+      image: ubuntu-2404:current
+    steps:
+      - checkout
+      - run:
+          name: Build da imagem de produção
+          # Mesma imagem que sobe para o Railway. Até aqui nenhum job tocava
+          # no Dockerfile: um build quebrado (ou um bundle do Vite que não
+          # compila) só aparecia no deploy — e o deploy sobe tarball local,
+          # não este repositório, então aparecia tarde e no lugar errado.
+          command: docker build -t orgcred:ci .
+      - run:
+          name: Subir Postgres na rede do smoke
+          # O `-h 127.0.0.1` no pg_isready não é decorativo: durante o initdb
+          # a imagem do Postgres sobe um servidor TEMPORÁRIO com
+          # `listen_addresses=''` (só socket unix). Um pg_isready pelo socket
+          # responde "accepting connections" nessa janela e o passo segue —
+          # aí o `alembic upgrade head` do container da API bate no TCP, que
+          # ainda não escuta, e o smoke falha por corrida, não por defeito.
+          # Pelo TCP a espera é pelo servidor definitivo, o mesmo que a API usa.
+          command: |
+            docker network create orgcred-smoke
+            docker run -d --name orgcred-smoke-pg --network orgcred-smoke \
+              -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=orgcred_smoke postgres:16
+            for i in $(seq 1 30); do
+              docker exec orgcred-smoke-pg pg_isready -U postgres -h 127.0.0.1 && exit 0
+              sleep 2
+            done
+            echo "Postgres não subiu a tempo" && exit 1
+      - run:
+          name: Subir a imagem em modo produção
+          # ORGCRED_ENVIRONMENT=production de propósito: é o único modo em que
+          # a guarda de startup (app/core/config.py, validate_startup) recusa
+          # iniciar com o segredo de JWT default e com banco em localhost.
+          # Um smoke em development não exercitaria nada disso.
+          command: |
+            docker run -d --name orgcred-smoke-api --network orgcred-smoke -p 8000:8000 \
+              -e ORGCRED_DATABASE_URL=postgresql+psycopg://postgres:postgres@orgcred-smoke-pg:5432/orgcred_smoke \
+              -e ORGCRED_ENVIRONMENT=production \
+              -e ORGCRED_SUPABASE_JWT_SECRET=ci-smoke-secret-not-for-production \
+              orgcred:ci
+      - run:
+          name: Smoke test em /health/ready
+          # O CMD da imagem roda `alembic upgrade head` antes do uvicorn, então
+          # um 200 aqui prova três coisas de uma vez: a imagem builda e sobe,
+          # as migrations aplicam em banco limpo, e o app fala com o Postgres
+          # — /health/ready responde 503 se o `select 1` falhar.
+          command: |
+            for i in $(seq 1 60); do
+              if curl -sf http://localhost:8000/health/ready > /tmp/ready.json \
+                 && grep -q '"status"[[:space:]]*:[[:space:]]*"ready"' /tmp/ready.json; then
+                echo "OK: $(cat /tmp/ready.json)"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "/health/ready não respondeu 'ready' em 120s"
+            exit 1
+      - run:
+          name: Logs do container
+          when: on_fail
+          command: docker logs orgcred-smoke-api || true
 
   frontend-lint-and-build:
     docker:
@@ -270,6 +343,7 @@ workflows:
       - unit-tests
       - alembic
       - integration
+      - docker-build-smoke
 
   frontend:
     jobs:

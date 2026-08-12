@@ -80,7 +80,16 @@ warn_unreachable = true
 show_error_codes = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=app --cov-report=term-missing --cov-report=html --ignore=tests/test_concorrencia.py"
+# --cov-fail-under: a suíte com banco fica em ~92%; 85 é o piso abaixo do
+#   qual a queda é regressão, não ruído. Sem ele o pytest saía 0 mesmo com a
+#   suíte inteira em skip. Fora da CI e sem Postgres, tests/conftest.py
+#   desliga este piso (medir cobertura de uma suíte que não rodou não diz nada).
+# --ignore=tests/test_concorrencia.py: o arquivo é um script standalone
+#   (`python tests/test_concorrencia.py <db>`), roda no job `integration` do
+#   CircleCI. Importá-lo conecta ao banco no nível de módulo e exige psycopg2,
+#   que não está nas dependências — sem o ignore a COLETA quebra e nenhum
+#   teste roda. Removê-lo depende de reescrever o arquivo como teste pytest.
+addopts = "--cov=app --cov-report=term-missing --cov-report=html --cov-fail-under=85 --ignore=tests/test_concorrencia.py"
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
