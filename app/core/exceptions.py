@@ -97,6 +97,49 @@ class MovimentoImutavel(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC012", http_status=422)
 
 
+class LedgerImutavel(RegraNegocioViolada):
+    """OC007: capital_ledger é append-only (UPDATE/DELETE/TRUNCATE).
+
+    O ledger é a prova documental de conformidade com o teto do Art. 5º. Um
+    erro dele chegando à API como 500 diria "falha interna" a quem acabou de
+    tentar apagar a trilha — a mensagem precisa ser a da regra.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC007", http_status=422)
+
+
+class EventoOperacaoImutavel(RegraNegocioViolada):
+    """OC010: a trilha de eventos da operação (migration 008) é append-only."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC010", http_status=422)
+
+
+class DocumentoEmRetencao(RegraNegocioViolada):
+    """OC013: evidência de identificação dentro do prazo de retenção legal.
+
+    Cobre os dois caminhos do trigger da 010: apagar antes dos 5 anos (Lei
+    9.613/98, art. 10, III) e alterar uma evidência arquivada — que se
+    substitui por uma nova, nunca se edita.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC013", http_status=422)
+
+
+class OcorrenciaImutavel(RegraNegocioViolada):
+    """OC014: ocorrência de atipicidade é append-only.
+
+    Só o par de campos do adaptador do canal externo (comunicado_em,
+    comunicacao_ref) pode ser preenchido depois — uma trilha de PLD que se
+    edita não serve como defesa.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC014", http_status=422)
+
+
 class ApuracaoSemParametro(RegraNegocioViolada):
     """OC015: apuração fiscal sem parâmetro vigente.
 

@@ -293,7 +293,9 @@ def registrar_movimento_bancario(
     return movimento_id  # type: ignore[no-any-return]
 
 
-def baixar_parcela(db: Session, parcela_id: UUID, movimento_id: UUID) -> None:
+def baixar_parcela(
+    db: Session, parcela_id: UUID, movimento_id: UUID, usuario_id: Optional[str] = None
+) -> None:
     """
     Dá uma parcela por paga, amarrada a um movimento bancário.
 
@@ -301,7 +303,26 @@ def baixar_parcela(db: Session, parcela_id: UUID, movimento_id: UUID) -> None:
     em aberto, movimento existente, movimento ainda não usado, valor
     suficiente. Replicar essas checagens aqui criaria uma segunda fonte de
     verdade que dessincroniza, e a aplicação não é a única porta do banco.
+
+    `usuario_id` é propagado ao banco pelo MESMO mecanismo das transições de
+    status (`set_config('app.user_id', ..., true)`, equivalente a SET LOCAL —
+    ver a nota longa em `ativar_operacao` sobre por que é `set_config()` e não
+    o comando `SET LOCAL`, e por que roda sempre, com valor ou com NULL, em
+    vez de condicionalmente: as conexões vêm de um pool e uma baixa sem
+    usuário herdaria o autor da anterior na mesma conexão física).
+    Desde a migration 016, `fn_baixar_parcela` lê essa GUC e grava
+    `parcela.baixado_por`.
+
+    A autoria importa mais aqui do que em qualquer outra transição: a baixa é
+    o único ato irreversível do ciclo (não há estorno definido — ver 009), e
+    até a 016 era o único sem nome de gente. Uma conciliação errada é
+    permanente; sem autor, não havia a quem perguntar.
     """
+    db.execute(
+        text("select set_config('app.user_id', :usuario_id, true)"),
+        {"usuario_id": usuario_id},
+    )
+
     try:
         db.execute(
             text("select fn_baixar_parcela(:parcela, :movimento)"),

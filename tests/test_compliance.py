@@ -269,6 +269,76 @@ class TestRetencao:
         assert sqlstate_de(exc.value) == "OC013"
         db_session.rollback()
 
+    def test_truncate_na_evidencia_e_recusado(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """O furo fechado pela migration 016.
+
+        O trigger da 010 é BEFORE UPDATE/DELETE FOR EACH ROW, e TRUNCATE não
+        visita linhas: `truncate table tomador_documento` apagava todas as
+        evidências de identificação — as que estão sob retenção legal de 5
+        anos junto (Lei 9.613/98, art. 10, III) — sem levantar erro. Pior do
+        que o DELETE que o banco já recusava, e mais fácil de escrever.
+        """
+        db_session.execute(
+            text("""
+            insert into tomador_documento
+                (tomador_id, tipo, nome_arquivo, sha256, retencao_ate)
+            values (:t, 'contrato_social', 'retido.pdf', :sha, current_date + 1825)
+            """),
+            {"t": str(tomador_autorizado), "sha": _sha(b"retido")},
+        )
+        db_session.commit()
+
+        with pytest.raises(Exception) as exc:
+            db_session.execute(text("truncate table tomador_documento cascade"))
+            db_session.flush()
+        assert sqlstate_de(exc.value) == "OC013"
+        db_session.rollback()
+
+        assert (
+            db_session.execute(
+                text("select count(*) from tomador_documento where nome_arquivo = 'retido.pdf'")
+            ).scalar_one()
+            == 1
+        )
+
+    def test_expurgo_seletivo_continua_permitido(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Caminho feliz da 016: a trava é contra apagar a trilha INTEIRA de
+        uma vez, não contra a minimização de dados. Um DELETE que seleciona o
+        que já venceu o prazo passa exatamente como antes — a diferença é que
+        agora não existe atalho que dispense a seleção."""
+        db_session.execute(
+            text("""
+            insert into tomador_documento
+                (tomador_id, tipo, nome_arquivo, sha256, retencao_ate)
+            values (:t, 'contrato_social', 'vencido.pdf', :sha, current_date - 1),
+                   (:t, 'cartao_cnpj', 'vigente.pdf', :sha2, current_date + 1825)
+            """),
+            {
+                "t": str(tomador_autorizado),
+                "sha": _sha(b"vencido"),
+                "sha2": _sha(b"vigente"),
+            },
+        )
+        db_session.commit()
+
+        db_session.execute(text("delete from tomador_documento where retencao_ate < current_date"))
+        db_session.commit()
+
+        restantes = (
+            db_session.execute(
+                text("select nome_arquivo from tomador_documento order by nome_arquivo")
+            )
+            .scalars()
+            .all()
+        )
+        # 'contrato_social.pdf' vem da fixture `tomador_autorizado`, que arquiva
+        # a identificação exigida pelo gate da 014 — e está dentro do prazo.
+        assert restantes == ["contrato_social.pdf", "vigente.pdf"]
+
 
 # ---------------------------------------------------------------------
 # Detecção de atipicidade
@@ -402,6 +472,58 @@ class TestAtipicidade:
             db_session.flush()
         assert sqlstate_de(exc.value) == "OC014"
         db_session.rollback()
+
+    def test_truncate_na_ocorrencia_e_recusado(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """A migration 016 fecha o atalho que tornava o append-only da 010
+        decorativo: o DELETE era recusado linha a linha, mas `truncate table
+        ocorrencia_atipicidade` limpava o painel de PLD inteiro sem erro —
+        exatamente o que faria quem quisesse esconder um alerta, e mais curto
+        de escrever do que o DELETE que o banco recusava."""
+        for _ in range(3):
+            _operacao(db_session, tomador_autorizado, "4000")
+        admin_client.post("/api/compliance/atipicidades/detectar", json={})
+
+        antes = db_session.execute(text("select count(*) from ocorrencia_atipicidade")).scalar_one()
+        assert antes >= 1
+
+        with pytest.raises(Exception) as exc:
+            db_session.execute(text("truncate table ocorrencia_atipicidade"))
+            db_session.flush()
+        assert sqlstate_de(exc.value) == "OC014"
+        db_session.rollback()
+
+        assert (
+            db_session.execute(text("select count(*) from ocorrencia_atipicidade")).scalar_one()
+            == antes
+        )
+
+    def test_deteccao_continua_gravando_apos_a_trava(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Caminho feliz: BEFORE TRUNCATE não toca em INSERT. A varredura
+        continua gravando ocorrências novas e o adaptador do canal externo
+        continua preenchível — travar a saída não pode travar a entrada."""
+        for _ in range(3):
+            _operacao(db_session, tomador_autorizado, "4000")
+
+        resposta = admin_client.post("/api/compliance/atipicidades/detectar", json={})
+        assert resposta.status_code == 200
+        assert resposta.json()["novas_ocorrencias"] >= 1
+
+        db_session.execute(
+            text("update ocorrencia_atipicidade set comunicado_em = clock_timestamp()")
+        )
+        db_session.commit()
 
     def test_adaptador_do_canal_externo_pode_ser_preenchido(
         self,

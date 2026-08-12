@@ -132,11 +132,10 @@ jobs:
       - checkout
       - wait_for_postgres
       - run:
-          name: Instalar dependências (psql client + psycopg2)
+          name: Instalar dependências (psql client)
           command: |
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends postgresql-client
-            pip install psycopg2-binary
       - run:
           name: Criar banco de teste
           environment:
@@ -151,13 +150,13 @@ jobs:
           command: |
             chmod +x tests/test_capital_invariant.sh
             ./tests/test_capital_invariant.sh orgcred_regression
-      - run:
-          name: Rodar testes de concorrência (Python)
-          environment:
-            PGHOST: localhost
-            PGUSER: postgres
-            PGPASSWORD: postgres
-          command: python tests/test_concorrencia.py orgcred_conc_test
+
+      # As quatro corridas de concorrência (ativação × ativação, × redução de
+      # capital, × liquidação, × novação) saíram daqui e passaram a rodar em
+      # `unit-tests`, como pytest. Este job instalava psycopg2 só para elas,
+      # enquanto o projeto usa psycopg3 — e o script standalone aplicava apenas
+      # as migrations 001-003, provando o advisory lock de um trigger que já
+      # tinha sido redefinido cinco vezes. Não recolocar aqui.
 
   docker-build-smoke:
     # Executor `machine` em vez de `docker` + setup_remote_docker: com o

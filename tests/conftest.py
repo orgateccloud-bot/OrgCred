@@ -51,6 +51,8 @@ MIGRATIONS = [
     "012_contrato_e_registro",
     "013_gate_registro_confirmado",
     "014_gate_identificacao",
+    "015_bordas_do_capital",
+    "016_bordas_da_cobranca",
 ]
 
 

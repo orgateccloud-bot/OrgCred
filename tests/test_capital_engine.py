@@ -747,3 +747,473 @@ class TestNovacaoAtomica:
         assert nova.status == "registrada"
         # A original saiu do comprometido; a substituta ainda nao entrou.
         assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+
+
+# ---------------------------------------------------------------------------
+# Migration 015 — as bordas do teto
+#
+# Os tres furos que a 015 fecha tinham em comum o fato de nao passarem por
+# transicao nenhuma: a 003/006/013/014 vigiam a ENTRADA e a SAIDA do estado
+# comprometido, e nada vigiava o que acontece com a linha DEPOIS. Todos eram
+# alcancaveis por SQL direto, todos moviam o teto do Art. 5o e nenhum deles
+# deixava evento no capital_ledger.
+# ---------------------------------------------------------------------------
+
+
+def _bloqueio(db_session: Session, sql: str, params: dict | None = None) -> BaseException:
+    """Executa SQL cru esperando recusa do banco e devolve a excecao.
+
+    A sessao de teste usa savepoints (ver conftest.db_session): o rollback()
+    aqui volta ao ponto do ultimo commit, entao tudo o que o setup ja commitou
+    continua de pe e o teste pode seguir asserindo sobre o estado.
+    """
+    with pytest.raises(Exception) as exc_info:
+        db_session.execute(text(sql), params or {})
+        db_session.commit()
+    db_session.rollback()
+    return exc_info.value
+
+
+def _constraint_violada(exc: BaseException) -> str | None:
+    """Nome da CHECK constraint violada.
+
+    Pela mesma disciplina do `sqlstate_de`: identificar por metadado do
+    driver (psycopg expoe em `.diag.constraint_name`), nunca por substring da
+    mensagem. Com 23514 sozinho o teste provaria "alguma constraint recusou";
+    com o nome, prova qual.
+    """
+    orig = getattr(exc, "orig", exc)
+    diag = getattr(orig, "diag", None)
+    return getattr(diag, "constraint_name", None)
+
+
+class TestOperacaoComprometidaEhImutavel:
+    """OC020: o que ja compromete capital nao se reescreve por UPDATE.
+
+    O furo (a): o trigger do teto avalia os gates na ENTRADA no estado
+    comprometido e na SAIDA. Um UPDATE ativa -> ativa nao e nem uma coisa nem
+    outra, e a checagem da maquina de estados tambem e pulada, porque esta
+    sob `if tg_op = UPDATE and new.status is distinct from old.status`.
+    """
+
+    def test_bloqueia_inflar_valor_principal_de_operacao_ativa(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O cenario exato do furo: 50.000 de capital, 30.000 ativos, e um
+        UPDATE que deixaria 500.000 comprometidos — dez vezes o teto."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+        ativar_operacao(db_session, op_id)
+
+        exc = _bloqueio(
+            db_session,
+            "update operacao_credito set valor_principal = 500000 where id = :i",
+            {"i": str(op_id)},
+        )
+
+        assert sqlstate_de(exc) == "OC020"
+        # E o teto continua onde estava: nem o comprometido subiu, nem
+        # apareceu evento novo no ledger para justificar a subida.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("30000.00")
+        eventos = db_session.execute(
+            text("select evento_tipo, valor from capital_ledger where operacao_id = :i"),
+            {"i": str(op_id)},
+        ).all()
+        assert [(e.evento_tipo, e.valor) for e in eventos] == [
+            ("ativacao_operacao", Decimal("30000.00"))
+        ]
+
+    def test_bloqueia_troca_de_tomador_em_operacao_ativa(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Trocar o tomador depois de ativa contornaria os dois gates que so
+        rodam na ativacao: municipio autorizado (OC002) e identificacao
+        arquivada (OC019). O emprestimo passaria a ser de outra pessoa sem
+        que nenhum deles fosse consultado."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 10_000)
+        ativar_operacao(db_session, op_id)
+
+        outro = db_session.execute(
+            text(
+                """
+                insert into tomador (cnpj, razao_social, porte, municipio, uf, municipio_autorizado)
+                values (:cnpj, 'Oficina Fora ME', 'ME', 'Goiânia', 'GO', false)
+                returning id
+                """
+            ),
+            {"cnpj": f"{uuid.uuid4().int % 10**14:014d}"},
+        ).scalar_one()
+        db_session.commit()
+
+        exc = _bloqueio(
+            db_session,
+            "update operacao_credito set tomador_id = :t where id = :i",
+            {"t": str(outro), "i": str(op_id)},
+        )
+
+        assert sqlstate_de(exc) == "OC020"
+
+    def test_bloqueia_reescrita_da_agenda_em_operacao_inadimplente(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """'inadimplente' compromete capital desde a 006, entao congela junto.
+
+        Congelar so 'ativa' deixaria a porta aberta pelo caminho
+        ativa -> inadimplente -> edita -> ativa. Taxa e numero de parcelas
+        definem a agenda que a 007 gerou na ativacao e que a 009 baixa contra
+        movimento bancario — reescreve-las e refazer o contrato sem novacao.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20_000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+
+        exc_taxa = _bloqueio(
+            db_session,
+            "update operacao_credito set taxa_juros_mensal = 0.1 where id = :i",
+            {"i": str(op_id)},
+        )
+        assert sqlstate_de(exc_taxa) == "OC020"
+
+        exc_parcelas = _bloqueio(
+            db_session,
+            "update operacao_credito set numero_parcelas = 360 where id = :i",
+            {"i": str(op_id)},
+        )
+        assert sqlstate_de(exc_parcelas) == "OC020"
+
+    def test_bloqueia_liquidar_trocando_o_valor_no_mesmo_update(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O caso mais perigoso, coberto porque a checagem olha OLD.status.
+
+        Sem isso, o bloco de SAIDA do trigger do teto gravaria no ledger o
+        `new.valor_principal` — liberando mais capital do que foi
+        comprometido, com a cadeia de hash intacta, porque nada foi adulterado
+        depois do fato: a mentira entra ja assinada.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 10_000)
+        ativar_operacao(db_session, op_id)
+
+        exc = _bloqueio(
+            db_session,
+            "update operacao_credito set status = 'liquidada', valor_principal = 49000 "
+            "where id = :i",
+            {"i": str(op_id)},
+        )
+
+        assert sqlstate_de(exc) == "OC020"
+        # A operacao continua ativa e o ledger nao ganhou liquidacao alguma.
+        status = db_session.execute(
+            text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
+        ).scalar_one()
+        assert status == "ativa"
+        eventos = (
+            db_session.execute(
+                text("select evento_tipo from capital_ledger where operacao_id = :i"),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert eventos == ["ativacao_operacao"]
+
+    def test_bloqueia_delete_de_operacao_comprometida(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A 015 nao criou trigger de DELETE em operacao_credito, e o motivo
+        precisa de prova, nao de argumento.
+
+        O argumento: as FKs que apontam para operacao_credito (capital_ledger,
+        parcela, operacao_evento, contrato, registro) nao declaram `on delete`,
+        e toda operacao que chegou a comprometer capital tem pelo menos o
+        evento 'ativacao_operacao' apontando para ela — entao o proprio banco
+        recusa com 23503, sem precisar de PL/pgSQL. Correto hoje; frágil
+        amanha, e a fragilidade e silenciosa: um `on delete cascade` numa
+        migration futura faria o DELETE devolver 30.000 ao teto E levar junto
+        o evento de ledger que provava a saida.
+
+        Por isso o teste tem duas metades. A comportamental (o 23503) prova
+        que o caminho esta fechado HOJE, mas sozinha nao discrimina: com meia
+        duzia de FKs sem `on delete`, basta uma continuar restritiva para o
+        23503 aparecer e o teste passar por cima de um cascade recem-aberto na
+        FK que importa. A estrutural le o catalogo e exige que NENHUMA delas
+        tenha acao de delete — e essa falha no ato.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+        ativar_operacao(db_session, op_id)
+
+        exc = _bloqueio(db_session, "delete from operacao_credito where id = :i", {"i": str(op_id)})
+
+        assert sqlstate_de(exc) == "23503"
+        # A operacao continua de pe, ocupando o teto, e o evento que provou a
+        # ativacao continua no ledger.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("30000.00")
+        assert (
+            db_session.execute(
+                text("select count(*) from capital_ledger where operacao_id = :i"),
+                {"i": str(op_id)},
+            ).scalar_one()
+            == 1
+        )
+
+        # confdeltype: 'a' = no action, 'r' = restrict (os dois recusam);
+        # 'c' = cascade, 'n' = set null, 'd' = set default (os tres apagariam
+        # ou desamarrariam a prova junto com a operacao).
+        permissivas = db_session.execute(
+            text(
+                """
+                select conrelid::regclass::text as tabela, conname, confdeltype
+                from pg_constraint
+                where contype = 'f'
+                  and confrelid = 'operacao_credito'::regclass
+                  and confdeltype not in ('a','r')
+                order by 1, 2
+                """
+            )
+        ).all()
+        assert not permissivas, (
+            "FK apontando para operacao_credito com acao de delete: "
+            f"{[(p.tabela, p.conname, p.confdeltype) for p in permissivas]}. "
+            "Apagar uma operacao comprometida deixaria de ser recusado pelo banco, e a "
+            "015 nao tem trigger de DELETE porque conta com essa recusa."
+        )
+
+    def test_campo_nao_congelado_continua_editavel_em_operacao_ativa(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Caminho feliz: o congelamento e dos quatro campos economicos, nao
+        da linha inteira.
+
+        registro_entidade_ref e referencia informativa desde a 013 (quem
+        destrava a ativacao e o registro confirmado em registro_operacao) e e
+        corrigido em operacao viva. Travar isso seria travar operacao
+        legitima."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 10_000)
+        ativar_operacao(db_session, op_id)
+
+        db_session.execute(
+            text(
+                "update operacao_credito set registro_entidade_ref = 'B3-CORRIGIDO' where id = :i"
+            ),
+            {"i": str(op_id)},
+        )
+        db_session.commit()
+
+        ref = db_session.execute(
+            text("select registro_entidade_ref from operacao_credito where id = :i"),
+            {"i": str(op_id)},
+        ).scalar_one()
+        assert ref == "B3-CORRIGIDO"
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("10000.00")
+
+    def test_valor_ainda_e_editavel_antes_de_comprometer(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Caminho feliz: enquanto a operacao nao ocupa o teto, ela e uma
+        proposta em negociacao — corrigir o valor e o trabalho normal do
+        operador, e a ativacao depois avalia o valor NOVO contra o teto."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 10_000)
+
+        db_session.execute(
+            text("update operacao_credito set valor_principal = 45000 where id = :i"),
+            {"i": str(op_id)},
+        )
+        db_session.commit()
+
+        ativar_operacao(db_session, op_id)
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("45000.00")
+
+    def test_liquidacao_normal_continua_funcionando(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Caminho feliz: mudar SO o status de uma operacao comprometida
+        continua livre — o congelamento e dos campos economicos, e a maquina
+        de estados segue sendo a da 006."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+        ativar_operacao(db_session, op_id)
+
+        transicionar_operacao(db_session, op_id, "liquidada")
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+
+    def test_novacao_continua_sendo_o_caminho_para_mudar_valor(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Caminho feliz que fecha o argumento: o congelamento nao impede
+        renegociar, so obriga a fazer pela porta que baixa a original e cria a
+        substituta sob o mesmo lock, na mesma transacao."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("12000"),
+            taxa_juros_mensal=Decimal("1.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=18,
+        )
+
+        assert nova.valor_principal == Decimal("12000.00")
+        assert str(nova.substitui_operacao_id) == str(op_id)
+
+
+class TestCapitalSocialEhAppendOnly:
+    """OC021: o furo (b) — a tabela que define o teto era mutavel.
+
+    A 003 criou o trigger `before insert on esc_capital_social` e a 006
+    redefiniu a FUNCAO sem nunca recriar o trigger. Nao havia UPDATE nem
+    DELETE vigiado, e v_capital_atual soma a tabela em tempo real.
+    """
+
+    def test_bloqueia_delete_de_constituicao(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Apagar a constituicao derrubava o teto para zero na hora, com
+        30.000 comprometidos, sem disparar OC005 (que so olha INSERT)."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+        ativar_operacao(db_session, op_id)
+
+        exc = _bloqueio(
+            db_session, "delete from esc_capital_social where tipo_evento = 'constituicao'"
+        )
+
+        assert sqlstate_de(exc) == "OC021"
+        assert consultar_capital_snapshot(db_session).total == Decimal("50000.00")
+
+    def test_bloqueia_update_de_evento_de_capital(
+        self, db_session: Session, capital_constituido: None
+    ) -> None:
+        """Editar o valor da constituicao move o teto nos dois sentidos: para
+        baixo, desenquadra operacoes ja ativas; para cima, autoriza emprestar
+        capital que nunca foi integralizado."""
+        exc = _bloqueio(
+            db_session,
+            "update esc_capital_social set valor = 900000 where tipo_evento = 'constituicao'",
+        )
+
+        assert sqlstate_de(exc) == "OC021"
+        assert consultar_capital_snapshot(db_session).total == Decimal("50000.00")
+
+    def test_bloqueia_delete_de_reducao(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O ataque inverso, que nenhuma checagem de 'capital resultante vs.
+        comprometido' pegaria: apagar uma reducao AUMENTA o teto. Por isso o
+        bloqueio da 015 e seco, e nao condicional."""
+        registrar_evento_capital(db_session, valor=Decimal("20000"), tipo_evento="reducao")
+        assert consultar_capital_snapshot(db_session).total == Decimal("30000.00")
+
+        exc = _bloqueio(db_session, "delete from esc_capital_social where tipo_evento = 'reducao'")
+
+        assert sqlstate_de(exc) == "OC021"
+        assert consultar_capital_snapshot(db_session).total == Decimal("30000.00")
+
+    def test_reducao_legitima_continua_passando_pelo_oc005(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Caminho feliz + prova de que OC005 nao foi tocado: reduzir capital
+        continua sendo INSERIR um evento 'reducao', a que cabe na folga passa
+        e a que nao cabe e recusada com o mesmo codigo de sempre."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+        ativar_operacao(db_session, op_id)
+
+        registrar_evento_capital(db_session, valor=Decimal("15000"), tipo_evento="reducao")
+        assert consultar_capital_snapshot(db_session).total == Decimal("35000.00")
+
+        with pytest.raises(ReducaoCapitalBloqueada) as exc:
+            registrar_evento_capital(db_session, valor=Decimal("10000"), tipo_evento="reducao")
+        assert sqlstate_de(exc.value) == "OC005"
+
+    def test_aporte_continua_elevando_o_teto(
+        self, db_session: Session, capital_constituido: None
+    ) -> None:
+        """Caminho feliz: append-only bloqueia UPDATE e DELETE, nunca INSERT."""
+        registrar_evento_capital(db_session, valor=Decimal("30000"), tipo_evento="constituicao")
+        assert consultar_capital_snapshot(db_session).total == Decimal("80000.00")
+
+
+class TestDominioDeValoresNoBanco:
+    """O furo (c): valor positivo e dominio de evento eram invariantes so do
+    Pydantic — protegiam o endpoint, e so o endpoint."""
+
+    def test_recusa_reducao_com_valor_negativo(
+        self, db_session: Session, capital_constituido: None
+    ) -> None:
+        """O ataque mais elegante dos tres: uma 'reducao' de -100.000 INFLA o
+        teto. A view faz `when reducao then -valor`, e fn_check_reducao_capital
+        calcula `capital_atual - new.valor`, que com valor negativo cresce — a
+        reducao passa pelo OC005 justamente por ser um aporte disfarcado."""
+        exc = _bloqueio(
+            db_session,
+            "insert into esc_capital_social (valor, tipo_evento) values (-100000, 'reducao')",
+        )
+
+        assert sqlstate_de(exc) == "23514"
+        assert _constraint_violada(exc) == "esc_capital_social_valor_positivo"
+        assert consultar_capital_snapshot(db_session).total == Decimal("50000.00")
+
+    def test_recusa_tipo_evento_fora_do_dominio(
+        self, db_session: Session, capital_constituido: None
+    ) -> None:
+        """Sem o dominio fechado, um tipo_evento desconhecido caia no `else 0`
+        da view v_capital_atual: entrava na tabela e sumia do teto, sem erro."""
+        exc = _bloqueio(
+            db_session,
+            "insert into esc_capital_social (valor, tipo_evento) values (100000, 'aporte_futuro')",
+        )
+
+        assert sqlstate_de(exc) == "23514"
+        assert _constraint_violada(exc) == "esc_capital_social_tipo_evento_valido"
+        assert consultar_capital_snapshot(db_session).total == Decimal("50000.00")
+
+    def test_recusa_operacao_com_valor_principal_negativo(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Valor negativo em operacao ativa SUBTRAI do comprometido: seria
+        capital disponivel criado do nada, dentro da propria soma do teto."""
+        exc = _bloqueio(
+            db_session,
+            """
+            insert into operacao_credito
+                (tomador_id, tipo, valor_principal, taxa_juros_mensal,
+                 sistema_amortizacao, numero_parcelas, status)
+            values (:t, 'emprestimo', -5000, 2.5, 'PRICE', 12, 'registrada')
+            """,
+            {"t": str(tomador_autorizado)},
+        )
+
+        assert sqlstate_de(exc) == "23514"
+        assert _constraint_violada(exc) == "operacao_credito_valor_principal_positivo"
+
+    def test_recusa_operacao_com_zero_parcelas(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Agenda de zero parcelas e emprestimo sem plano de pagamento: a
+        geracao da 007 nao produz linha nenhuma e a operacao compromete
+        capital sem nunca ter o que baixar."""
+        exc = _bloqueio(
+            db_session,
+            """
+            insert into operacao_credito
+                (tomador_id, tipo, valor_principal, taxa_juros_mensal,
+                 sistema_amortizacao, numero_parcelas, status)
+            values (:t, 'emprestimo', 5000, 2.5, 'PRICE', 0, 'registrada')
+            """,
+            {"t": str(tomador_autorizado)},
+        )
+
+        assert sqlstate_de(exc) == "23514"
+        assert _constraint_violada(exc) == "operacao_credito_numero_parcelas_positivo"
+
+    def test_valores_positivos_continuam_entrando(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Caminho feliz dos CHECKs: o fluxo normal — aporte, operacao,
+        ativacao — nao encosta em nenhuma das quatro constraints."""
+        registrar_evento_capital(db_session, valor=Decimal("10000"), tipo_evento="constituicao")
+
+        op_id = _criar_operacao(db_session, tomador_autorizado, 55_000)
+        ativar_operacao(db_session, op_id)
+
+        assert consultar_capital_snapshot(db_session).total == Decimal("60000.00")
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("55000.00")
