@@ -49,7 +49,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.db_errors import extrair_sqlstate, traduzir_erro_banco
-from app.core.exceptions import BaixaInvalida, OperacaoNaoEncontrada
+from app.core.exceptions import MovimentoDuplicado, OperacaoNaoEncontrada
 from app.core.metrics import registrar_ativacao
 from app.models import EscCapitalSocial, OperacaoCredito
 
@@ -301,7 +301,7 @@ def registrar_movimento_bancario(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise BaixaInvalida(
+        raise MovimentoDuplicado(
             f"Já existe um movimento bancário com o documento '{documento}'."
         ) from exc
     except DBAPIError as exc:

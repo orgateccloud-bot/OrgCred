@@ -206,7 +206,7 @@ class TestMovimentosEBaixa:
         lista = admin_client.get("/api/cobranca/movimentos").json()
         assert [m["documento"] for m in lista] == ["FITID-ROUTER-1"]
 
-    def test_documento_duplicado_vira_422(self, admin_client: TestClient) -> None:
+    def test_documento_duplicado_vira_409(self, admin_client: TestClient) -> None:
         """Reimportar o mesmo extrato é rotina; a resposta precisa dizer o
         que houve, não vazar o nome da constraint."""
         corpo = {
@@ -216,8 +216,12 @@ class TestMovimentosEBaixa:
         }
         assert admin_client.post("/api/cobranca/movimentos", json=corpo).status_code == 201
 
+        # 409 e não 422: o corpo enviado está correto: o conflito é com o
+        # estado do servidor, que já tem esse documento. E o código próprio
+        # impede que a UI traduza isto como "baixa sem lastro" (OC011).
         repetido = admin_client.post("/api/cobranca/movimentos", json=corpo)
-        assert repetido.status_code == 422
+        assert repetido.status_code == 409
+        assert repetido.json()["codigo"] == "MOVIMENTO_DUPLICADO"
         assert "Já existe um movimento" in repetido.json()["detail"]
 
     def test_baixa_pelo_endpoint(

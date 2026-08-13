@@ -40,6 +40,51 @@ async function arquivarIdentificacao(client: Client, tomadorId: string) {
 }
 
 /**
+ * Zera as tabelas do cenário no banco de DESENVOLVIMENTO.
+ *
+ * Desde a migration 016, `capital_ledger` e `esc_capital_social` recusam
+ * TRUNCATE por trigger de statement (as guardas append-only anteriores eram
+ * por LINHA, e TRUNCATE passava por baixo delas). Ou seja: apagar a trilha
+ * exige desligar a proteção com nome e sobrenome, e é isso que este helper
+ * faz — de propósito verboso, porque a dificuldade é a prova de que pela
+ * aplicação não existe caminho para destruir o histórico.
+ */
+async function zerarCenario(client: Client) {
+  await client.query('alter table capital_ledger disable trigger trg_bloquear_truncate_ledger')
+  await client.query(
+    'alter table esc_capital_social disable trigger trg_bloquear_truncate_capital_social',
+  )
+  await client.query('alter table operacao_evento disable trigger trg_bloquear_truncate_evento')
+  // O `cascade` alcança estas duas por chave estrangeira, então elas também
+  // recebem o TRUNCATE e disparam a própria guarda.
+  await client.query('alter table tomador_documento disable trigger trg_bloquear_truncate_documento')
+  await client.query(
+    'alter table ocorrencia_atipicidade disable trigger trg_bloquear_truncate_ocorrencia',
+  )
+  try {
+    // movimento_bancario entra explicitamente: ele é referenciado POR parcela,
+    // então o cascade de operacao_credito não o alcança — sem isto o documento
+    // único de uma execução anterior sobrevive e a próxima falha com "já existe
+    // um movimento".
+    await client.query(
+      'truncate capital_ledger, operacao_credito, esc_capital_social, movimento_bancario cascade',
+    )
+  } finally {
+    await client.query('alter table capital_ledger enable trigger trg_bloquear_truncate_ledger')
+    await client.query(
+      'alter table esc_capital_social enable trigger trg_bloquear_truncate_capital_social',
+    )
+    await client.query('alter table operacao_evento enable trigger trg_bloquear_truncate_evento')
+    await client.query(
+      'alter table tomador_documento enable trigger trg_bloquear_truncate_documento',
+    )
+    await client.query(
+      'alter table ocorrencia_atipicidade enable trigger trg_bloquear_truncate_ocorrencia',
+    )
+  }
+}
+
+/**
  * Limpa os tomadores de teste e o que pende deles.
  *
  * `tomador_documento` está sob retenção legal (OC013) e
@@ -89,13 +134,7 @@ export async function semearCenarioAtivacao(): Promise<CenarioAtivacao> {
   try {
     // Dev DB, não produção — reset das tabelas do cenário para tornar o
     // teste repetível entre execuções locais.
-    await client.query(
-      // movimento_bancario entra explicitamente: ele e referenciado POR
-      // parcela, entao o cascade de operacao_credito nao o alcanca — sem
-      // isto o documento unico de uma execucao anterior sobrevive e a
-      // proxima falha com "ja existe um movimento".
-      'truncate capital_ledger, operacao_credito, esc_capital_social, movimento_bancario cascade',
-    )
+    await zerarCenario(client)
     await limparTomadoresDeTeste(client)
     await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
 
@@ -188,13 +227,7 @@ export async function semearCenarioAging(): Promise<CenarioAging> {
   await client.connect()
 
   try {
-    await client.query(
-      // movimento_bancario entra explicitamente: ele e referenciado POR
-      // parcela, entao o cascade de operacao_credito nao o alcanca — sem
-      // isto o documento unico de uma execucao anterior sobrevive e a
-      // proxima falha com "ja existe um movimento".
-      'truncate capital_ledger, operacao_credito, esc_capital_social, movimento_bancario cascade',
-    )
+    await zerarCenario(client)
     await limparTomadoresDeTeste(client)
     await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
 
@@ -280,13 +313,7 @@ export async function semearCenarioGeografico(): Promise<CenarioGeografico> {
   await client.connect()
 
   try {
-    await client.query(
-      // movimento_bancario entra explicitamente: ele e referenciado POR
-      // parcela, entao o cascade de operacao_credito nao o alcanca — sem
-      // isto o documento unico de uma execucao anterior sobrevive e a
-      // proxima falha com "ja existe um movimento".
-      'truncate capital_ledger, operacao_credito, esc_capital_social, movimento_bancario cascade',
-    )
+    await zerarCenario(client)
     await limparTomadoresDeTeste(client)
     await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
 
@@ -336,6 +363,98 @@ export async function semearCenarioGeografico(): Promise<CenarioGeografico> {
     )
 
     return { usuarioId, accessToken, operacaoForaDaAreaId: opFora.rows[0].id }
+  } finally {
+    await client.end()
+  }
+}
+
+export interface CenarioSemIdentificacao {
+  usuarioId: string
+  accessToken: string
+  tomadorId: string
+  razaoSocial: string
+}
+
+/**
+ * Tomador cadastrado e SEM nenhuma evidência de identificação arquivada.
+ *
+ * É o estado em que todo tomador criado pela interface nasce, e o que o gate
+ * OC019 (migration 014) recusa ativar. Serve para exercitar a seção de
+ * Identificação da ficha: o vazio que avisa do bloqueio, e o upload real —
+ * cujo corpo multipart é inspecionado na rede, já que sem `service_role` key
+ * o servidor responde 503 antes de processar o arquivo.
+ */
+export async function semearTomadorSemIdentificacao(): Promise<CenarioSemIdentificacao> {
+  const client = new Client({ connectionString: DB_URL })
+  await client.connect()
+
+  try {
+    await zerarCenario(client)
+    await limparTomadoresDeTeste(client)
+    await client.query("delete from usuario where email = 'e2e-operador@orgcred.test'")
+
+    const usuarioId = randomUUID()
+    await client.query(
+      `insert into usuario (id, email, nome, papel, ativo) values ($1, $2, $3, $4, $5)`,
+      [usuarioId, 'e2e-operador@orgcred.test', 'Operador E2E', 'admin', true],
+    )
+
+    const razaoSocial = 'Mercearia Sem Documento ME'
+    const tomador = await client.query<{ id: string }>(
+      `insert into tomador (cnpj, razao_social, porte, municipio, uf, municipio_autorizado)
+       values ($1, $2, 'ME', 'Formoso', 'GO', true) returning id`,
+      [`9999${String(Date.now()).slice(-10)}`, razaoSocial],
+    )
+
+    const accessToken = jwt.sign(
+      {
+        sub: usuarioId,
+        email: 'e2e-operador@orgcred.test',
+        role: 'authenticated',
+        aud: 'authenticated',
+      },
+      DEV_JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '1h' },
+    )
+
+    return { usuarioId, accessToken, tomadorId: tomador.rows[0].id, razaoSocial }
+  } finally {
+    await client.end()
+  }
+}
+
+/**
+ * Baixa TODAS as parcelas da operação contra movimento bancário.
+ *
+ * Desde a migration 017, `ativa -> liquidada` só passa com a agenda inteira
+ * baixada (OC022) — quitação exige provar o pagamento. Espelha o helper
+ * `quitar_operacao` de tests/conftest.py, deliberadamente: se a regra de
+ * lastro mudar, os dois têm que mudar juntos, e ter o mesmo formato torna a
+ * divergência visível.
+ *
+ * Devolve quantas parcelas foram baixadas; zero significa operação sem
+ * agenda, cenário que a 017 recusa liquidar de propósito.
+ */
+export async function quitarOperacao(operacaoId: string): Promise<number> {
+  const client = new Client({ connectionString: DB_URL })
+  await client.connect()
+
+  try {
+    const parcelas = await client.query<{ id: string; valor_total: string }>(
+      'select id, valor_total from parcela where operacao_id = $1 order by numero',
+      [operacaoId],
+    )
+
+    for (const parcela of parcelas.rows) {
+      const movimento = await client.query<{ id: string }>(
+        `insert into movimento_bancario (data_movimento, valor, documento)
+         values (current_date, $1, $2) returning id`,
+        [parcela.valor_total, `FITID-QUIT-${parcela.id.slice(0, 12)}`],
+      )
+      await client.query('select fn_baixar_parcela($1, $2)', [parcela.id, movimento.rows[0].id])
+    }
+
+    return parcelas.rowCount ?? 0
   } finally {
     await client.end()
   }

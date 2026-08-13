@@ -90,6 +90,25 @@ class BaixaInvalida(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC011", http_status=422)
 
 
+class MovimentoDuplicado(RegraNegocioViolada):
+    """Documento de extrato já registrado (violação do UNIQUE de `documento`).
+
+    Código próprio, e não OC011, porque reimportar o mesmo extrato — coisa
+    rotineira na operação real — NÃO é "baixa sem lastro". Enquanto OC011 não
+    estava no dicionário do frontend, a mensagem específica desta exceção
+    vazava e disfarçava a confusão; assim que OC011 ganhou tradução, quem
+    repetia um FITID passou a ler "a baixa não tem lastro bancário válido",
+    que descreve outro problema e manda conferir a coisa errada. Um código
+    que significa duas situações não produz uma mensagem correta para as duas.
+
+    Não tem SQLSTATE: a violação é de constraint (23505), capturada como
+    IntegrityError na aplicação, não levantada por trigger com `errcode`.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="MOVIMENTO_DUPLICADO", http_status=409)
+
+
 class MovimentoImutavel(RegraNegocioViolada):
     """OC012: extrato bancário é fato de fora — registra-se, não se edita."""
 

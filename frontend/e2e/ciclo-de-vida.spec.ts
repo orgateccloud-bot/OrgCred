@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import {
+  quitarOperacao,
   semearCenarioAtivacao,
   semearCenarioGeografico,
   type CenarioAtivacao,
@@ -145,7 +146,32 @@ test.describe('Ciclo de vida da operação de crédito', () => {
     await page.goto('/')
     await expect(page.getByText('10,0% de')).toBeVisible()
 
-    // --- Liquidar: devolve o capital --------------------------------------
+    // --- Liquidar com a agenda em aberto: RECUSADO (OC022) -----------------
+    // Desde a migration 017, liquidar É a quitação: devolver capital ao teto
+    // exige a agenda inteira baixada contra movimento bancário. Antes disso
+    // um POST devolvia 100% do capital com a agenda inteira em aberto — o
+    // caminho mais curto para furar o Art. 5º.
+    await page.goto('/operacoes')
+    await page.getByRole('link', { name: 'Padaria E2E ME' }).first().click()
+
+    // Esta operação foi criada pela interface, não semeada — o id só existe
+    // aqui, na URL. Capturado antes de sair da tela.
+    const operacaoId = new URL(page.url()).pathname.split('/').pop() as string
+
+    await page.getByRole('button', { name: 'Liquidar' }).click()
+    await page.getByRole('button', { name: 'Confirmar liquidação' }).click()
+    await expect(page.getByRole('alert')).toContainText(/parcela|lastro/i)
+
+    // Capital continua comprometido — a recusa não moveu nada.
+    await page.goto('/')
+    await expect(page.getByText('10,0% de')).toBeVisible()
+
+    // --- Quitar de verdade: aí sim devolve o capital -----------------------
+    // A baixa das 10 parcelas é feita pelo banco (um movimento por parcela)
+    // porque exercitá-la pela tela é o assunto de cobranca.spec.ts — aqui o
+    // que importa provar é o efeito da quitação sobre o teto.
+    expect(await quitarOperacao(operacaoId)).toBe(10)
+
     await page.goto('/operacoes')
     await page.getByRole('link', { name: 'Padaria E2E ME' }).first().click()
     await page.getByRole('button', { name: 'Liquidar' }).click()

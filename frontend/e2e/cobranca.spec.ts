@@ -130,7 +130,10 @@ test.describe('Régua de inadimplência', () => {
     await page.getByLabel('Valor (R$)').fill('2000')
     await page.getByLabel('Documento').fill('FITID-E2E-001')
     await page.getByRole('button', { name: 'Registrar', exact: true }).click()
-    await expect(page.getByRole('dialog')).toContainText('Já existe um movimento')
+    // A mensagem vem do dicionário de UI (código MOVIMENTO_DUPLICADO), não do
+    // texto cru do servidor: reimportar extrato é rotina, e o operador precisa
+    // ser mandado para a lista de movimentos, onde o lançamento já está.
+    await expect(page.getByRole('dialog')).toContainText('Este documento já foi registrado')
     await page.getByRole('button', { name: 'Cancelar' }).click()
 
     // --- Agora a baixa acontece, e o atraso some --------------------------
@@ -150,12 +153,15 @@ test.describe('Régua de inadimplência', () => {
     await page.goto('/cobranca')
     await expect(page.getByRole('row', { name: /FITID-E2E-001/ })).toContainText('Conciliado')
 
-    // Este teste PROVOCA um 422 de propósito (documento duplicado), e o
+    // Este teste PROVOCA um 409 de propósito (documento duplicado), e o
     // navegador loga toda resposta 4xx como erro de console. Filtrar só essa
     // linha — em vez de abandonar a asserção — mantém o detector de erro de
     // JavaScript, que é o que já pegou TooltipProvider ausente e HTML
     // inválido nesta suíte.
-    const inesperados = errosConsole.filter((e) => !e.includes('422 (Unprocessable Entity)'))
+    //
+    // 409 e não 422: reimportar extrato manda um corpo VÁLIDO; o conflito é
+    // com o estado do servidor, que já tem aquele documento.
+    const inesperados = errosConsole.filter((e) => !e.includes('409 (Conflict)'))
     expect(inesperados, `erros de console: ${inesperados.join(' | ')}`).toEqual([])
   })
 })

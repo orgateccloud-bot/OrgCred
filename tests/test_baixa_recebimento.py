@@ -26,7 +26,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.capital_engine import ativar_operacao, baixar_parcela, registrar_movimento_bancario
-from app.core.exceptions import BaixaInvalida
+from app.core.exceptions import BaixaInvalida, MovimentoDuplicado
 from tests.conftest import (
     MIGRATIONS,
     MIGRATIONS_DIR,
@@ -227,7 +227,12 @@ def test_documento_duplicado_e_recusado(db_session):
     operação real — não pode duplicar crédito."""
     _movimento(db_session, "1000", documento="FITID-123")
 
-    with pytest.raises(BaixaInvalida, match="Já existe um movimento"):
+    # Código próprio (MOVIMENTO_DUPLICADO, HTTP 409) e não OC011: documento
+    # repetido não é "baixa sem lastro". Enquanto os dois compartilhavam
+    # código, o dicionário do frontend mandava conferir o extrato atrás de um
+    # movimento inexistente — quando o movimento existe, e é justamente por
+    # isso que a segunda importação foi recusada.
+    with pytest.raises(MovimentoDuplicado, match="Já existe um movimento"):
         _movimento(db_session, "1000", documento="FITID-123")
 
 

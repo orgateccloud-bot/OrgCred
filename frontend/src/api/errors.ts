@@ -59,6 +59,12 @@ const MENSAGENS_POR_CODIGO: Record<string, string> = {
     'A baixa não tem lastro bancário válido: a parcela pode já estar baixada, ou o movimento não existe, já foi usado em outra parcela ou tem valor menor que a parcela. Confira o extrato e selecione outro movimento.',
   OC012:
     'Movimento bancário é fato externo: registra-se, não se edita. Importe o extrato corrigido em vez de alterar o lançamento.',
+  // Não é OC011: reimportar o mesmo extrato é rotina, e chamar isso de "baixa
+  // sem lastro" manda o operador conferir a coisa errada. O `documento` é
+  // UNIQUE justamente para que o mesmo crédito não baixe duas parcelas — a
+  // recusa aqui é a proteção funcionando, não um erro dele.
+  MOVIMENTO_DUPLICADO:
+    'Este documento já foi registrado — o extrato provavelmente foi importado antes. Confira a lista de movimentos: o lançamento já está lá e pode ser usado na baixa.',
   OC013:
     'Esta evidência de identificação está dentro do prazo de retenção legal de 5 anos (Lei 9.613/98) e não pode ser alterada nem excluída. Se o documento mudou, arquive uma nova evidência ao lado da atual.',
   OC014:
