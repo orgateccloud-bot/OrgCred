@@ -234,8 +234,12 @@ cada write-off. Recuperar capacidade operacional exige **aporte de capital**
 eventos distintos no `capital_ledger` — quem auditar precisa conseguir separar
 "foi pago" de "foi perdoado" sem interpretar valores.
 
-**Implementação:** gate no banco (migration 017), não em Python, como todo
-invariante legal deste projeto.
+**Implementação: ✅ concluída.** Gate no banco pela migration 017 (OC022), não
+em Python, como todo invariante legal deste projeto. O write-off é o estado
+terminal `baixada_prejuizo`, que **permanece dentro do conjunto que ocupa o
+teto** — foi assim que o capital deixou de ser devolvido sem que a operação
+continuasse sendo cobrada: ocupar o teto e estar em cobrança deixaram de ser o
+mesmo conjunto de estados.
 
 ---
 

@@ -132,16 +132,29 @@ class RegistroOperacao(Base):
 
 
 class TomadorDocumento(Base):
-    """Evidência de identificação arquivada (migration 010).
+    """Evidência de identificação arquivada (migrations 010 e 019).
 
-    Guarda o HASH, não o arquivo: o binário vive no storage, e o que o banco
-    garante é que o documento apresentado depois é bit a bit o mesmo que foi
-    arquivado.
+    O banco guarda o HASH e o ENDEREÇO; os bytes ficam no storage
+    (`storage_objeto`, migration 019). A divisão é deliberada: guardar o
+    binário no Postgres inflaria o banco sem acrescentar garantia — o que se
+    precisa provar é que o documento apresentado numa fiscalização é bit a
+    bit o mesmo que foi arquivado, e para isso basta o hash. O que NÃO basta
+    é o hash sozinho, e foi assim que o sistema ficou da 010 até a 019: sem
+    storage nenhum, `sha256` chegava do cliente como texto e a identificação
+    exigida pela Lei 9.613/98 (art. 10, I) era satisfeita por 64 caracteres
+    digitados. Hoje o servidor recebe o arquivo, calcula o hash dos bytes e
+    guarda os bytes antes de gravar esta linha.
+
+    `storage_objeto` é nulo apenas nas evidências anteriores à 019, cujos
+    bytes nunca existiram em lugar nenhum — ver a justificativa no cabeçalho
+    da migration.
 
     `retencao_ate` é materializada, não calculada na leitura — se o prazo
     legal mudar, os documentos já arquivados mantêm a regra vigente à época,
     que é o que se defende numa fiscalização. Apagar antes do prazo é
-    recusado pelo banco (OC013, Lei 9.613/98 art. 10, III).
+    recusado pelo banco (OC013, Lei 9.613/98 art. 10, III), e o mesmo OC013
+    recusa QUALQUER update: repontar `storage_objeto` para outro objeto
+    trocaria o documento arquivado mantendo o hash, então nem isso passa.
     """
 
     __tablename__ = "tomador_documento"
@@ -154,6 +167,9 @@ class TomadorDocumento(Base):
     arquivado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
     retencao_ate = Column(Date, nullable=False)
     usuario_id = Column(String(255), nullable=True)
+    # '<bucket>/<caminho>' — o bucket vai junto porque a retenção é de 5 anos
+    # e o bucket configurado muda (migration 019).
+    storage_objeto = Column(String, nullable=True)
 
 
 class OcorrenciaAtipicidade(Base):

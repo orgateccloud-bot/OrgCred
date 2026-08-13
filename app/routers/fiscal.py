@@ -178,7 +178,16 @@ class ApuracaoOut(BaseModel):
     ano: int
     trimestre: int
     versao: int
+    # Três linhas de receita, e não uma: `receita_juros` é o rendimento
+    # CONTRATUAL da agenda (migration 007) e `receita_demais` é a mora/multa
+    # efetivamente recebida — naturezas diferentes, linhas diferentes da
+    # escrituração, e uma mora que cresce é indicador de inadimplência que
+    # ficaria invisível diluída dentro de "receita de juros". `receita_total`
+    # é a base que de fato foi tributada; vem de coluna GERADA no banco
+    # (migration 018), então não há como a soma exibida divergir das parcelas.
     receita_juros: Decimal
+    receita_demais: Decimal
+    receita_total: Decimal
     base_irpj: Decimal
     irpj: Decimal
     adicional_irpj: Decimal
@@ -197,6 +206,8 @@ def _apuracao_out(r: object) -> ApuracaoOut:
         trimestre=r.trimestre,  # type: ignore[attr-defined]
         versao=r.versao,  # type: ignore[attr-defined]
         receita_juros=r.receita_juros,  # type: ignore[attr-defined]
+        receita_demais=r.receita_demais,  # type: ignore[attr-defined]
+        receita_total=r.receita_total,  # type: ignore[attr-defined]
         base_irpj=r.base_irpj,  # type: ignore[attr-defined]
         irpj=r.irpj,  # type: ignore[attr-defined]
         adicional_irpj=r.adicional_irpj,  # type: ignore[attr-defined]

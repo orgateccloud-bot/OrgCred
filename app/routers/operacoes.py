@@ -430,9 +430,67 @@ def post_liquidar_operacao(
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_operador_user),
 ) -> OperacaoStatusOut:
-    """ativa/inadimplente -> liquidada; o trigger devolve o capital e grava
-    o evento 'liquidacao' no ledger."""
+    """
+    QUITAÇÃO: ativa/inadimplente -> liquidada. Devolve o capital ao teto e
+    grava o evento 'liquidacao' no ledger.
+
+    Desde a migration 017 o banco exige a PROVA de que o dinheiro voltou:
+    todas as parcelas pagas, cada uma contra um movimento bancário. Faltando
+    uma, a recusa é OC022 (422) — e o caminho para encerrar a cobrança sem
+    pagamento é o outro endpoint, `/baixar-prejuizo`.
+
+    Até a 017 esta chamada liquidava INCONDICIONALMENTE: uma operação com a
+    agenda inteira em aberto devolvia 100% do capital ao teto e sumia do
+    aging. Era o furo mais grave do sistema e estava ao alcance de qualquer
+    operador — nada aqui mudou de assinatura, mudou quem decide.
+    """
     return _transicao(db, operacao_id, "liquidada", user)
+
+
+@router.post("/{operacao_id}/baixar-prejuizo", response_model=OperacaoStatusOut)
+def post_baixar_prejuizo(
+    operacao_id: UUID,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_operador_user),
+) -> OperacaoStatusOut:
+    """
+    WRITE-OFF: ativa/inadimplente -> baixada_prejuizo. Encerra a cobrança e
+    NÃO devolve capital ao teto — o dinheiro não voltou.
+
+    ENDPOINT PRÓPRIO, e não um campo no corpo de `/liquidar`. As duas coisas
+    parecem a mesma ("encerrar a operação") e têm consequências opostas sobre
+    o teto do Art. 5º, o que é exatamente a razão de não compartilharem porta:
+
+    - um booleano no corpo faz o ato irreversível ficar a um caractere de
+      distância do ato seguro, e transforma um cliente que ESQUECEU o campo
+      em um cliente que escolheu um dos dois por omissão. Não existe default
+      inofensivo aqui: `false` liquida sem prova (o furo de volta), `true`
+      condena ao prejuízo uma operação quitada;
+    - a URL é o que aparece no log de acesso, no OpenAPI e na tela. "Este
+      operador chamou /baixar-prejuizo" é uma frase que a auditoria lê
+      sozinha; "chamou /liquidar com write_off=true" exige ter guardado o
+      corpo da requisição, que ninguém guarda;
+    - o dia em que a ESC decidir que write-off é ato de gestão (papel admin,
+      alçada por valor, dupla aprovação), a restrição entra na dependency
+      DESTE endpoint. Com um campo no corpo, a checagem de papel teria que
+      olhar o payload — autorização condicionada a dado de entrada, que é
+      como se erram permissões.
+
+    Segue o padrão do próprio router, em que cada transição tem sua rota
+    (`/registrar`, `/cancelar`, `/marcar-inadimplente`, `/renegociar`).
+
+    CONSEQUÊNCIA QUE A UI PRECISA DIZER ANTES DE CHAMAR: o teto encolhe de
+    forma permanente. A operação continua no comprometido para sempre, e
+    recuperar capacidade operacional exige aporte de capital (novo evento de
+    constituição), não uma baixa contábil. É estado terminal: não há volta
+    para 'ativa' nem caminho daqui para 'liquidada' (OC003).
+
+    Mantido em `get_operador_user` como as demais transições: restringir a
+    admin é decisão de negócio que ninguém tomou — a política decidida em
+    2026-08-12 fala do EFEITO no capital, não de alçada. Quando a decisão
+    sair, é a linha de cima que muda.
+    """
+    return _transicao(db, operacao_id, "baixada_prejuizo", user)
 
 
 @router.post("/{operacao_id}/cancelar", response_model=OperacaoStatusOut)

@@ -59,6 +59,7 @@ from tests.conftest import (
     _base_admin_url,
     arquivar_identificacao,
     confirmar_registro,
+    quitar_operacao,
     sqlstate_de,
 )
 
@@ -470,6 +471,14 @@ class TestAtivacaoContraLiquidacao:
             # Ativar aqui já é o caminho feliz do teto (30.000 sobre 50.000);
             # a corrida disputa a folga de 20.000 que sobra.
             ativa = _operacao_ativa(sessao, _tomador_apto(sessao, "Alvo D ME"), 30_000)
+            # Desde a migration 017, liquidar é QUITAÇÃO e exige a agenda
+            # inteira baixada contra movimento bancário (OC022). A corrida
+            # continua sendo entre ativação e liquidação; o que muda é que a
+            # liquidação precisa estar apta a acontecer antes de a corrida
+            # começar — senão a thread perdedora não perderia por concorrência,
+            # perderia por falta de lastro, e o teste deixaria de provar o que
+            # promete.
+            quitar_operacao(sessao, ativa)
             pretendente = _operacao_registrada(sessao, _tomador_apto(sessao, "Alvo E ME"), 40_000)
 
         def liquidar(session: Session) -> None:

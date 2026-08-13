@@ -15,13 +15,28 @@ silenciosamente se a mensagem do trigger mudar. Códigos:
   OC004 ativação sem registro na entidade registradora
   OC005 redução de capital abaixo do comprometido
   OC008 renegociação/substituta fora da novação atômica
+  OC022 liquidação sem quitação comprovada (migration 017)
 
-Capital COMPROMETIDO = operações em 'ativa' OU 'inadimplente'. Inadimplente
-entra porque o dinheiro não voltou: o título saiu de 'ativa', mas continua
-ocupando o teto do Art. 5º até ser efetivamente liquidado. Antes da
-migration 006 o comprometido contava só 'ativa', e marcar inadimplência
-liberava o capital de um empréstimo não pago — permitindo emprestá-lo de
-novo (furo comprovado contra Postgres real, ver 006_novacao_e_inadimplencia.sql).
+Capital COMPROMETIDO = operações em 'ativa', 'inadimplente' OU
+'baixada_prejuizo'. Inadimplente entra porque o dinheiro não voltou: o título
+saiu de 'ativa', mas continua ocupando o teto do Art. 5º até ser efetivamente
+liquidado. Antes da migration 006 o comprometido contava só 'ativa', e marcar
+inadimplência liberava o capital de um empréstimo não pago — permitindo
+emprestá-lo de novo (furo comprovado contra Postgres real, ver
+006_novacao_e_inadimplencia.sql).
+
+'baixada_prejuizo' (write-off, migration 017) entra pela mesma razão levada ao
+limite: o dinheiro não só continua fora como não vai voltar. Encerrar a
+cobrança é ato de gestão; devolver o capital ao teto seria autorizar emprestar
+de novo o mesmo dinheiro que já se perdeu. O teto encolhe permanentemente a
+cada baixa como prejuízo, e recuperar capacidade exige APORTE de capital — é
+consequência decidida, não efeito colateral (DECISOES_PENDENTES.md §6).
+
+DOIS CONJUNTOS QUE DEIXARAM DE SER O MESMO, e é a distinção que estas queries
+precisam respeitar: 'baixada_prejuizo' ocupa o teto mas NÃO está em cobrança
+(fica fora de `v_aging_operacoes` e de `fn_processar_aging`, migration 008).
+Quem for acrescentar um status novo tem que responder às duas perguntas
+separadamente.
 """
 
 from datetime import date
@@ -60,7 +75,8 @@ def consultar_capital_disponivel(db: Session) -> Decimal:
         text("""
         select (select capital_atual from v_capital_atual)
              - coalesce((select sum(valor_principal) from operacao_credito
-                         where status in ('ativa', 'inadimplente')), 0) as disponivel
+                         where status in ('ativa', 'inadimplente', 'baixada_prejuizo')),
+                        0) as disponivel
     """)
     ).first()
     if row is None:
@@ -87,7 +103,8 @@ def consultar_capital_snapshot(db: Session) -> CapitalSnapshot:
         select
             (select capital_atual from v_capital_atual) as total,
             coalesce((select sum(valor_principal) from operacao_credito
-                      where status in ('ativa', 'inadimplente')), 0) as comprometido
+                      where status in ('ativa', 'inadimplente', 'baixada_prejuizo')),
+                     0) as comprometido
     """)
     ).first()
     if row is None:

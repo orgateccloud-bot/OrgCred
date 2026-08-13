@@ -53,6 +53,9 @@ MIGRATIONS = [
     "014_gate_identificacao",
     "015_bordas_do_capital",
     "016_bordas_da_cobranca",
+    "017_gate_de_liquidacao",
+    "018_correcoes_fiscais",
+    "019_storage_documento",
 ]
 
 
@@ -241,19 +244,29 @@ def arquivar_identificacao(
     evidência arquivada (Lei 9.613/98, art. 10, I). O hash é arbitrário aqui
     — o que o gate verifica é a EXISTÊNCIA da evidência; a conferência de
     conteúdo é assunto de `POST /compliance/documentos/{id}/verificar`.
+
+    `storage_objeto` é preenchido no mesmo formato que o endpoint usa
+    ('<bucket>/<tomador>/<sha256>', migration 019) mesmo sem storage nenhum
+    por trás. É de graça e evita que a fixture vire a única fonte de linhas
+    com a forma ANTIGA da evidência — as sem bytes, que existem no banco de
+    produção mas não devem ser o cenário padrão de teste. Quem precisar
+    testar aquele caso escreve o INSERT com `storage_objeto` nulo, e fica
+    explícito que é isso que ele está testando.
     """
+    sha = hashlib.sha256(f"{tomador_id}:{tipo}".encode()).hexdigest()
     documento_id = db_session.execute(
         text("""
         insert into tomador_documento
-            (tomador_id, tipo, nome_arquivo, sha256, retencao_ate)
-        values (:t, :tipo, :nome, :sha, current_date + interval '5 years')
+            (tomador_id, tipo, nome_arquivo, sha256, retencao_ate, storage_objeto)
+        values (:t, :tipo, :nome, :sha, current_date + interval '5 years', :obj)
         returning id
         """),
         {
             "t": str(tomador_id),
             "tipo": tipo,
             "nome": f"{tipo}.pdf",
-            "sha": hashlib.sha256(f"{tomador_id}:{tipo}".encode()).hexdigest(),
+            "sha": sha,
+            "obj": f"identificacao-tomador/{tomador_id}/{sha}",
         },
     ).scalar_one()
     db_session.commit()
@@ -285,6 +298,38 @@ def baixar_parcelas(db_session: Session, operacao_id: uuid.UUID, numeros: list[i
             {"p": str(parcela.id), "m": str(movimento_id)},
         )
     db_session.commit()
+
+
+def quitar_operacao(db_session: Session, operacao_id: uuid.UUID) -> int:
+    """Baixa TODAS as parcelas da operação e devolve quantas foram.
+
+    Existe porque, desde a migration 017, `ativa -> liquidada` só passa com a
+    agenda inteira baixada contra movimento bancário (OC022). Antes dela,
+    liquidar era um `update` de uma palavra e todo teste que precisava de
+    "operação encerrada" escrevia essa palavra; agora encerrar por QUITAÇÃO
+    exige provar o pagamento, e essa prova é sempre a mesma sequência —
+    um movimento por parcela, `fn_baixar_parcela` em cada uma.
+
+    Reaproveita `baixar_parcelas` em vez de repetir o INSERT de movimento: a
+    diferença entre as duas é só o recorte (algumas parcelas vs. a agenda
+    toda), e duplicar a criação do lastro criaria dois jeitos de baixar em
+    teste — um deles fatalmente esquecido quando a regra de lastro mudar.
+
+    Devolve a contagem para que quem chama possa afirmar que havia agenda: um
+    zero silencioso aqui significaria operação sem parcela, que a 017 recusa
+    liquidar de propósito (`v_parcelas_totais = 0`) e que o teste deve
+    perceber como cenário mal montado, não como caminho feliz.
+    """
+    numeros = (
+        db_session.execute(
+            text("select numero from parcela where operacao_id = :op order by numero"),
+            {"op": str(operacao_id)},
+        )
+        .scalars()
+        .all()
+    )
+    baixar_parcelas(db_session, operacao_id, list(numeros))
+    return len(numeros)
 
 
 @pytest.fixture()

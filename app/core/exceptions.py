@@ -195,6 +195,26 @@ class IdentificacaoAusente(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC019", http_status=422)
 
 
+class LiquidacaoSemQuitacao(RegraNegocioViolada):
+    """OC022: liquidar operação cujas parcelas não foram todas baixadas.
+
+    Liquidação é QUITAÇÃO: devolve o valor principal ao teto do Art. 5º
+    (LC 167/2019) e por isso exige a prova de que o dinheiro voltou — todas
+    as parcelas pagas, cada uma contra um movimento bancário. Sem o gate da
+    migration 017, `ativa -> liquidada` liberava 100% do capital com a agenda
+    inteira em aberto e zero centavo comprovado.
+
+    422 e não 409: não é conflito de estado (o destino 'liquidada' é
+    legítimo e continuará disponível assim que as parcelas forem baixadas) —
+    é regra de negócio sobre a prova que falta, como OC001 e OC004. A saída
+    para encerrar sem pagamento existe e é outra: a baixa como prejuízo
+    ('baixada_prejuizo'), que encerra a cobrança e NÃO devolve capital.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC022", http_status=422)
+
+
 class OperacaoNaoEncontrada(Exception):
     """Operação não existe."""
 

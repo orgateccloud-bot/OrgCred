@@ -21,6 +21,7 @@ from app.capital_engine import (
     transicionar_operacao,
 )
 from app.core.exceptions import (
+    LiquidacaoSemQuitacao,
     MunicipioNaoAutorizado,
     NovacaoForaDaTransacaoAtomica,
     OperacaoNaoEncontrada,
@@ -29,7 +30,13 @@ from app.core.exceptions import (
     TetoCapitalExcedido,
     TransicaoInvalida,
 )
-from tests.conftest import arquivar_identificacao, confirmar_registro, sqlstate_de
+from tests.conftest import (
+    arquivar_identificacao,
+    baixar_parcelas,
+    confirmar_registro,
+    quitar_operacao,
+    sqlstate_de,
+)
 
 
 def _criar_operacao(
@@ -159,6 +166,10 @@ class TestLiquidacaoLiberaCapital:
         with pytest.raises(TetoCapitalExcedido):
             ativar_operacao(db_session, op_b_id)
 
+        # Desde a migration 017, liquidar exige a agenda inteira baixada
+        # contra movimento bancário — inclusive por SQL cru, porque o gate
+        # vive no trigger e não no endpoint.
+        assert quitar_operacao(db_session, op_a_id) == 12
         db_session.execute(
             text("update operacao_credito set status = 'liquidada' where id = :id"),
             {"id": str(op_a_id)},
@@ -410,13 +421,111 @@ class TestTransicionarOperacao:
         ativa = ativar_operacao(db_session, op.id)
         assert ativa.status == "ativa"
 
-    def test_liquidar_devolve_capital_e_grava_no_ledger(
+    def test_liquidar_com_parcelas_abertas_e_bloqueado(
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
     ) -> None:
-        """ativa -> liquidada libera o capital comprometido e deixa rastro."""
+        """O FURO QUE A 017 FECHOU, agora provado pelo avesso.
+
+        Este teste existia e afirmava o contrário: liquidava uma operacao de
+        20.000 com as DOZE parcelas em aberto e assertava `comprometido == 0`
+        — ou seja, a suite provava que 100% do capital voltava ao teto sem um
+        centavo comprovado, tirava a operacao do aging e matava a cobranca. A
+        transicao passava porque a maquina de estados a autorizava e o bloco
+        de saida do trigger nao olhava parcela nenhuma.
+
+        Agora a recusa e OC022 e nada se move: nem o comprometido, nem o
+        ledger, nem o status.
+        """
         op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
         ativar_operacao(db_session, op_id)
         assert consultar_capital_snapshot(db_session).comprometido == Decimal("20000.00")
+
+        with pytest.raises(LiquidacaoSemQuitacao) as exc:
+            transicionar_operacao(db_session, op_id, "liquidada")
+        assert exc.value.sqlstate == "OC022"
+        assert exc.value.http_status == 422
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("20000.00")
+        status = db_session.execute(
+            text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
+        ).scalar_one()
+        assert status == "ativa"
+        eventos = (
+            db_session.execute(
+                text("select evento_tipo from capital_ledger where operacao_id = :i"),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert eventos == ["ativacao_operacao"]
+
+    def test_liquidar_com_uma_unica_parcela_em_aberto_ainda_e_bloqueado(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Onze de doze pagas nao e quitacao — e a borda que interessa.
+
+        Um gate escrito como "a maioria das parcelas" ou "o valor recebido
+        cobre o principal" passaria aqui, e a diferenca entre passar e nao
+        passar e todo o ponto: o teto so pode receber de volta o que voltou
+        INTEIRO. A mensagem cita a contagem justamente para o operador saber
+        quantas faltam."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+        baixar_parcelas(db_session, op_id, list(range(1, 12)))
+
+        with pytest.raises(LiquidacaoSemQuitacao) as exc:
+            transicionar_operacao(db_session, op_id, "liquidada")
+        assert exc.value.sqlstate == "OC022"
+        assert "1 de 12" in str(exc.value)
+
+    def test_liquidar_operacao_sem_agenda_nenhuma_e_bloqueado(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """AGENDA VAZIA E RECUSA, nao aprovacao por vacuidade.
+
+        O ramo que este teste exercita e o unico do gate que um `not exists
+        (parcela em aberto)` escrito de forma ingenua erraria: com zero
+        parcelas, "nenhuma esta em aberto" e VERDADEIRO, e o furo voltaria
+        inteiro — 100% do capital devolvido ao teto sem uma linha de agenda
+        para comprovar coisa alguma.
+
+        Pelo caminho normal o ramo e inalcancavel (a 007 gera a agenda no
+        gatilho de ativacao), e e exatamente por isso que ele precisa de um
+        teste: sem um, a clausula `v_parcelas_totais = 0` poderia ser apagada
+        por engano e a suite inteira continuaria verde. O cenario e montado
+        desligando `trg_parcela_imutavel` (mesmo recurso que
+        tests/test_baixa_recebimento.py e tests/test_aging.py ja usam), que e
+        a forma de simular o estado que existiria se aquele gatilho um dia
+        mudasse.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+
+        db_session.execute(text("alter table parcela disable trigger trg_parcela_imutavel"))
+        db_session.execute(text("delete from parcela where operacao_id = :i"), {"i": str(op_id)})
+        db_session.execute(text("alter table parcela enable trigger trg_parcela_imutavel"))
+        db_session.commit()
+
+        with pytest.raises(LiquidacaoSemQuitacao) as exc:
+            transicionar_operacao(db_session, op_id, "liquidada")
+        assert exc.value.sqlstate == "OC022"
+        assert "agenda de parcelas" in str(exc.value)
+
+        # E o capital continua comprometido: a recusa e do ATO, entao nada
+        # chegou ao bloco de saida do trigger.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("20000.00")
+
+    def test_quitacao_com_todas_as_parcelas_baixadas_devolve_capital(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """CAMINHO FELIZ: com a agenda inteira baixada contra movimento
+        bancario, liquidar continua devolvendo o capital e gravando
+        'liquidacao' — o gate recusa a liquidacao sem prova, nao a
+        liquidacao."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+        assert quitar_operacao(db_session, op_id) == 12
 
         liquidada = transicionar_operacao(db_session, op_id, "liquidada")
         assert liquidada.status == "liquidada"
@@ -434,6 +543,221 @@ class TestTransicionarOperacao:
             .all()
         )
         assert eventos == ["ativacao_operacao", "liquidacao"]
+
+    def test_write_off_encerra_a_cobranca_sem_devolver_capital(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A OUTRA METADE DA POLITICA (DECISOES_PENDENTES.md §6).
+
+        Write-off encerra a cobranca — a operacao sai de `v_aging_operacoes` —
+        e NAO devolve capital: o dinheiro nao voltou. O evento no ledger e
+        'baixa_prejuizo', distinto de 'liquidacao', para a auditoria separar
+        "foi pago" de "foi perdoado" sem interpretar valores. E o
+        `saldo_disponivel_pos` gravado e o disponivel REAL depois do ato, que
+        e o mesmo de antes: o write-off nao move o teto.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+
+        baixada = transicionar_operacao(db_session, op_id, "baixada_prejuizo")
+        assert baixada.status == "baixada_prejuizo"
+
+        # O capital continua comprometido — e essa e a decisao, nao um bug.
+        snapshot = consultar_capital_snapshot(db_session)
+        assert snapshot.comprometido == Decimal("20000.00")
+        assert snapshot.disponivel == Decimal("30000.00")
+        assert consultar_capital_disponivel(db_session) == Decimal("30000.00")
+
+        # Mas a cobranca acabou: fora do aging, com as parcelas ainda abertas
+        # (elas sao a prova documental de quanto ficou por receber).
+        assert (
+            db_session.execute(
+                text("select count(*) from v_aging_operacoes where operacao_id = :i"),
+                {"i": str(op_id)},
+            ).scalar_one()
+            == 0
+        )
+        assert (
+            db_session.execute(
+                text("select count(*) from parcela where operacao_id = :i and status = 'aberta'"),
+                {"i": str(op_id)},
+            ).scalar_one()
+            == 12
+        )
+
+        # Ordenado por `sorted` e nao por created_at: o default da coluna e
+        # `now()`, que na sessao de teste (savepoints dentro de UMA transacao
+        # externa — ver conftest.db_session) e IDENTICO para todas as linhas.
+        # Ordenar por ele aqui daria uma ordem arbitraria e um teste piscante.
+        eventos = (
+            db_session.execute(
+                text("select evento_tipo from capital_ledger where operacao_id = :i"),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert sorted(eventos) == ["ativacao_operacao", "baixa_prejuizo"]
+
+        evento = db_session.execute(
+            text(
+                "select valor, saldo_disponivel_pos from capital_ledger "
+                "where operacao_id = :i and evento_tipo = 'baixa_prejuizo'"
+            ),
+            {"i": str(op_id)},
+        ).one()
+        assert evento.valor == Decimal("20000.00")
+        assert evento.saldo_disponivel_pos == Decimal("30000.00")
+
+    def test_write_off_encolhe_o_teto_de_forma_permanente(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A consequencia intencional, escrita como teste para ninguem a
+        "consertar" depois achando que e regressao.
+
+        Com 50.000 de capital e 30.000 baixados como prejuizo, sobram 20.000
+        de capacidade — para sempre. Uma nova operacao de 25.000 nao cabe, e
+        so um APORTE de capital devolve a capacidade perdida (uma baixa
+        contabil nao devolve)."""
+        perdida = _criar_operacao(db_session, tomador_autorizado, 30_000)
+        ativar_operacao(db_session, perdida)
+        transicionar_operacao(db_session, perdida, "baixada_prejuizo")
+
+        nova = _criar_operacao(db_session, tomador_autorizado, 25_000)
+        with pytest.raises(TetoCapitalExcedido) as exc:
+            ativar_operacao(db_session, nova)
+        assert sqlstate_de(exc.value) == "OC001"
+
+        # Aporte de 30.000 e o unico caminho de volta.
+        registrar_evento_capital(db_session, valor=Decimal("30000"), tipo_evento="constituicao")
+        assert ativar_operacao(db_session, nova).status == "ativa"
+
+    def test_write_off_e_terminal_nos_dois_sentidos(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Nada sai de 'baixada_prejuizo' (OC003).
+
+        Voltar para 'ativa' ressuscitaria um credito sem contrato; ir para
+        'liquidada' devolveria ao teto, em dois passos, o capital que a 017
+        recusa devolver em um — e sem passar pelo gate de quitacao, porque
+        naquele momento a operacao ja nao estaria em 'ativa'."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 10_000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "baixada_prejuizo")
+
+        for destino in ("ativa", "liquidada", "inadimplente", "renegociada", "cancelada"):
+            with pytest.raises(TransicaoInvalida) as exc:
+                transicionar_operacao(db_session, op_id, destino)
+            assert sqlstate_de(exc.value) == "OC003", destino
+
+    def test_write_off_de_inadimplente_e_o_caminho_comum(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Na pratica se declara perda DEPOIS de a cobranca falhar, entao o
+        caminho que mais roda e inadimplente -> baixada_prejuizo. Como os dois
+        estados ja ocupavam o teto, o comprometido nao se mexe — o que muda e
+        a operacao sair da regua de cobranca."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 15_000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "inadimplente")
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("15000.00")
+
+        transicionar_operacao(db_session, op_id, "baixada_prejuizo")
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("15000.00")
+        assert (
+            db_session.execute(
+                text("select count(*) from v_aging_operacoes where operacao_id = :i"),
+                {"i": str(op_id)},
+            ).scalar_one()
+            == 0
+        )
+
+    def test_reducao_de_capital_conta_o_que_foi_baixado_como_prejuizo(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O furo pelo avesso, que so se fecha em fn_check_reducao_capital.
+
+        Se o gate do OC005 nao contasse 'baixada_prejuizo', bastaria baixar
+        30.000 como prejuizo e inserir uma 'reducao' de 30.000 para o
+        disponivel voltar ao que era antes de tudo: o capital perdido
+        reaparecendo como capacidade de emprestar, com o teto menor no papel.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "baixada_prejuizo")
+
+        with pytest.raises(ReducaoCapitalBloqueada) as exc:
+            registrar_evento_capital(db_session, valor=Decimal("30000"), tipo_evento="reducao")
+        assert sqlstate_de(exc.value) == "OC005"
+
+    def test_valor_de_operacao_baixada_como_prejuizo_continua_congelado(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O congelamento da 015 vale enquanto a operacao ocupa o teto — e a
+        baixada como prejuizo ocupa. Sem isto, `update ... set
+        valor_principal = 1` devolveria capital ao disponivel sem transicao,
+        sem evento e sem erro: o furo desta migration reaberto pela porta que
+        a 015 ja sabia ser perigosa."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "baixada_prejuizo")
+
+        exc = _bloqueio(
+            db_session,
+            "update operacao_credito set valor_principal = 1 where id = :i",
+            {"i": str(op_id)},
+        )
+        assert sqlstate_de(exc) == "OC020"
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("30000.00")
+
+    def test_exposicao_de_pld_conta_o_que_foi_baixado_como_prejuizo(
+        self,
+        db_session: Session,
+        tomador_sem_identificacao: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """`v_tomadores_sem_identificacao.capital_exposto` (010) tambem passou
+        a contar 'baixada_prejuizo'.
+
+        A view responde uma pergunta de PLD (Lei 9.613/98), nao de teto:
+        quanto dinheiro esta na rua com gente de quem nao temos identificacao
+        arquivada. Perdoar a divida nao desfaz a saida do dinheiro — ao
+        contrario, e o caso que mais interessa a uma fiscalizacao. Sem a
+        redefinicao da 017, declarar prejuizo ZERAVA a exposicao do tomador na
+        unica tela do sistema onde ela aparece.
+
+        O cenario e o real: a evidencia existia na ativacao (OC019 exige) e
+        foi expurgada depois de vencida a retencao de 5 anos — que e como um
+        tomador com dinheiro na rua acaba dentro desta view.
+        """
+        db_session.execute(
+            text(
+                "insert into tomador_documento "
+                "    (tomador_id, tipo, nome_arquivo, sha256, retencao_ate) "
+                "values (:t, 'contrato_social', 'vencido.pdf', :sha, "
+                "        current_date - interval '1 day')"
+            ),
+            {"t": str(tomador_sem_identificacao), "sha": "a" * 64},
+        )
+        db_session.commit()
+
+        op_id = _criar_operacao(db_session, tomador_sem_identificacao, 20_000)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "baixada_prejuizo")
+
+        db_session.execute(
+            text("delete from tomador_documento where tomador_id = :t"),
+            {"t": str(tomador_sem_identificacao)},
+        )
+        db_session.commit()
+
+        exposto = db_session.execute(
+            text(
+                "select capital_exposto from v_tomadores_sem_identificacao " "where tomador_id = :t"
+            ),
+            {"t": str(tomador_sem_identificacao)},
+        ).scalar_one()
+        assert exposto == Decimal("20000.00")
 
     def test_transicao_invalida_e_bloqueada_pelo_banco(
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
@@ -577,6 +901,10 @@ class TestInadimplenteComprometeCapital:
         ativar_operacao(db_session, op_id)
         transicionar_operacao(db_session, op_id, "inadimplente")
 
+        # Regularizar um inadimplente e pagar: desde a 017 a quitacao exige a
+        # agenda inteira baixada, e o gate vale para os DOIS caminhos de
+        # entrada em 'liquidada' (de 'ativa' e de 'inadimplente').
+        assert quitar_operacao(db_session, op_id) == 12
         transicionar_operacao(db_session, op_id, "liquidada")
 
         assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
@@ -1030,6 +1358,7 @@ class TestOperacaoComprometidaEhImutavel:
         de estados segue sendo a da 006."""
         op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
         ativar_operacao(db_session, op_id)
+        quitar_operacao(db_session, op_id)
 
         transicionar_operacao(db_session, op_id, "liquidada")
 

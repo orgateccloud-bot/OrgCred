@@ -16,7 +16,7 @@ from app.core.security import get_current_user, get_operador_user
 from app.db import get_db
 from app.main import app
 from app.models import Usuario
-from tests.conftest import confirmar_registro
+from tests.conftest import confirmar_registro, quitar_operacao
 
 
 @pytest.fixture()
@@ -292,3 +292,159 @@ class TestGetParcelas:
         assert Decimal(body["total_geral"]) == Decimal("12000.00")
         assert body["parcelas"][0]["numero"] == 1
         assert body["parcelas"][0]["status"] == "aberta"
+
+
+class TestEncerramentoDeOperacao:
+    """POST /liquidar e POST /baixar-prejuizo — os dois terminais.
+
+    Duas portas HTTP distintas de propósito (ver a justificativa longa no
+    docstring de `post_baixar_prejuizo`): a URL é o que aparece no log de
+    acesso e no OpenAPI, e um booleano no corpo faria o ato irreversível
+    ficar a um caractere do ato seguro.
+    """
+
+    def _operacao_ativa(
+        self, authed_client: TestClient, db_session: Session, tomador_id: uuid.UUID, valor: int
+    ) -> uuid.UUID:
+        op_id = db_session.execute(
+            text(
+                """
+                insert into operacao_credito
+                    (tomador_id, tipo, valor_principal, taxa_juros_mensal,
+                     sistema_amortizacao, numero_parcelas, status, registro_entidade_ref)
+                values (:t, 'emprestimo', :v, 0, 'PRICE', 12, 'registrada', 'REG-FIM')
+                returning id
+                """
+            ),
+            {"t": str(tomador_id), "v": valor},
+        ).scalar_one()
+        db_session.commit()
+        confirmar_registro(db_session, op_id)
+        assert authed_client.post(f"/api/operacoes/{op_id}/ativar").status_code == 200
+        return op_id  # type: ignore[no-any-return]
+
+    def test_liquidar_com_parcelas_abertas_retorna_422_com_oc022(
+        self,
+        authed_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """O furo, pela porta por onde qualquer operador o alcançava.
+
+        Antes da migration 017 esta chamada devolvia 200 e liberava os
+        R$ 20.000 inteiros ao teto sem um centavo comprovado.
+        """
+        op_id = self._operacao_ativa(authed_client, db_session, tomador_autorizado, 20_000)
+
+        response = authed_client.post(f"/api/operacoes/{op_id}/liquidar")
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["codigo"] == "OC022"
+        # A mensagem tem que apontar as DUAS saídas — baixar as parcelas ou
+        # assumir o prejuízo. Um 422 que só diz "não pode" deixa o operador
+        # sem próximo passo.
+        assert "baixada_prejuizo" in body["detail"]
+
+        # Nada se moveu: capital, status e disponível na API de capital.
+        assert Decimal(
+            authed_client.get("/api/capital/snapshot").json()["comprometido"]
+        ) == Decimal("20000.00")
+
+    def test_liquidar_apos_quitar_todas_as_parcelas_retorna_200(
+        self,
+        authed_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Caminho feliz da quitação: com a agenda inteira baixada contra
+        movimento bancário, o capital volta ao teto."""
+        op_id = self._operacao_ativa(authed_client, db_session, tomador_autorizado, 20_000)
+        assert quitar_operacao(db_session, op_id) == 12
+
+        response = authed_client.post(f"/api/operacoes/{op_id}/liquidar")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "liquidada"
+        assert Decimal(
+            authed_client.get("/api/capital/snapshot").json()["comprometido"]
+        ) == Decimal("0")
+
+    def test_baixar_prejuizo_encerra_sem_devolver_capital(
+        self,
+        authed_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Write-off pela API: 200, status terminal próprio, cobrança
+        encerrada e o comprometido INTACTO — o dinheiro não voltou."""
+        op_id = self._operacao_ativa(authed_client, db_session, tomador_autorizado, 20_000)
+
+        response = authed_client.post(f"/api/operacoes/{op_id}/baixar-prejuizo")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "baixada_prejuizo"
+
+        capital = authed_client.get("/api/capital/snapshot").json()
+        assert Decimal(capital["comprometido"]) == Decimal("20000.00")
+        assert Decimal(capital["disponivel"]) == Decimal("30000.00")
+
+        assert (
+            db_session.execute(
+                text("select count(*) from v_aging_operacoes where operacao_id = :i"),
+                {"i": str(op_id)},
+            ).scalar_one()
+            == 0
+        )
+        # `sorted` e não `order by created_at`: o default da coluna é `now()`,
+        # idêntico para todas as linhas dentro da transação externa da sessão
+        # de teste — ordenar por ele daria ordem arbitrária.
+        eventos = (
+            db_session.execute(
+                text("select evento_tipo from capital_ledger where operacao_id = :i"),
+                {"i": str(op_id)},
+            )
+            .scalars()
+            .all()
+        )
+        assert sorted(eventos) == ["ativacao_operacao", "baixa_prejuizo"]
+
+    def test_baixar_prejuizo_exige_papel_operador(
+        self, client_sem_papel_operador: TestClient
+    ) -> None:
+        """Mesma guarda das demais transições: papel insuficiente é 403 antes
+        de a operação sequer ser procurada."""
+        response = client_sem_papel_operador.post(f"/api/operacoes/{uuid.uuid4()}/baixar-prejuizo")
+        assert response.status_code == 403
+        assert response.json()["codigo"] == "PERMISSAO_NEGADA"
+
+    def test_baixar_prejuizo_sem_autenticacao_retorna_401(self, client: TestClient) -> None:
+        response = client.post(f"/api/operacoes/{uuid.uuid4()}/baixar-prejuizo")
+        assert response.status_code == 401
+
+    def test_baixar_prejuizo_de_operacao_inexistente_retorna_404(
+        self, authed_client: TestClient
+    ) -> None:
+        response = authed_client.post(f"/api/operacoes/{uuid.uuid4()}/baixar-prejuizo")
+        assert response.status_code == 404
+
+    def test_baixar_prejuizo_e_terminal_pela_api(
+        self,
+        authed_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Depois do write-off nenhuma porta reabre a operação — em especial
+        `/liquidar`, que devolveria em dois passos o capital que a 017 recusa
+        devolver em um."""
+        op_id = self._operacao_ativa(authed_client, db_session, tomador_autorizado, 10_000)
+        assert authed_client.post(f"/api/operacoes/{op_id}/baixar-prejuizo").status_code == 200
+
+        for rota in ("liquidar", "ativar", "marcar-inadimplente", "cancelar"):
+            resposta = authed_client.post(f"/api/operacoes/{op_id}/{rota}")
+            assert resposta.status_code == 409, rota
+            assert resposta.json()["codigo"] == "OC003", rota

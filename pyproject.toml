@@ -23,6 +23,16 @@ dependencies = [
     "supabase==2.1.1",
     "PyJWT==2.8.0",
     "slowapi==0.1.9",
+    # Storage dos documentos de identificação (migration 019). As duas são
+    # DE RUNTIME, não de teste: sem python-multipart o FastAPI recusa o
+    # `UploadFile` do arquivamento no import do router (a aplicação nem sobe),
+    # e sem httpx o app/core/storage.py não fala com o Supabase Storage.
+    # httpx já vinha instalado como dependência transitiva do `supabase`;
+    # declarado aqui porque agora é USADO DIRETAMENTE, e depender por acidente
+    # de uma transitiva quebra no dia em que a de cima trocar de cliente HTTP.
+    # A faixa é a que o supabase 2.1.1 admite (>=0.24,<0.25).
+    "httpx==0.24.1",
+    "python-multipart==0.0.9",
     # Logging & Observability
     "structlog==24.4.0",
     "prometheus-client==0.20.0",

@@ -6,7 +6,7 @@ operação de rotina, e o teste prova que operador não consegue disparar.
 """
 
 import uuid
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from typing import Generator
 
@@ -72,9 +72,15 @@ def _operacao_atrasada(db_session: Session, tomador_id: uuid.UUID, dias: int) ->
     # Vencimento é imutável (OC009); o trigger é desabilitado só para
     # fabricar o cenário — pela API isso é impossível, por construção.
     db_session.execute(text("alter table parcela disable trigger trg_parcela_imutavel"))
+    # Ancorado em `current_date` do BANCO — ver a explicação em
+    # tests/test_aging.py::_envelhecer. Usar date.today() do Python quebrava
+    # este teste todo dia na janela em que os dois relógios discordam.
     db_session.execute(
-        text("update parcela set vencimento = :v where operacao_id = :id and numero = 1"),
-        {"v": date.today() - timedelta(days=dias), "id": str(op_id)},
+        text(
+            "update parcela set vencimento = current_date - cast(:dias as int) "
+            "where operacao_id = :id and numero = 1"
+        ),
+        {"dias": dias, "id": str(op_id)},
     )
     db_session.execute(text("alter table parcela enable trigger trg_parcela_imutavel"))
     db_session.commit()

@@ -23,6 +23,7 @@ from app.core.exceptions import (
     EventoOperacaoImutavel,
     IdentificacaoAusente,
     LedgerImutavel,
+    LiquidacaoSemQuitacao,
     MovimentoImutavel,
     MunicipioNaoAutorizado,
     NovacaoForaDaTransacaoAtomica,
@@ -50,6 +51,13 @@ from app.core.exceptions import (
 # comprometida nem mexe em esc_capital_social por UPDATE/DELETE —, e mapeá-los
 # criaria uma mensagem de UI para um caminho que a UI não tem. Se algum dia um
 # endpoint os alcançar, entram aqui junto.
+#
+# OC022 (migration 017) é o contraexemplo que justifica o critério acima: ele
+# NASCE alcançável pela UI — `POST /operacoes/{id}/liquidar` é o caminho de
+# frente para pedi-lo — e sem tradução o operador que tentasse liquidar uma
+# operação com parcelas em aberto receberia 500 no lugar da única instrução
+# que resolve o caso ("baixe as parcelas contra o extrato, ou assuma o
+# prejuízo pela baixa como prejuízo").
 PGCODE_MAP: Dict[str, Type[Exception]] = {
     "OC001": TetoCapitalExcedido,
     "OC002": MunicipioNaoAutorizado,
@@ -69,6 +77,7 @@ PGCODE_MAP: Dict[str, Type[Exception]] = {
     "OC017": ContratoImutavel,
     "OC018": RegistroTransicaoInvalida,
     "OC019": IdentificacaoAusente,
+    "OC022": LiquidacaoSemQuitacao,
 }
 
 

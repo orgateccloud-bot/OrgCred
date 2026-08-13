@@ -1,18 +1,29 @@
 """
-Compliance PLD/FT interno (migration 010) contra Postgres real.
+Compliance PLD/FT interno (migrations 010, 014 e 019) contra Postgres real.
 
 Três coisas que não dependem de terceiro e por isso são testáveis hoje:
-evidência de identificação com hash verificável, retenção de 5 anos
-garantida pelo banco, e detecção de atipicidade sobre os dados existentes.
+evidência de identificação com ARQUIVO guardado e hash verificável, retenção
+de 5 anos garantida pelo banco, e detecção de atipicidade sobre os dados
+existentes.
+
+O STORAGE É FALSIFICADO AQUI, e essa é uma decisão de projeto, não um
+atalho. O que precisa ser provado — que o hash sai dos bytes recebidos e não
+do que o cliente afirma, que sem chave o arquivamento é recusado, que arquivo
+adulterado não confere — não é sobre o Supabase. Amarrar essas provas a uma
+credencial e a uma conexão de rede as tornaria as primeiras a serem
+desligadas no dia em que a rede oscilasse na CI, que é o dia em que elas mais
+importam. Por isso `app/core/storage.py` é uma interface de dois métodos:
+para caber num dicionário aqui dentro.
 """
 
-import base64
 import hashlib
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Generator
+from typing import Any, Dict, Generator
+from urllib.parse import quote
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -24,20 +35,215 @@ from app.capital_engine import (
     registrar_movimento_bancario,
     transicionar_operacao,
 )
+from app.core import storage as storage_mod
+from app.core.config import settings
 from app.core.exceptions import IdentificacaoAusente
 from app.core.security import get_admin_user, get_current_user, get_operador_user
+from app.core.storage import (
+    TAMANHO_MAXIMO_BYTES,
+    FalhaNoStorage,
+    ObjetoNaoEncontrado,
+    StorageNaoConfigurado,
+    SupabaseStorage,
+    get_storage,
+    referencia_para,
+)
 from app.db import get_db
 from app.main import app
 from app.models import Usuario
-from tests.conftest import arquivar_identificacao, confirmar_registro, sqlstate_de
+from app.routers.compliance import storage_de_documentos
+from tests.conftest import (
+    arquivar_identificacao,
+    confirmar_registro,
+    quitar_operacao,
+    sqlstate_de,
+)
+
+
+class StorageFalsificado:
+    """Storage em memória com a mesma interface de `app.core.storage.Storage`.
+
+    `adulterar` não existe no protocolo de propósito — é o gancho de TESTE
+    para simular o único ataque que o trigger OC013 não alcança: trocar os
+    bytes do lado do bucket, onde o Postgres não tem jurisdição. Um storage
+    de produção não oferece esse método; este oferece justamente para provar
+    que o sistema percebe quando alguém o faz por fora.
+    """
+
+    def __init__(self) -> None:
+        self.objetos: Dict[str, bytes] = {}
+
+    def guardar(self, referencia: str, conteudo: bytes, content_type: str) -> None:
+        self.objetos[referencia] = conteudo
+
+    def recuperar(self, referencia: str) -> bytes:
+        try:
+            return self.objetos[referencia]
+        except KeyError as exc:
+            raise ObjetoNaoEncontrado(f"Objeto {referencia!r} não está no storage.") from exc
+
+    def adulterar(self, referencia: str, conteudo: bytes) -> None:
+        self.objetos[referencia] = conteudo
 
 
 @pytest.fixture()
-def client(db_session: Session) -> Generator[TestClient, None, None]:
+def storage_falso() -> StorageFalsificado:
+    return StorageFalsificado()
+
+
+class TestSupabaseStorage:
+    """A implementação real, com o `httpx` substituído — não a rede.
+
+    Estes testes não abrem conexão nenhuma e não tocam no banco: o que eles
+    provam é a tradução entre o que o Supabase Storage responde e o que o
+    resto do sistema entende. É a camada onde um 404 vira "a evidência sumiu
+    do bucket" (incidente de retenção legal) em vez de virar um 500 genérico.
+    """
+
+    def _storage(self) -> SupabaseStorage:
+        return SupabaseStorage("https://projeto.supabase.co/", "service-role-fake")
+
+    def test_guardar_monta_a_url_e_manda_as_duas_credenciais(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`apikey` E `Authorization`: o gateway do Supabase exige o primeiro
+        para rotear e o storage exige o segundo para autorizar. Mandar só um
+        responde 401 sem dizer qual faltou — daí a checagem explícita."""
+        capturado: Dict[str, Any] = {}
+
+        def _post(url: str, **kwargs: Any) -> httpx.Response:
+            capturado["url"] = url
+            capturado.update(kwargs)
+            return httpx.Response(200, request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(storage_mod.httpx, "post", _post)
+        self._storage().guardar("bucket/tomador/abc", b"conteudo", "application/pdf")
+
+        assert capturado["url"] == (
+            "https://projeto.supabase.co/storage/v1/object/bucket/tomador/abc"
+        )
+        assert capturado["content"] == b"conteudo"
+        cabecalhos = capturado["headers"]
+        assert cabecalhos["apikey"] == "service-role-fake"
+        assert cabecalhos["Authorization"] == "Bearer service-role-fake"
+        assert cabecalhos["Content-Type"] == "application/pdf"
+        # Ver a justificativa do upsert em app/core/storage.py: o caminho é
+        # derivado do hash do conteúdo, então regravar é regravar o mesmo.
+        assert cabecalhos["x-upsert"] == "true"
+        assert capturado["timeout"] == storage_mod.TIMEOUT_SEGUNDOS
+
+    def test_guardar_recusa_vazio_e_gigante(self) -> None:
+        """O teto mora no storage, e não só no router: quem chamar `guardar`
+        por outro caminho encontra a mesma recusa."""
+        storage = self._storage()
+        with pytest.raises(FalhaNoStorage):
+            storage.guardar("bucket/x", b"", "application/pdf")
+        with pytest.raises(FalhaNoStorage):
+            storage.guardar("bucket/x", b"a" * (TAMANHO_MAXIMO_BYTES + 1), "application/pdf")
+
+    @pytest.mark.parametrize("referencia", ["sem-barra", "/sem-bucket", "bucket/", "bucket/../x"])
+    def test_referencia_invalida_nao_vira_url(self, referencia: str) -> None:
+        """A referência entra num caminho de URL: sem bucket ela apontaria
+        para outro recurso da API do storage, e com '..' para fora dele."""
+        with pytest.raises(FalhaNoStorage):
+            self._storage().guardar(referencia, b"x", "application/pdf")
+
+    def test_erro_do_storage_ao_gravar_vira_falha(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            storage_mod.httpx,
+            "post",
+            lambda url, **kw: httpx.Response(403, request=httpx.Request("POST", url)),
+        )
+        with pytest.raises(FalhaNoStorage):
+            self._storage().guardar("bucket/x", b"x", "application/pdf")
+
+    def test_rede_fora_vira_falha_e_nao_estoura_httpx(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """O router só sabe traduzir `StorageError`. Um `httpx.ConnectError`
+        vazando daqui viraria 500 — "erro interno" para uma indisponibilidade
+        de infraestrutura, que manda o suporte procurar bug no lugar errado."""
+
+        def _explode(url: str, **kwargs: Any) -> httpx.Response:
+            raise httpx.ConnectError("sem rota para o host")
+
+        monkeypatch.setattr(storage_mod.httpx, "post", _explode)
+        monkeypatch.setattr(storage_mod.httpx, "get", _explode)
+        with pytest.raises(FalhaNoStorage):
+            self._storage().guardar("bucket/x", b"x", "application/pdf")
+        with pytest.raises(FalhaNoStorage):
+            self._storage().recuperar("bucket/x")
+
+    def test_recuperar_devolve_o_corpo(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            storage_mod.httpx,
+            "get",
+            lambda url, **kw: httpx.Response(
+                200, content=b"os bytes", request=httpx.Request("GET", url)
+            ),
+        )
+        assert self._storage().recuperar("bucket/x") == b"os bytes"
+
+    def test_404_do_bucket_vira_objeto_nao_encontrado(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A distinção que importa: o banco afirma que a evidência existe e o
+        bucket não a tem. Isso é incidente de retenção legal, não um 404
+        qualquer, e precisa de um tipo próprio para o router poder dizê-lo."""
+        monkeypatch.setattr(
+            storage_mod.httpx,
+            "get",
+            lambda url, **kw: httpx.Response(404, request=httpx.Request("GET", url)),
+        )
+        with pytest.raises(ObjetoNaoEncontrado):
+            self._storage().recuperar("bucket/x")
+
+    def test_erro_do_storage_ao_ler_vira_falha(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            storage_mod.httpx,
+            "get",
+            lambda url, **kw: httpx.Response(500, request=httpx.Request("GET", url)),
+        )
+        with pytest.raises(FalhaNoStorage):
+            self._storage().recuperar("bucket/x")
+
+    def test_get_storage_recusa_sem_chave_e_aceita_com(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FAIL-CLOSED na origem: sem chave, `get_storage` não devolve um
+        storage inerte que engole bytes — ele recusa."""
+        monkeypatch.setattr(settings, "supabase_url", "https://projeto.supabase.co")
+        monkeypatch.setattr(settings, "supabase_service_key", "")
+        with pytest.raises(StorageNaoConfigurado):
+            get_storage()
+
+        # Meia configuração é configuração nenhuma: a URL sozinha também não.
+        monkeypatch.setattr(settings, "supabase_url", "")
+        monkeypatch.setattr(settings, "supabase_service_key", "chave")
+        with pytest.raises(StorageNaoConfigurado):
+            get_storage()
+
+        monkeypatch.setattr(settings, "supabase_url", "https://projeto.supabase.co")
+        assert isinstance(get_storage(), SupabaseStorage)
+
+    def test_referencia_e_derivada_do_conteudo(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Nenhum caractere da referência vem do cliente — é o que torna a
+        travessia de diretório impossível por construção, e não por filtro."""
+        monkeypatch.setattr(settings, "supabase_storage_bucket", "meu-bucket")
+        tomador = str(uuid.uuid4())
+        sha = hashlib.sha256(b"documento").hexdigest()
+        assert referencia_para(tomador, sha) == f"meu-bucket/{tomador}/{sha}"
+
+
+@pytest.fixture()
+def client(
+    db_session: Session, storage_falso: StorageFalsificado
+) -> Generator[TestClient, None, None]:
     def _override_get_db() -> Generator[Session, None, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[storage_de_documentos] = lambda: storage_falso
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -57,6 +263,33 @@ def _sha(conteudo: bytes) -> str:
     return hashlib.sha256(conteudo).hexdigest()
 
 
+def _arquivar(
+    client: TestClient,
+    tomador_id: uuid.UUID,
+    conteudo: bytes,
+    tipo: str = "contrato_social",
+    nome: str = "contrato.pdf",
+) -> "object":
+    """Arquiva um documento pelo caminho real: multipart, com os BYTES.
+
+    Não existe mais um jeito de arquivar sem mandar arquivo — era esse o
+    ponto da migration 019 — então o helper reflete isso e nenhum teste
+    consegue, nem por engano, exercitar o caminho antigo.
+    """
+    return client.post(
+        f"/api/compliance/tomadores/{tomador_id}/documentos",
+        data={"tipo": tipo},
+        files={"arquivo": (nome, conteudo, "application/pdf")},
+    )
+
+
+def _verificar(client: TestClient, documento_id: str, conteudo: bytes) -> "object":
+    return client.post(
+        f"/api/compliance/documentos/{documento_id}/verificar",
+        files={"arquivo": ("apresentado.pdf", conteudo, "application/pdf")},
+    )
+
+
 # ---------------------------------------------------------------------
 # Identificação com evidência arquivada
 # ---------------------------------------------------------------------
@@ -64,97 +297,335 @@ def _sha(conteudo: bytes) -> str:
 
 class TestIdentificacao:
     def test_arquivar_e_listar(
-        self, admin_client: TestClient, tomador_sem_identificacao: uuid.UUID
+        self,
+        admin_client: TestClient,
+        tomador_sem_identificacao: uuid.UUID,
+        storage_falso: StorageFalsificado,
     ) -> None:
         conteudo = b"contrato social em pdf"
-        resposta = admin_client.post(
-            f"/api/compliance/tomadores/{tomador_sem_identificacao}/documentos",
-            json={
-                "tipo": "contrato_social",
-                "nome_arquivo": "contrato.pdf",
-                "sha256": _sha(conteudo),
-            },
-        )
+        resposta = _arquivar(admin_client, tomador_sem_identificacao, conteudo)
         assert resposta.status_code == 201
 
-        # Retenção de 5 anos gravada no ato (Lei 9.613/98, art. 10, III).
         corpo = resposta.json()
+        # O hash é dos BYTES que chegaram, calculado pelo servidor.
+        assert corpo["sha256"] == _sha(conteudo)
+        # Retenção de 5 anos gravada no ato (Lei 9.613/98, art. 10, III).
         assert date.fromisoformat(corpo["retencao_ate"]) >= date.today() + timedelta(days=5 * 365)
+        # E os bytes existem de verdade, no endereço que a linha registra.
+        assert storage_falso.objetos[corpo["storage_objeto"]] == conteudo
 
         lista = admin_client.get(
             f"/api/compliance/tomadores/{tomador_sem_identificacao}/documentos"
         ).json()
         assert [d["nome_arquivo"] for d in lista] == ["contrato.pdf"]
 
+    def test_hash_do_cliente_e_ignorado(
+        self,
+        admin_client: TestClient,
+        tomador_sem_identificacao: uuid.UUID,
+        storage_falso: StorageFalsificado,
+    ) -> None:
+        """O defeito que a migration 019 fechou, com nome e sobrenome.
+
+        Até ela, `sha256` era um CAMPO DE ENTRADA validado só por
+        `^[0-9a-f]{64}$`: 64 caracteres digitados satisfaziam a identificação
+        exigida pela Lei 9.613/98 (art. 10, I) e nenhum byte era lido pelo
+        servidor. Aqui o cliente manda o campo antigo, com um valor
+        escolhido a dedo, junto de um arquivo diferente — e o que fica
+        gravado é o hash do ARQUIVO. O campo do cliente não tem mais efeito
+        nenhum sobre nada.
+        """
+        conteudo = b"o documento de verdade"
+        mentira = "0" * 64
+
+        resposta = admin_client.post(
+            f"/api/compliance/tomadores/{tomador_sem_identificacao}/documentos",
+            data={"tipo": "contrato_social", "sha256": mentira},
+            files={"arquivo": ("contrato.pdf", conteudo, "application/pdf")},
+        )
+        assert resposta.status_code == 201
+
+        corpo = resposta.json()
+        assert corpo["sha256"] == _sha(conteudo)
+        assert corpo["sha256"] != mentira
+        assert storage_falso.objetos[corpo["storage_objeto"]] == conteudo
+
+    def test_sem_chave_configurada_o_arquivamento_e_recusado(
+        self,
+        admin_client: TestClient,
+        tomador_sem_identificacao: uuid.UUID,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """FAIL-CLOSED: sem storage, recusa — nunca aceita o hash e descarta
+        o arquivo.
+
+        O modo degradado tentador seria "grava a linha e segue a vida sem os
+        bytes", e é exatamente o defeito histórico com outro nome: o sistema
+        afirmando que a identificação está arquivada quando não está. Aqui o
+        pedido falha e NADA é gravado, que é a única resposta que não mente.
+        """
+        app.dependency_overrides.pop(storage_de_documentos, None)
+        monkeypatch.setattr(settings, "supabase_url", "")
+        monkeypatch.setattr(settings, "supabase_service_key", "")
+
+        resposta = _arquivar(admin_client, tomador_sem_identificacao, b"contrato social em pdf")
+        assert resposta.status_code == 503
+        assert "service_role" in resposta.json()["detail"]
+
+        assert (
+            admin_client.get(
+                f"/api/compliance/tomadores/{tomador_sem_identificacao}/documentos"
+            ).json()
+            == []
+        )
+
+    def test_arquivo_vazio_e_recusado(
+        self, admin_client: TestClient, tomador_sem_identificacao: uuid.UUID
+    ) -> None:
+        """Zero byte não é evidência de nada — e passaria pelo hash sem
+        reclamar, porque o SHA-256 do vazio é um hash perfeitamente válido."""
+        resposta = _arquivar(admin_client, tomador_sem_identificacao, b"")
+        assert resposta.status_code == 422
+        assert "vazio" in resposta.json()["detail"]
+
     def test_mesmo_arquivo_duas_vezes_e_recusado(
         self, admin_client: TestClient, tomador_autorizado: uuid.UUID
     ) -> None:
-        corpo = {
-            "tipo": "cartao_cnpj",
-            "nome_arquivo": "cnpj.pdf",
-            "sha256": _sha(b"cartao cnpj"),
-        }
-        url = f"/api/compliance/tomadores/{tomador_autorizado}/documentos"
-        assert admin_client.post(url, json=corpo).status_code == 201
+        conteudo = b"cartao cnpj"
+        assert (
+            _arquivar(
+                admin_client, tomador_autorizado, conteudo, tipo="cartao_cnpj", nome="cnpj.pdf"
+            ).status_code
+            == 201
+        )
 
-        repetido = admin_client.post(url, json=corpo)
+        repetido = _arquivar(
+            admin_client, tomador_autorizado, conteudo, tipo="cartao_cnpj", nome="cnpj.pdf"
+        )
         assert repetido.status_code == 422
         assert "já está arquivado" in repetido.json()["detail"]
 
     def test_tomador_inexistente_404(self, admin_client: TestClient) -> None:
-        resposta = admin_client.post(
-            f"/api/compliance/tomadores/{uuid.uuid4()}/documentos",
-            json={"tipo": "outro", "nome_arquivo": "x.pdf", "sha256": _sha(b"x")},
-        )
+        resposta = _arquivar(admin_client, uuid.uuid4(), b"x", tipo="outro", nome="x.pdf")
         assert resposta.status_code == 404
+
+    def test_recuperar_devolve_os_bytes_arquivados(
+        self, admin_client: TestClient, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Guardar sem conseguir apresentar teria o mesmo valor prático de
+        não guardar: numa fiscalização o que se entrega é o arquivo."""
+        conteudo = b"%PDF-1.4 contrato social digitalizado"
+        doc = _arquivar(
+            admin_client, tomador_autorizado, conteudo, nome="contrato social.pdf"
+        ).json()
+
+        resposta = admin_client.get(f"/api/compliance/documentos/{doc['id']}/conteudo")
+        assert resposta.status_code == 200
+        assert resposta.content == conteudo
+        assert "contrato social.pdf" in resposta.headers["content-disposition"]
+
+    def test_nome_fora_do_latin_1_nao_derruba_o_download(
+        self, admin_client: TestClient, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """O nome do arquivo é dado do cliente e vai para dentro de um
+        cabeçalho HTTP, que é latin-1.
+
+        O DEFEITO: um nome com caractere fora dessa tabela (cirílico, CJK,
+        emoji — nada exótico num documento fotografado por celular) fazia o
+        Starlette levantar `UnicodeEncodeError` ao montar a resposta, e o
+        download virava 500. O arquivamento tinha aceitado o mesmo nome sem
+        reclamar, com os bytes já no bucket.
+
+        E não havia conserto: a linha é imutável por OC013 e rearquivar o
+        MESMO arquivo bate na unique `(tomador_id, sha256)` da 010. A
+        evidência ficava permanentemente impossível de apresentar — guardar
+        os bytes e não conseguir entregá-los numa fiscalização vale o mesmo
+        que não os ter guardado, que é o defeito que a 019 existe para
+        fechar.
+        """
+        conteudo = b"%PDF-1.4 contrato digitalizado"
+        doc = _arquivar(admin_client, tomador_autorizado, conteudo, nome="контракт-契約.pdf").json()
+        assert doc["nome_arquivo"] == "контракт-契約.pdf"
+
+        resposta = admin_client.get(f"/api/compliance/documentos/{doc['id']}/conteudo")
+        assert resposta.status_code == 200
+        assert resposta.content == conteudo
+
+        # O nome verdadeiro viaja no campo estendido da RFC 6266, que é o que
+        # o navegador usa quando os dois estão presentes.
+        disposicao = resposta.headers["content-disposition"]
+        assert f"filename*=UTF-8''{quote('контракт-契約.pdf')}" in disposicao
+        # E o fallback existe, em ASCII, para quem não entender o estendido.
+        assert 'filename="' in disposicao
+        disposicao.encode("latin-1")
+
+    def test_aspas_no_nome_nao_escapam_do_cabecalho(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        storage_falso: StorageFalsificado,
+    ) -> None:
+        """Uma aspa no nome fecharia a quoted-string antes da hora, e o
+        cabeçalho passaria a dizer outra coisa.
+
+        `_nome_saneado` barra `/`, `\\` e os caracteres de controle — é o que
+        impede quebra de resposta por CR/LF —, mas `"` passava direto para
+        dentro de `filename="..."`.
+
+        A LINHA É INSERIDA DIRETO, e isso é o teste, não um atalho: o `httpx`
+        do TestClient escapa a aspa para `%22` ao montar o multipart, então
+        subir o arquivo por ele provaria a higiene do CLIENTE, não a do
+        servidor — e passaria com o cabeçalho antigo, quebrado (verificado por
+        mutação). O servidor não pode depender de o cliente escapar; e nomes
+        assim já podem existir no banco, gravados por qualquer coisa que não
+        seja este TestClient.
+        """
+        referencia = f"identificacao-tomador/{tomador_autorizado}/{'b' * 64}"
+        storage_falso.objetos[referencia] = b"aspas"
+        doc_id = db_session.execute(
+            text("""
+            insert into tomador_documento
+                (tomador_id, tipo, nome_arquivo, sha256, retencao_ate, storage_objeto)
+            values (:t, 'contrato_social', :nome, :sha, current_date + 1825, :obj)
+            returning id
+            """),
+            {
+                "t": str(tomador_autorizado),
+                "nome": 'rg";cabecalho-falso.pdf',
+                "sha": _sha(b"aspas"),
+                "obj": referencia,
+            },
+        ).scalar_one()
+        db_session.commit()
+
+        resposta = admin_client.get(f"/api/compliance/documentos/{doc_id}/conteudo")
+        assert resposta.status_code == 200
+        assert resposta.content == b"aspas"
+
+        disposicao = resposta.headers["content-disposition"]
+        # O fallback vem entre UMA abertura e UM fechamento de aspas: o que
+        # está dentro delas não pode conter outra aspa, senão o cabeçalho
+        # termina onde o nome do arquivo mandar.
+        fallback = disposicao.split('filename="', 1)[1].split('"', 1)[0]
+        assert '"' not in fallback
+        assert fallback.endswith("cabecalho-falso.pdf")
+
+    def test_recuperar_evidencia_sem_bytes_e_409(
+        self, admin_client: TestClient, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Evidência da era sem storage (anterior à 019): a linha existe, o
+        arquivo nunca existiu. 409 e não 404 — o id está certo, o que falta é
+        o arquivo, e a resposta precisa dizer isso para o operador não sair
+        procurando um documento que não foi digitado errado."""
+        doc_id = db_session.execute(
+            text("""
+            insert into tomador_documento
+                (tomador_id, tipo, nome_arquivo, sha256, retencao_ate, storage_objeto)
+            values (:t, 'contrato_social', 'legado.pdf', :sha, current_date + 1825, null)
+            returning id
+            """),
+            {"t": str(tomador_autorizado), "sha": _sha(b"legado")},
+        ).scalar_one()
+        db_session.commit()
+
+        resposta = admin_client.get(f"/api/compliance/documentos/{doc_id}/conteudo")
+        assert resposta.status_code == 409
+        assert "019" in resposta.json()["detail"]
+
+    def test_recuperar_objeto_sumido_do_bucket_e_410(
+        self,
+        admin_client: TestClient,
+        tomador_autorizado: uuid.UUID,
+        storage_falso: StorageFalsificado,
+    ) -> None:
+        """O banco afirma que a evidência existe e o bucket não a tem.
+
+        É incidente de retenção legal, não pedido malformado: alguém apagou o
+        objeto por fora do sistema, onde o OC013 não alcança. 410 Gone diz
+        exatamente isso — existiu, não existe mais."""
+        doc = _arquivar(admin_client, tomador_autorizado, b"vai sumir").json()
+        storage_falso.objetos.clear()
+
+        resposta = admin_client.get(f"/api/compliance/documentos/{doc['id']}/conteudo")
+        assert resposta.status_code == 410
 
     def test_verificacao_confere_bit_a_bit(
         self, admin_client: TestClient, tomador_autorizado: uuid.UUID
     ) -> None:
-        """É o que dá sentido a guardar só o hash: sem esta conferência, o
-        hash seria um número sem uso."""
+        """É o que dá sentido a guardar o hash: sem esta conferência, o hash
+        seria um número sem uso."""
         conteudo = b"documento original do socio"
-        doc_id = admin_client.post(
-            f"/api/compliance/tomadores/{tomador_autorizado}/documentos",
-            json={
-                "tipo": "documento_socio",
-                "nome_arquivo": "rg.pdf",
-                "sha256": _sha(conteudo),
-            },
+        doc_id = _arquivar(
+            admin_client, tomador_autorizado, conteudo, tipo="documento_socio", nome="rg.pdf"
         ).json()["id"]
 
-        igual = admin_client.post(
-            f"/api/compliance/documentos/{doc_id}/verificar",
-            json={"conteudo_base64": base64.b64encode(conteudo).decode()},
-        ).json()
+        igual = _verificar(admin_client, doc_id, conteudo).json()
         assert igual["confere"] is True
+        assert igual["sha256_calculado"] == igual["sha256_arquivado"] == _sha(conteudo)
+        assert igual["storage_integro"] is True
 
-        adulterado = admin_client.post(
-            f"/api/compliance/documentos/{doc_id}/verificar",
-            json={"conteudo_base64": base64.b64encode(conteudo + b" ").decode()},
-        ).json()
+        # Um único byte a mais — o caso realista é o documento reimpresso ou
+        # reescaneado, que "é o mesmo" para quem olha e não é para o hash.
+        adulterado = _verificar(admin_client, doc_id, conteudo + b" ").json()
         assert adulterado["confere"] is False
+        assert adulterado["sha256_calculado"] != adulterado["sha256_arquivado"]
+        # O ARQUIVO GUARDADO continua íntegro: quem não confere é o
+        # apresentado. As duas perguntas são independentes de propósito.
+        assert adulterado["storage_integro"] is True
+
+    def test_verificacao_acusa_adulteracao_no_proprio_storage(
+        self,
+        admin_client: TestClient,
+        tomador_autorizado: uuid.UUID,
+        storage_falso: StorageFalsificado,
+    ) -> None:
+        """O único ataque fora do alcance do OC013.
+
+        O trigger da 010 congela a linha do banco — ninguém troca o hash, o
+        nome nem a referência. Mas o objeto vive no bucket, onde o Postgres
+        não manda: trocar os bytes lá dentro substituiria o documento
+        arquivado sem tocar em nada que o banco protege. `storage_integro`
+        existe para que essa troca não passe despercebida.
+        """
+        conteudo = b"contrato social verdadeiro"
+        doc = _arquivar(admin_client, tomador_autorizado, conteudo).json()
+
+        storage_falso.adulterar(doc["storage_objeto"], b"contrato social trocado")
+
+        resultado = _verificar(admin_client, doc["id"], conteudo).json()
+        # O documento apresentado continua sendo o verdadeiro...
+        assert resultado["confere"] is True
+        # ...e o sistema acusa que o que está guardado já não é.
+        assert resultado["storage_integro"] is False
+
+    def test_verificacao_de_evidencia_sem_bytes_nao_afirma_integridade(
+        self, admin_client: TestClient, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """`storage_integro` é None, não False: não há objeto para conferir.
+
+        False diria "o arquivo guardado está errado" sobre um arquivo que
+        nunca foi guardado — afirmação diferente, e falsa. A distinção entre
+        "não confere" e "não há o que conferir" é a que separa um incidente
+        de uma pendência de migração."""
+        doc_id = db_session.execute(
+            text("""
+            insert into tomador_documento
+                (tomador_id, tipo, nome_arquivo, sha256, retencao_ate, storage_objeto)
+            values (:t, 'contrato_social', 'legado.pdf', :sha, current_date + 1825, null)
+            returning id
+            """),
+            {"t": str(tomador_autorizado), "sha": _sha(b"legado")},
+        ).scalar_one()
+        db_session.commit()
+
+        resultado = _verificar(admin_client, str(doc_id), b"legado").json()
+        assert resultado["confere"] is True
+        assert resultado["storage_integro"] is None
 
     def test_verificacao_de_documento_inexistente_404(self, admin_client: TestClient) -> None:
-        resposta = admin_client.post(
-            f"/api/compliance/documentos/{uuid.uuid4()}/verificar",
-            json={"conteudo_base64": base64.b64encode(b"x").decode()},
-        )
+        resposta = _verificar(admin_client, str(uuid.uuid4()), b"x")
         assert resposta.status_code == 404
-
-    def test_base64_invalido_422(
-        self, admin_client: TestClient, tomador_autorizado: uuid.UUID
-    ) -> None:
-        doc_id = admin_client.post(
-            f"/api/compliance/tomadores/{tomador_autorizado}/documentos",
-            json={"tipo": "outro", "nome_arquivo": "a.pdf", "sha256": _sha(b"a")},
-        ).json()["id"]
-
-        resposta = admin_client.post(
-            f"/api/compliance/documentos/{doc_id}/verificar",
-            json={"conteudo_base64": "!!! não é base64 !!!"},
-        )
-        assert resposta.status_code == 422
 
     def test_pendencias_ordenadas_por_exposicao(
         self,
@@ -194,10 +665,7 @@ class TestIdentificacao:
         assert Decimal(pendencias[0]["capital_exposto"]) == Decimal("0")
 
         # Depois de arquivar, o tomador sai da lista E a operação ativa.
-        admin_client.post(
-            f"/api/compliance/tomadores/{tomador_autorizado}/documentos",
-            json={"tipo": "contrato_social", "nome_arquivo": "c.pdf", "sha256": _sha(b"c")},
-        )
+        _arquivar(admin_client, tomador_autorizado, b"c", nome="c.pdf")
         assert admin_client.get("/api/compliance/identificacao/pendencias").json() == []
         assert ativar_operacao(db_session, op_id).status == "ativa"
 
@@ -338,6 +806,128 @@ class TestRetencao:
         # 'contrato_social.pdf' vem da fixture `tomador_autorizado`, que arquiva
         # a identificação exigida pelo gate da 014 — e está dentro do prazo.
         assert restantes == ["contrato_social.pdf", "vigente.pdf"]
+
+
+class TestReferenciaDoObjeto:
+    """Migration 019: a coluna que liga a linha do banco ao arquivo.
+
+    A evidência de identificação passou a ter bytes; estes testes provam que
+    o ENDEREÇO deles é tão protegido quanto o hash — porque repontar a linha
+    para outro objeto trocaria o documento arquivado sem trocar nada que o
+    banco antes vigiava.
+    """
+
+    def _arquivar_direto(
+        self, db_session: Session, tomador_id: uuid.UUID, nome: str, referencia: object
+    ) -> uuid.UUID:
+        return db_session.execute(  # type: ignore[no-any-return]
+            text("""
+            insert into tomador_documento
+                (tomador_id, tipo, nome_arquivo, sha256, retencao_ate, storage_objeto)
+            values (:t, 'contrato_social', :nome, :sha, current_date + 1825, :obj)
+            returning id
+            """),
+            {
+                "t": str(tomador_id),
+                "nome": nome,
+                "sha": _sha(nome.encode()),
+                "obj": referencia,
+            },
+        ).scalar_one()
+
+    def test_referencia_nao_pode_ser_repontada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """O bloqueio: OC013 já congela a linha inteira, e a coluna nova
+        nasceu dentro desse congelamento.
+
+        Sem isto, "corrigir o caminho do objeto" seria a porta dos fundos
+        para trocar o documento: o hash continuaria o mesmo, a data de
+        arquivamento também, e só mudaria QUAL arquivo é apresentado numa
+        fiscalização.
+        """
+        doc_id = self._arquivar_direto(
+            db_session,
+            tomador_autorizado,
+            "original.pdf",
+            f"identificacao-tomador/{tomador_autorizado}/{_sha(b'original.pdf')}",
+        )
+        db_session.commit()
+
+        with pytest.raises(Exception) as exc:
+            db_session.execute(
+                text("update tomador_documento set storage_objeto = :obj where id = :d"),
+                {"obj": "outro-bucket/qualquer/coisa", "d": str(doc_id)},
+            )
+            db_session.flush()
+        assert sqlstate_de(exc.value) == "OC013"
+        db_session.rollback()
+
+    def test_duas_evidencias_nao_apontam_para_o_mesmo_objeto(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Armadilha de expurgo: vencida a retenção de uma das linhas, apagar
+        o objeto destruiria a evidência da outra, ainda em retenção legal."""
+        referencia = f"identificacao-tomador/{tomador_autorizado}/{'a' * 64}"
+        self._arquivar_direto(db_session, tomador_autorizado, "um.pdf", referencia)
+        db_session.commit()
+
+        with pytest.raises(Exception):
+            self._arquivar_direto(db_session, tomador_autorizado, "dois.pdf", referencia)
+            db_session.flush()
+        db_session.rollback()
+
+    @pytest.mark.parametrize(
+        "referencia",
+        [
+            "sem-barra-nenhuma",
+            "/comeca-com-barra",
+            "bucket/termina-com-barra/",
+            "bucket/../fuga",
+            " bucket/com-espaco-na-ponta",
+            "",
+        ],
+    )
+    def test_referencia_malformada_e_recusada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, referencia: str
+    ) -> None:
+        """A validação é da COLUNA, e não confiança em quem escreve nela.
+
+        O valor gravado é imutável (OC013): uma referência ruim que entre
+        aqui não tem como ser corrigida depois, só substituída por uma linha
+        nova. E ela é interpolada num caminho de URL na hora de recuperar o
+        objeto — '..' e barra inicial não são feiura, são travessia.
+        """
+        with pytest.raises(Exception):
+            self._arquivar_direto(db_session, tomador_autorizado, "ruim.pdf", referencia)
+            db_session.flush()
+        db_session.rollback()
+
+    def test_evidencia_da_era_sem_storage_continua_valida(
+        self, db_session: Session, tomador_autorizado: uuid.UUID
+    ) -> None:
+        """Caminho feliz do NULL, que não é descuido: as linhas arquivadas
+        antes da 019 têm hash e não têm arquivo, porque os bytes nunca
+        existiram em lugar nenhum.
+
+        Um `not null` teria exigido backfill, e o único backfill possível
+        seria inventar uma referência que não aponta para nada — trocar uma
+        lacuna visível por uma mentira invisível. E mais de uma delas
+        coexiste sem colidir no índice único, que é parcial exatamente por
+        isso.
+        """
+        self._arquivar_direto(db_session, tomador_autorizado, "legado1.pdf", None)
+        self._arquivar_direto(db_session, tomador_autorizado, "legado2.pdf", None)
+        db_session.commit()
+
+        sem_bytes = db_session.execute(
+            text("""
+            select count(*) from tomador_documento
+            where tomador_id = :t and storage_objeto is null
+            """),
+            {"t": str(tomador_autorizado)},
+        ).scalar_one()
+        assert sem_bytes == 2
 
 
 # ---------------------------------------------------------------------
@@ -617,7 +1207,10 @@ class TestGateIdentificacao:
         op_id = self._operacao_pronta(db_session, tomador_sem_identificacao)
         assert ativar_operacao(db_session, op_id).status == "ativa"
 
-        # Expurgado o documento, uma NOVA operação já não ativa.
+        # Expurgado o documento, uma NOVA operação já não ativa. Encerrar a
+        # primeira exige quitá-la desde a migration 017 — liquidar devolve
+        # capital ao teto e por isso passou a exigir a prova do pagamento.
+        quitar_operacao(db_session, op_id)
         transicionar_operacao(db_session, op_id, "liquidada")
         db_session.execute(text("delete from tomador_documento where nome_arquivo = 'vencido.pdf'"))
         db_session.commit()

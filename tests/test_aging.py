@@ -9,7 +9,6 @@ O que importa provar aqui, em ordem de gravidade:
 """
 
 import uuid
-from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -17,7 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.capital_engine import ativar_operacao, processar_aging, transicionar_operacao
-from tests.conftest import baixar_parcelas, confirmar_registro, sqlstate_de
+from tests.conftest import baixar_parcelas, confirmar_registro, quitar_operacao, sqlstate_de
 
 
 def _criar_ativa(
@@ -52,12 +51,18 @@ def _envelhecer(db_session: Session, op_id: uuid.UUID, dias: int, quantas: int =
     exatamente a garantia que a 007 introduziu.
     """
     db_session.execute(text("alter table parcela disable trigger trg_parcela_imutavel"))
+    # O vencimento é ancorado em `current_date` DO BANCO, não em date.today()
+    # do Python. Os dois relógios divergem: o container roda em Etc/UTC e a
+    # máquina local em UTC-3, então por três horas todo dia o banco já virou
+    # e o Python não. Como fn_dias_atraso conta contra `current_date`, fabricar
+    # o cenário com a data do Python produzia 46 dias onde o teste esperava 45
+    # — falha diária, no mesmo horário, sem nada de errado no código.
     db_session.execute(
         text("""
-        update parcela set vencimento = :venc
+        update parcela set vencimento = current_date - cast(:dias as int)
         where operacao_id = :id and numero <= :quantas
         """),
-        {"venc": date.today() - timedelta(days=dias), "id": str(op_id), "quantas": quantas},
+        {"dias": dias, "id": str(op_id), "quantas": quantas},
     )
     db_session.execute(text("alter table parcela enable trigger trg_parcela_imutavel"))
     db_session.commit()
@@ -136,6 +141,10 @@ def test_aging_ignora_operacoes_que_nao_comprometem_capital(
 ):
     """Proposta e registrada não têm agenda; liquidada não tem o que cobrar."""
     op_id = _criar_ativa(db_session, tomador_autorizado)
+    # Desde a migration 017 liquidar É a quitação e exige a agenda inteira
+    # baixada contra movimento bancário (OC022) — o que também explica por que
+    # não há o que cobrar depois: as parcelas foram todas pagas.
+    quitar_operacao(db_session, op_id)
     transicionar_operacao(db_session, op_id, "liquidada")
 
     assert (
