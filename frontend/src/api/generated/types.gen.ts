@@ -160,6 +160,14 @@ export type ApuracaoOut = {
    */
   receita_juros: string
   /**
+   * Receita Demais
+   */
+  receita_demais: string
+  /**
+   * Receita Total
+   */
+  receita_total: string
+  /**
    * Base Irpj
    */
   base_irpj: string
@@ -212,37 +220,6 @@ export type ApurarIn = {
 }
 
 /**
- * ArquivarDocumentoIn
- *
- * O conteúdo vem em base64 apenas para que o HASH seja calculado aqui.
- *
- * O binário não é persistido: o banco guarda o hash, e o arquivo vive no
- * storage. Guardar o arquivo no Postgres inflaria o banco sem acrescentar
- * garantia — o que se precisa provar é que o documento apresentado depois
- * é bit a bit o mesmo que foi arquivado.
- */
-export type ArquivarDocumentoIn = {
-  /**
-   * Tipo
-   */
-  tipo:
-    | 'contrato_social'
-    | 'cartao_cnpj'
-    | 'documento_socio'
-    | 'comprovante_endereco'
-    | 'procuracao'
-    | 'outro'
-  /**
-   * Nome Arquivo
-   */
-  nome_arquivo: string
-  /**
-   * Sha256
-   */
-  sha256: string
-}
-
-/**
  * AtivarOperacaoOut
  */
 export type AtivarOperacaoOut = {
@@ -286,6 +263,18 @@ export type AuditoriaOut = {
    * Eventos
    */
   eventos: Array<LedgerEventoOut>
+  /**
+   * Total
+   */
+  total: number
+  /**
+   * Pagina
+   */
+  pagina: number
+  /**
+   * Tamanho Pagina
+   */
+  tamanho_pagina: number
 }
 
 /**
@@ -296,6 +285,36 @@ export type BaixarParcelaIn = {
    * Movimento Id
    */
   movimento_id: string
+}
+
+/**
+ * Body_post_documento_api_compliance_tomadores__tomador_id__documentos_post
+ */
+export type BodyPostDocumentoApiComplianceTomadoresTomadorIdDocumentosPost = {
+  /**
+   * Tipo
+   */
+  tipo:
+    | 'contrato_social'
+    | 'cartao_cnpj'
+    | 'documento_socio'
+    | 'comprovante_endereco'
+    | 'procuracao'
+    | 'outro'
+  /**
+   * Arquivo
+   */
+  arquivo: Blob | File
+}
+
+/**
+ * Body_post_verificar_documento_api_compliance_documentos__documento_id__verificar_post
+ */
+export type BodyPostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost = {
+  /**
+   * Arquivo
+   */
+  arquivo: Blob | File
 }
 
 /**
@@ -520,6 +539,10 @@ export type DocumentoOut = {
    * Retencao Ate
    */
   retencao_ate: string
+  /**
+   * Storage Objeto
+   */
+  storage_objeto: string | null
 }
 
 /**
@@ -1401,18 +1424,6 @@ export type VerificacaoContratoOut = {
 }
 
 /**
- * VerificacaoIn
- *
- * Conteúdo em base64 do arquivo a conferir contra o que foi arquivado.
- */
-export type VerificacaoIn = {
-  /**
-   * Conteudo Base64
-   */
-  conteudo_base64: string
-}
-
-/**
  * VerificacaoOut
  */
 export type VerificacaoOut = {
@@ -1421,9 +1432,17 @@ export type VerificacaoOut = {
    */
   sha256_calculado: string
   /**
+   * Sha256 Arquivado
+   */
+  sha256_arquivado: string
+  /**
    * Confere
    */
   confere: boolean
+  /**
+   * Storage Integro
+   */
+  storage_integro: boolean | null
 }
 
 export type GetCapitalDisponivelApiCapitalDisponivelGetData = {
@@ -1711,6 +1730,38 @@ export type PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponses = {
 
 export type PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponse =
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponses[keyof PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponses]
+
+export type PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostData = {
+  body?: never
+  path: {
+    /**
+     * Operacao Id
+     */
+    operacao_id: string
+  }
+  query?: never
+  url: '/api/operacoes/{operacao_id}/baixar-prejuizo'
+}
+
+export type PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostError =
+  PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostErrors[keyof PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostErrors]
+
+export type PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: OperacaoStatusOut
+}
+
+export type PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostResponse =
+  PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostResponses[keyof PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostResponses]
 
 export type PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostData = {
   body?: never
@@ -2311,7 +2362,7 @@ export type GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse =
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses[keyof GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses]
 
 export type PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostData = {
-  body: ArquivarDocumentoIn
+  body: BodyPostDocumentoApiComplianceTomadoresTomadorIdDocumentosPost
   path: {
     /**
      * Tomador Id
@@ -2342,8 +2393,37 @@ export type PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses 
 export type PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponse =
   PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses[keyof PostDocumentoApiComplianceTomadoresTomadorIdDocumentosPostResponses]
 
+export type GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetData = {
+  body?: never
+  path: {
+    /**
+     * Documento Id
+     */
+    documento_id: string
+  }
+  query?: never
+  url: '/api/compliance/documentos/{documento_id}/conteudo'
+}
+
+export type GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetError =
+  GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetErrors[keyof GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetErrors]
+
+export type GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
 export type PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostData = {
-  body: VerificacaoIn
+  body: BodyPostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost
   path: {
     /**
      * Documento Id
@@ -2579,9 +2659,32 @@ export type PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponse =
 export type GetAuditoriaApiAuditoriaGetData = {
   body?: never
   path?: never
-  query?: never
+  query?: {
+    /**
+     * Pagina
+     *
+     * Página (1-based), ordenada do mais recente
+     */
+    pagina?: number
+    /**
+     * Tamanho
+     *
+     * Eventos por página (máximo 500)
+     */
+    tamanho?: number
+  }
   url: '/api/auditoria'
 }
+
+export type GetAuditoriaApiAuditoriaGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetAuditoriaApiAuditoriaGetError =
+  GetAuditoriaApiAuditoriaGetErrors[keyof GetAuditoriaApiAuditoriaGetErrors]
 
 export type GetAuditoriaApiAuditoriaGetResponses = {
   /**

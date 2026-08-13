@@ -11,6 +11,7 @@ import {
   getCapitalDisponivelApiCapitalDisponivelGet,
   getCapitalEventosApiCapitalEventosGet,
   getCapitalSnapshotApiCapitalSnapshotGet,
+  getConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGet,
   getContratoApiContratosOperacoesOperacaoIdContratoGet,
   getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet,
   getMeApiMeGet,
@@ -33,6 +34,7 @@ import {
   postApurarApiFiscalApuracoesPost,
   postAtivarOperacaoApiOperacoesOperacaoIdAtivarPost,
   postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPost,
+  postBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPost,
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPost,
   postCapitalEventoApiCapitalEventosPost,
   postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPost,
@@ -61,6 +63,7 @@ import type {
   GetAtipicidadesApiComplianceAtipicidadesGetData,
   GetAtipicidadesApiComplianceAtipicidadesGetResponse,
   GetAuditoriaApiAuditoriaGetData,
+  GetAuditoriaApiAuditoriaGetError,
   GetAuditoriaApiAuditoriaGetResponse,
   GetCapitalDisponivelApiCapitalDisponivelGetData,
   GetCapitalDisponivelApiCapitalDisponivelGetResponse,
@@ -68,6 +71,8 @@ import type {
   GetCapitalEventosApiCapitalEventosGetResponse,
   GetCapitalSnapshotApiCapitalSnapshotGetData,
   GetCapitalSnapshotApiCapitalSnapshotGetResponse,
+  GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetData,
+  GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetError,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetData,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetError,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetResponse,
@@ -121,6 +126,9 @@ import type {
   PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData,
   PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostError,
   PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostResponse,
+  PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostData,
+  PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostError,
+  PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostResponse,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostData,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostError,
   PostCancelarOperacaoApiOperacoesOperacaoIdCancelarPostResponse,
@@ -551,8 +559,18 @@ export const postRegistrarOperacaoApiOperacoesOperacaoIdRegistrarPostMutation = 
 /**
  * Post Liquidar Operacao
  *
- * ativa/inadimplente -> liquidada; o trigger devolve o capital e grava
- * o evento 'liquidacao' no ledger.
+ * QUITAÇÃO: ativa/inadimplente -> liquidada. Devolve o capital ao teto e
+ * grava o evento 'liquidacao' no ledger.
+ *
+ * Desde a migration 017 o banco exige a PROVA de que o dinheiro voltou:
+ * todas as parcelas pagas, cada uma contra um movimento bancário. Faltando
+ * uma, a recusa é OC022 (422) — e o caminho para encerrar a cobrança sem
+ * pagamento é o outro endpoint, `/baixar-prejuizo`.
+ *
+ * Até a 017 esta chamada liquidava INCONDICIONALMENTE: uma operação com a
+ * agenda inteira em aberto devolvia 100% do capital ao teto e sumia do
+ * aging. Era o furo mais grave do sistema e estava ao alcance de qualquer
+ * operador — nada aqui mudou de assinatura, mudou quem decide.
  */
 export const postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostMutation = (
   options?: Partial<Options<PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostData>>,
@@ -568,6 +586,69 @@ export const postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostMutation = (
   > = {
     mutationFn: async (fnOptions) => {
       const { data } = await postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPost({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+/**
+ * Post Baixar Prejuizo
+ *
+ * WRITE-OFF: ativa/inadimplente -> baixada_prejuizo. Encerra a cobrança e
+ * NÃO devolve capital ao teto — o dinheiro não voltou.
+ *
+ * ENDPOINT PRÓPRIO, e não um campo no corpo de `/liquidar`. As duas coisas
+ * parecem a mesma ("encerrar a operação") e têm consequências opostas sobre
+ * o teto do Art. 5º, o que é exatamente a razão de não compartilharem porta:
+ *
+ * - um booleano no corpo faz o ato irreversível ficar a um caractere de
+ * distância do ato seguro, e transforma um cliente que ESQUECEU o campo
+ * em um cliente que escolheu um dos dois por omissão. Não existe default
+ * inofensivo aqui: `false` liquida sem prova (o furo de volta), `true`
+ * condena ao prejuízo uma operação quitada;
+ * - a URL é o que aparece no log de acesso, no OpenAPI e na tela. "Este
+ * operador chamou /baixar-prejuizo" é uma frase que a auditoria lê
+ * sozinha; "chamou /liquidar com write_off=true" exige ter guardado o
+ * corpo da requisição, que ninguém guarda;
+ * - o dia em que a ESC decidir que write-off é ato de gestão (papel admin,
+ * alçada por valor, dupla aprovação), a restrição entra na dependency
+ * DESTE endpoint. Com um campo no corpo, a checagem de papel teria que
+ * olhar o payload — autorização condicionada a dado de entrada, que é
+ * como se erram permissões.
+ *
+ * Segue o padrão do próprio router, em que cada transição tem sua rota
+ * (`/registrar`, `/cancelar`, `/marcar-inadimplente`, `/renegociar`).
+ *
+ * CONSEQUÊNCIA QUE A UI PRECISA DIZER ANTES DE CHAMAR: o teto encolhe de
+ * forma permanente. A operação continua no comprometido para sempre, e
+ * recuperar capacidade operacional exige aporte de capital (novo evento de
+ * constituição), não uma baixa contábil. É estado terminal: não há volta
+ * para 'ativa' nem caminho daqui para 'liquidada' (OC003).
+ *
+ * Mantido em `get_operador_user` como as demais transições: restringir a
+ * admin é decisão de negócio que ninguém tomou — a política decidida em
+ * 2026-08-12 fala do EFEITO no capital, não de alçada. Quando a decisão
+ * sair, é a linha de cima que muda.
+ */
+export const postBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostMutation = (
+  options?: Partial<Options<PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostData>>,
+): UseMutationOptions<
+  PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostResponse,
+  PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostError,
+  Options<PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostResponse,
+    PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostError,
+    Options<PostBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postBaixarPrejuizoApiOperacoesOperacaoIdBaixarPrejuizoPost({
         ...options,
         ...fnOptions,
         throwOnError: true,
@@ -1248,7 +1329,22 @@ export const getDocumentosApiComplianceTomadoresTomadorIdDocumentosGetOptions = 
 /**
  * Post Documento
  *
- * Arquiva a evidência de identificação.
+ * Arquiva a evidência de identificação — com os BYTES.
+ *
+ * O QUE MUDOU NA MIGRATION 019, e por que era grave: este endpoint recebia
+ * um campo `sha256` do cliente e gravava a linha. Nenhum byte era lido, não
+ * havia storage, e o gate OC019 (ativar exige evidência arquivada, Lei
+ * 9.613/98 art. 10, I) dava por cumprida a identificação de quem digitasse
+ * 64 caracteres hexadecimais. Agora o hash é CALCULADO aqui, sobre o que
+ * chegou — não existe mais um caminho para o cliente afirmar o hash.
+ *
+ * A ORDEM É: guardar os bytes, depois gravar a linha. O inverso deixaria a
+ * janela em que o banco afirma ter evidência que o bucket não tem, que é o
+ * estado que esta migration existe para eliminar. Falhar na ordem escolhida
+ * deixa, no pior caso, um objeto no bucket sem linha no banco — desperdício
+ * de espaço, não falha de compliance. E nem isso, no caso comum: a
+ * referência é derivada do hash do conteúdo, então a retentativa regrava o
+ * mesmo objeto no mesmo lugar em vez de criar outro.
  *
  * `retencao_ate` é gravado agora, e não calculado na leitura: se o prazo
  * legal mudar, os documentos já arquivados mantêm a regra vigente à época
@@ -1278,13 +1374,64 @@ export const postDocumentoApiComplianceTomadoresTomadorIdDocumentosPostMutation 
   return mutationOptions
 }
 
+export const getConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetQueryKey = (
+  options: Options<GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetData>,
+) => createQueryKey('getConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGet', options)
+
+/**
+ * Get Conteudo Documento
+ *
+ * Devolve os bytes arquivados.
+ *
+ * É o outro lado do arquivamento: guardar sem conseguir apresentar teria o
+ * mesmo valor prático de não guardar. `Content-Disposition: attachment` com
+ * o nome registrado — a evidência é para ser baixada e anexada a um
+ * processo, não renderizada dentro da aplicação (o que, com HTML ou SVG
+ * enviados como "documento", seria script de terceiro rodando na origem do
+ * OrgCred).
+ */
+export const getConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetOptions = (
+  options: Options<GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetData>,
+) =>
+  queryOptions<
+    unknown,
+    GetConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetError,
+    unknown,
+    ReturnType<typeof getConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGetQueryKey(options),
+  })
+
 /**
  * Post Verificar Documento
  *
- * Confere se um arquivo é bit a bit o que foi arquivado.
+ * Confere se um arquivo apresentado é bit a bit o que foi arquivado.
  *
- * É o que dá sentido a guardar só o hash: sem esta conferência, o hash
- * seria um número sem uso.
+ * DUAS PERGUNTAS DIFERENTES, e a segunda só passou a ser respondível com o
+ * storage:
+ *
+ * - `confere`: o arquivo que você acabou de mandar bate com o hash gravado
+ * no banco? É a conferência que dá sentido a guardar o hash.
+ * - `storage_integro`: os bytes guardados no bucket ainda batem com esse
+ * mesmo hash? Detecta adulteração DO ARQUIVO GUARDADO — o único ataque
+ * que o trigger OC013 não alcança, porque acontece do lado do storage,
+ * onde o Postgres não tem jurisdição. Vale `None` para evidência anterior
+ * à 019, que não tem objeto para conferir.
+ *
+ * As duas são calculadas contra o hash gravado, nunca uma contra a outra:
+ * se alguém trocar o objeto no bucket, `confere` continua respondendo sobre
+ * o documento verdadeiro e `storage_integro` acusa a troca. Comparar o
+ * upload direto com o objeto do bucket deixaria os dois errados juntos e
+ * concordando.
  */
 export const postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostMutation = (
   options?: Partial<
@@ -1592,13 +1739,19 @@ export const getAuditoriaApiAuditoriaGetQueryKey = (
  * usuário quando disponível) e o resultado da verificação da cadeia de
  * hash (`fn_verificar_cadeia_ledger()`, migration 005) — 0 quebras
  * significa cadeia íntegra.
+ *
+ * `eventos` é paginado; `quebras` NÃO é, de propósito. A verificação da
+ * cadeia é uma afirmação sobre o ledger inteiro: paginar as quebras faria
+ * `integro` significar "esta página está íntegra", que é exatamente a
+ * mentira que a cadeia de hash existe para impedir. Na operação normal a
+ * lista vem vazia; se vier grande, o tamanho dela é a notícia.
  */
 export const getAuditoriaApiAuditoriaGetOptions = (
   options?: Options<GetAuditoriaApiAuditoriaGetData>,
 ) =>
   queryOptions<
     GetAuditoriaApiAuditoriaGetResponse,
-    DefaultError,
+    GetAuditoriaApiAuditoriaGetError,
     GetAuditoriaApiAuditoriaGetResponse,
     ReturnType<typeof getAuditoriaApiAuditoriaGetQueryKey>
   >({
@@ -1704,7 +1857,7 @@ export const metricsMetricsGetQueryKey = (options?: Options<MetricsMetricsGetDat
 /**
  * Metrics
  *
- * Métricas Prometheus para scraping.
+ * Métricas Prometheus para scraping (requer autenticação).
  */
 export const metricsMetricsGetOptions = (options?: Options<MetricsMetricsGetData>) =>
   queryOptions<unknown, DefaultError, unknown, ReturnType<typeof metricsMetricsGetQueryKey>>({

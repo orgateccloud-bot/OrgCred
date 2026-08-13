@@ -5,6 +5,7 @@ import { getTomadorApiTomadoresTomadorIdGetOptions } from '@/api/generated/@tans
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { rotuloTipo } from '@/lib/rotulos'
+import { IdentificacaoTomador } from '@/components/identificacao/identificacao-tomador'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -83,6 +84,8 @@ function TomadorDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      <IdentificacaoTomador tomadorId={id} />
 
       <Card>
         <CardHeader>

@@ -7,20 +7,22 @@ import {
   getParcelasApiOperacoesOperacaoIdParcelasGetQueryKey,
   getCapitalSnapshotApiCapitalSnapshotGetOptions,
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPostMutation,
-  postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostMutation,
   postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostMutation,
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { narrativa } from '@/lib/ledger'
-import { rotuloOrigemEvento, rotuloStatus, rotuloTipo } from '@/lib/rotulos'
+import { rotuloOrigemEvento, rotuloTipo } from '@/lib/rotulos'
 import { AgendaParcelas } from '@/components/agenda-parcelas'
 import { AtivarOperacaoDialog } from '@/components/ativar-operacao-dialog'
 import { ContratoERegistro } from '@/components/contrato-e-registro'
 import { NovarOperacaoDialog } from '@/components/novar-operacao-dialog'
 import { RegistrarOperacaoDialog } from '@/components/registrar-operacao-dialog'
-import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { TransicaoOperacaoDialog } from '@/components/transicao-operacao-dialog'
+import { AcoesEncerramentoOperacao } from '@/components/operacoes/acoes-encerramento-operacao'
+import { AvisoBaixaPrejuizo } from '@/components/operacoes/aviso-baixa-prejuizo'
+import { BadgeStatusOperacao } from '@/components/operacoes/badge-status-operacao'
+import { rotuloStatusOperacao } from '@/components/operacoes/rotulo-status-operacao'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -37,7 +39,6 @@ function OperacaoDetailPage() {
     getOperacaoApiOperacoesOperacaoIdGetOptions({ path: { operacao_id: id } }),
   )
 
-  const liquidar = useMutation(postLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostMutation())
   const cancelar = useMutation(postCancelarOperacaoApiOperacoesOperacaoIdCancelarPostMutation())
   const inadimplente = useMutation(
     postMarcarInadimplenteApiOperacoesOperacaoIdMarcarInadimplentePostMutation(),
@@ -91,8 +92,8 @@ function OperacaoDetailPage() {
         {/* Nomeado porque a página tem vários badges de status (a trilha
             mostra um por transição): sem isto, nem leitor de tela nem
             teste conseguem dizer qual deles é o estado atual. */}
-        <span aria-label={`Status atual: ${rotuloStatus(data.status)}`}>
-          <StatusOperacaoBadge status={data.status} />
+        <span aria-label={`Status atual: ${rotuloStatusOperacao(data.status)}`}>
+          <BadgeStatusOperacao status={data.status} />
         </span>
         <div className="ml-auto flex flex-wrap gap-2">
           {data.status === 'proposta' && (
@@ -132,15 +133,10 @@ function OperacaoDetailPage() {
           )}
           {data.status === 'ativa' && (
             <>
-              <TransicaoOperacaoDialog
+              <AcoesEncerramentoOperacao
                 operacaoId={data.id}
-                titulo="Liquidar operação"
-                descricao={`A liquidação devolve ${formatarMoeda(String(data.valor_principal))} ao capital disponível e encerra a operação. O evento é gravado no ledger imutável.`}
-                rotuloBotao="Liquidar"
-                rotuloConfirmar="Confirmar liquidação"
-                variant="default"
-                mutation={liquidar}
-                invalidar={invalidar}
+                valorPrincipal={String(data.valor_principal)}
+                onSucesso={invalidar}
               />
               <NovarOperacaoDialog
                 operacaoId={data.id}
@@ -167,15 +163,10 @@ function OperacaoDetailPage() {
                 onSucesso={invalidar}
                 variant="default"
               />
-              <TransicaoOperacaoDialog
+              <AcoesEncerramentoOperacao
                 operacaoId={data.id}
-                titulo="Liquidar operação"
-                descricao="Liquidação de operação inadimplente: devolve o valor ao capital disponível e encerra a operação."
-                rotuloBotao="Liquidar"
-                rotuloConfirmar="Confirmar liquidação"
-                variant="default"
-                mutation={liquidar}
-                invalidar={invalidar}
+                valorPrincipal={String(data.valor_principal)}
+                onSucesso={invalidar}
               />
               <NovarOperacaoDialog
                 operacaoId={data.id}
@@ -186,6 +177,12 @@ function OperacaoDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Antes de qualquer dado: quem abre esta tela depois do write-off não
+          pode ler "encerrada" como "quitada" — o capital não voltou. */}
+      {data.status === 'baixada_prejuizo' && (
+        <AvisoBaixaPrejuizo valorPrincipal={String(data.valor_principal)} />
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -291,12 +288,12 @@ function OperacaoDetailPage() {
                 <p className="text-sm">
                   {evento.status_anterior ? (
                     <>
-                      <StatusOperacaoBadge status={evento.status_anterior} /> →{' '}
+                      <BadgeStatusOperacao status={evento.status_anterior} /> →{' '}
                     </>
                   ) : (
                     <span className="text-muted-foreground">Criada como </span>
                   )}
-                  <StatusOperacaoBadge status={evento.status_novo} />
+                  <BadgeStatusOperacao status={evento.status_novo} />
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {rotuloOrigemEvento(evento.origem)}
