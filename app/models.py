@@ -4,7 +4,17 @@ import enum
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -273,6 +283,12 @@ class CapitalLedger(Base):
     `prev_hash`/`current_hash`: cadeia SHA-256 adicionada na migration 005
     (append-only enforced por trigger) — calculadas pelo banco em cada
     INSERT, nunca escritas pela aplicação.
+
+    `seq`: ordem de gravação da cadeia (migration 020). É por ela que a cadeia
+    é encadeada e verificada — `created_at` é o instante de ABERTURA da
+    transação (`now()` = `transaction_timestamp()`) e pode sair invertido
+    entre transações sobrepostas. Também é atribuída pelo banco (default
+    `nextval`), pelo mesmo motivo dos hashes: quem escreve é o banco.
     """
 
     __tablename__ = "capital_ledger"
@@ -286,6 +302,7 @@ class CapitalLedger(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     prev_hash = Column(String(64), nullable=True)
     current_hash = Column(String(64), nullable=True)
+    seq = Column(BigInteger, nullable=False)  # default nextval no banco (migration 020)
 
 
 class EscCapitalSocial(Base):

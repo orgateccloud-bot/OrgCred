@@ -56,6 +56,7 @@ MIGRATIONS = [
     "017_gate_de_liquidacao",
     "018_correcoes_fiscais",
     "019_storage_documento",
+    "020_hashchain_monotonica",
 ]
 
 
