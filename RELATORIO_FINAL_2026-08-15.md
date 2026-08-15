@@ -1,6 +1,6 @@
-# OrgCred — Relatório de execução, 12–13 de agosto de 2026
+# OrgCred — Relatório de execução, 12–15 de agosto de 2026
 
-Seis commits, 68 arquivos, ~10.700 linhas. O que segue é o que foi feito, o que
+Nove commits, ~12.000 linhas. O que segue é o que foi feito, o que
 foi provado, e o que continua aberto — nesta ordem, porque a terceira parte é a
 que decide se dá para operar.
 
@@ -71,6 +71,27 @@ descarta mais o corpo da requisição.
 
 Ver seção 4 — foi a etapa que rendeu mais.
 
+### Os quatro defeitos que o levantamento deixou em aberto (`a189921`, `e712b1d`)
+
+**Hash-chain ancorada em chave monotônica (020).** A cadeia era encadeada e
+verificada por `created_at`, cujo default é `now()` — o instante de abertura da
+transação, não da gravação. Uma transação que lê antes de escrever (o formato de
+qualquer request que consulta capital e então ativa) carimba horário anterior ao
+de outra que gravou primeiro, e a verificação acusava as duas linhas. Um stress
+de 12 ativações simultâneas produziu de 4 a 6 inversões por rodada.
+
+**Registro não nasce confirmado (021).** `fn_registro_transicao` era `before
+update or delete`: o `INSERT` ficava sem guarda e uma linha podia nascer no
+estado terminal com protocolo inventado, destravando o gate OC004 — que passava
+a atestar que alguém digitou um protocolo.
+
+**Contrato cita o registro confirmado.** O corpo imprimia `registro_entidade_ref`,
+texto livre que a migration 013 rebaixou. O instrumento vai a terceiros.
+
+**Retenção conta do encerramento (022).** A coluna virou piso e a retenção
+efetiva é `greatest(piso, último encerramento + 5 anos)`; enquanto a relação não
+encerrou, é `infinity`.
+
 ---
 
 ## 3. A decisão de negócio que destravou o gate
@@ -128,16 +149,16 @@ campo `sha256` — a garantia de que o cliente não voltou a mandar hash pronto.
 
 | | Antes | Depois |
 |---|---|---|
-| Testes backend | 198 | **355** |
-| Cobertura | 92% | **93%** (piso de 85% ativo) |
+| Testes backend | 198 | **393** |
+| Cobertura | 92% | **93,2%** (piso de 85% ativo) |
 | Testes frontend | 50 | **148** |
 | E2E | 5 (todos quebrados) | **6, verdes** |
-| Migrations | 14 | **19** |
+| Migrations | 14 | **22** |
 | SQLSTATEs no banco | 18 | **21** |
 | Suíte local | 148s | **27s** |
 
 `ruff`, `ruff format`, `mypy` e `bandit` limpos. `alembic upgrade → downgrade →
-upgrade` verificado nas cinco migrations novas.
+upgrade` verificado nas oito migrations novas.
 
 **A prova que mais importa não é a suíte verde, é a mutação.** Removendo o
 `pg_advisory_xact_lock` da migration 014, duas ativações concorrentes commitam e
@@ -151,18 +172,21 @@ redefinido cinco vezes depois.
 
 ## 6. O que continua aberto
 
-### Defeitos conhecidos, meus
+### Defeito conhecido, meu
 
-1. **Hash-chain ordenada por `created_at = now()`** — acusa adulteração falsa
-   sob concorrência, porque `now()` é o timestamp da transação, não da inserção.
-   É o mais grave dos abertos: destrói o valor probatório da trilha justamente
-   quando ela é acionada. Não entrou em nenhum passo do plano.
-2. `registro_operacao` pode **nascer** `confirmado` — o trigger não cobre
-   `INSERT`, e a própria suíte depende desse buraco.
-3. O corpo do contrato imprime texto livre em vez do protocolo confirmado.
-4. Retenção ancorada no arquivamento, não no encerramento da operação — para um
-   contrato de 60 parcelas, o prazo legal vence ~5 anos antes do que o art. 10
-   III exige.
+Um só, e é o menor da lista original: a regra de atipicidade por **liquidação
+antecipada** ([010:212](migrations/010_compliance_interno.sql:212)) não tem
+teste e depende de `current_date`, então deixa de detectar sozinha com o passar
+dos dias — e a varredura só roda por clique manual.
+
+Os quatro que estavam aqui foram fechados. O da hash-chain merece nota, porque
+a correção quase introduziu um defeito pior: ancorar em `seq` cortou um amarrio
+acidental — até então, percorrer por `created_at` obrigava o carimbo a ser
+coerente com a posição, e um append forjado com data retroativa era acusado.
+Medido: append antedatado em 400 dias, a versão anterior acusa duas quebras, a
+correção inicial não acusava nenhuma, e bastava privilégio de `INSERT`. Fechado
+com `new.created_at := now()` no trigger — antedatar virou impossível, não
+apenas detectável.
 
 ### Seu, e é o que impede operar
 

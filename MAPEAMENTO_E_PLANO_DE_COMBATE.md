@@ -1,6 +1,7 @@
 # OrgCred — Mapeamento, scorecard e plano de entrada em produção
 
-> Revisado em **2026-08-13**, depois da execução da Condição 1 e da Condição 2.
+> Revisado em **2026-08-15**, depois de fechados os quatro defeitos que o
+> levantamento deixou em aberto.
 > O levantamento base é de 2026-08-12: 53 agentes sobre 10 domínios, com rodada
 > adversarial — todo achado grave passou por um cético encarregado de refutá-lo,
 > e **32 sobreviveram**. Este documento marca quais deles foram fechados e
@@ -15,31 +16,32 @@
 Postgres de produção e não tem `ORGCRED_SUPABASE_JWT_SECRET`. Nada do que foi
 feito no código muda isso — é configuração, e está no seu balde.
 
-**Mudou uma coisa importante desde ontem:** a guarda fail-closed agora **recusa
-iniciar** em produção com a JWT secret no default. Ou seja, no próximo deploy
-esse serviço não sobe mais em modo inseguro — ele falha, ruidosamente. E o
-`orgcred-api` também não subirá se a secret configurada nele não for a real.
+**Mitigação parcial que já existe:** a guarda fail-closed **recusa iniciar** em
+produção com a JWT secret no default. No próximo deploy esse serviço não sobe
+mais em modo inseguro — ele falha, ruidosamente. O `orgcred-api` também não
+subirá se a secret configurada nele não for a real.
 
 ---
 
 ## 1. Retrato em uma frase
 
-O sistema deixou de estar inoperante e passou a defender o teto do Art. 5º
-pelas bordas, não só pela porta da frente — mas continua **não operável**, por
-falta de dados de negócio e configuração, e carrega dois defeitos conhecidos
-que não foram fechados.
+Todos os defeitos de código que o levantamento encontrou estão fechados: o teto
+do Art. 5º é defendido pelas bordas, a trilha de auditoria não acusa mais
+adulteração falsa nem aceita lançamento antedatado, e a interface funciona de
+ponta a ponta. O que impede operar é **configuração e dado de negócio** — mais
+riscos residuais que exigem integração externa, não código.
 
 ---
 
-## 2. O que mudou em 2026-08-12/13
+## 2. O que mudou em 2026-08-12/15
 
 | | Antes | Agora |
 |---|---|---|
-| Testes backend | 198 | **355** |
-| Cobertura | 92% | **93%** (piso de 85% ativo na CI) |
+| Testes backend | 198 | **393** |
+| Cobertura | 92% | **93,2%** (piso de 85% ativo na CI) |
 | Testes frontend | 50 | **148** |
 | E2E | 5 (todos quebrados) | **6, verdes** |
-| Migrations | 14 | **19** |
+| Migrations | 14 | **22** |
 | SQLSTATEs no banco | 18 | **21** |
 | Suíte local | 148s | **27s** |
 
@@ -74,14 +76,20 @@ que não foram fechados.
   era código morto; auditoria sem paginação.
 - **O logging não emitia nada** em produção.
 
-### Não fechado, e são defeitos conhecidos
+### Fechado depois — os quatro que o levantamento deixou em aberto
 
-| Achado | Onde | Por que ainda está aberto |
+| Achado | Como foi fechado |
+|---|---|
+| **Hash-chain ordenada por `created_at = now()`** — acusava adulteração falsa sob concorrência | Migration 020: coluna `seq` monotônica, elo anterior vira "a maior chave menor que a minha". O backfill usa a MESMA expressão de ordenação da verificação anterior, o que preserva os hashes já gravados por construção. A revisão pegou um efeito colateral grave: ancorar em `seq` cortava um amarrio acidental e passava a aceitar **append antedatado** sem acusar. Fechado com `new.created_at := now()` no trigger — antedatar virou impossível, não apenas detectável. |
+| `registro_operacao` podia **nascer** `confirmado` | Migration 021: a máquina de estados passou a guardar o `INSERT` e **recusa** (OC018) em vez de rebaixar em silêncio. Fechada também a variante de nascer `pendente` com protocolo e `confirmado_em` pré-cozidos. O helper da suíte, que explorava o buraco, passou a emitir os dois comandos que os endpoints emitem. |
+| O contrato imprimia texto livre em vez do protocolo | Passou a citar entidade, protocolo e data de confirmação. Contratos já emitidos seguem válidos com o texto antigo — nada recalcula hash existente (OC017). |
+| Retenção ancorada no **arquivamento** | Migration 022: a coluna vira **piso** e a retenção efetiva é `greatest(piso, último encerramento + 5 anos)`; enquanto a relação não encerrou, é `infinity`. Tomador que encerra tudo e volta a tomar crédito reinicia o relógio. |
+
+### Continua aberto
+
+| Achado | Onde | Situação |
 |---|---|---|
-| **Hash-chain ordena por `created_at = now()`** → acusa adulteração falsa sob concorrência | [005:53](migrations/005_ledger_imutavel.sql:53) e [005:107](migrations/005_ledger_imutavel.sql:107) | Não entrou em nenhum passo do plano. Exige trocar a ordenação por chave monotônica e reindexar a verificação. **É o defeito aberto mais grave**: destrói o valor probatório da trilha justamente quando ela é acionada. |
-| `registro_operacao` pode **nascer** `confirmado` | [012:159](migrations/012_contrato_e_registro.sql:159) | O trigger é `before update or delete`, não cobre `INSERT`. A própria suíte depende desse buraco para montar cenário. |
-| O contrato imprime `registro_entidade_ref` (texto livre) em vez do protocolo confirmado | [contrato.py:128](app/contrato.py:128) | Conteúdo do instrumento, não invariante — mas é o documento que vai a terceiros. |
-| Retenção ancorada na data de **arquivamento**, não no encerramento da operação | [010:44](migrations/010_compliance_interno.sql:44) | Para um contrato de 60 parcelas, o prazo legal vence junto com o contrato — ~5 anos antes do que o art. 10 III exige. |
+| A regra de atipicidade por **liquidação antecipada** não tem teste e depende de `current_date` | [010:212](migrations/010_compliance_interno.sql:212) | Deixa de detectar sozinha com o passar dos dias, e a varredura só roda por clique manual. É o último defeito de código conhecido. |
 
 ---
 
@@ -91,12 +99,12 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 
 | Domínio | Antes | Agora | Justificativa |
 |---|---|---|---|
-| **Capital e teto (Art. 5º)** | 🔴 | 🟡 | As três bordas foram fechadas (015) e a concorrência da versão vigente está provada — mutação que remove o advisory lock reproduz a falha original 3 de 3. Não é verde por causa da hash-chain ordenada por `now()`. |
+| **Capital e teto (Art. 5º)** | 🔴 | 🟢 | Três bordas fechadas (015), concorrência da versão vigente provada — mutação que remove o advisory lock reproduz a falha original 3 de 3 — e a hash-chain ancorada em chave monotônica (020), que também tornou impossível antedatar lançamento. |
 | **Operações e novação** | 🟡 | 🟢 | Máquina de estados no trigger, novação atômica com prova de não-dupla-contagem, e agora testes HTTP das transições e do gate de liquidação. |
 | **Cobrança** | 🔴 | 🟡 | O furo crítico da liquidação está fechado (017, OC022), `baixada` não contorna mais o lastro, a baixa tem autor. Não é verde porque o lastro continua **auto-declarado**: não há importação de extrato. |
-| **Contratos e registro** | 🟡 | 🟡 | Sem mudança. O hash é calculado pelo banco e o gate OC004 está provado, mas o registro pode nascer confirmado e o corpo imprime texto livre. Bloqueadores reais são externos. |
+| **Contratos e registro** | 🟡 | 🟢 | O registro não nasce mais confirmado (021), o corpo cita o protocolo confirmado, e a emissão concorrente já era tratada. Sem defeito aberto — o que impede usar é externo: registradora contratada, assinatura eletrônica e dados da ESC. |
 | **Fiscal (Lucro Presumido)** | 🔴 | 🟡 | Os quatro erros de conteúdo foram corrigidos e testados (018). Não é verde porque nenhum parâmetro real existe — a apuração é recusada por OC015, de propósito, até o contador informar. |
-| **Compliance PLD** | 🔴 | 🟡 | A evidência deixou de ser oca: bytes de verdade, hash no servidor, storage com fail-closed, e UI de arquivamento e verificação. Não é verde pela retenção mal ancorada e pelo regime COAF pendente de parecer. |
+| **Compliance PLD** | 🔴 | 🟡 | A evidência deixou de ser oca (bytes, hash no servidor, storage fail-closed, UI) e a retenção passou a contar do encerramento (022). Não é verde por um defeito que resta — a regra de liquidação antecipada sem teste, que para de detectar sozinha — e pelo regime COAF pendente de parecer. |
 | **Segurança e auditoria** | 🔴 | 🟡 | Guarda fail-closed de configuração, `/docs` desligado em produção, `/metrics` protegido, rate limiting de fato ligado, auditoria paginada com teto de página. Não é verde enquanto o serviço duplicado existir. |
 | **Frontend** | 🔴 | 🟢 | `baseUrl` relativo provado no artefato (zero ocorrências de `localhost` no bundle), UI de identificação e de write-off, dicionário completo, retry preservando o corpo, feedback anunciado por `role="alert"`. 148 testes e 6 E2E. |
 | **Qualidade e CI** | 🟡 | 🟢 | Falha dura sem banco (exit 4), teste de sincronia das três fontes de schema, piso de cobertura, docker build com smoke test, e a suíte de concorrência dentro do pytest. |
@@ -108,10 +116,12 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 
 ### Meu (código)
 
-1. **Hash-chain por chave monotônica** — o defeito aberto mais grave.
-2. `registro_operacao` nascendo confirmado (trigger `BEFORE INSERT`).
-3. Corpo do contrato imprimindo o protocolo confirmado.
-4. Retenção ancorada no encerramento da operação.
+1. **Teste da regra de atipicidade por liquidação antecipada**, e ancorá-la na
+   data de liquidação em vez de `current_date` — hoje ela deixa de detectar
+   sozinha com o passar dos dias. É o último defeito de código conhecido.
+
+Os quatro que estavam aqui (hash-chain, registro nascendo confirmado, protocolo
+no contrato, retenção) foram fechados — ver seção 2.
 
 ### Seu (configuração e decisão)
 
@@ -139,14 +149,16 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 
 **Ainda não dá para emprestar dinheiro** — mas o motivo mudou de natureza.
 
-Ontem o sistema estava inoperante e o teto do Art. 5º tinha duas portas
-abertas alcançáveis por qualquer operador. Hoje as portas estão fechadas e
-provadas por teste de mutação, e a interface funciona de ponta a ponta.
+Três dias atrás o sistema estava inoperante e o teto do Art. 5º tinha duas
+portas abertas alcançáveis por qualquer operador. Hoje as portas estão fechadas
+e provadas por teste de mutação, a trilha de auditoria não acusa mais
+adulteração falsa nem aceita lançamento antedatado, e a interface funciona de
+ponta a ponta.
 
-O que impede operar agora é **configuração e dado de negócio**, mais quatro
-defeitos conhecidos que eu ainda não fechei — nenhum deles alcançável pela
-API, mas o da hash-chain compromete a trilha de auditoria sob concorrência, e
-é o próximo da fila.
+O que impede operar agora é **configuração e dado de negócio**. Os quatro
+defeitos que restavam foram fechados, inclusive o da hash-chain, que era o
+único a comprometer uma garantia legal. Resta um, menor: a regra de atipicidade
+por liquidação antecipada, sem teste e que perde eficácia com o tempo.
 
 O **piloto fechado** que a Condição 1 destravou está disponível: sem capital
 social carregado, sem parâmetro fiscal, poucos operadores, nenhuma operação
