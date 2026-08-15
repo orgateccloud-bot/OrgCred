@@ -1666,6 +1666,612 @@ class TestAtipicidade:
         assert client.post("/api/compliance/atipicidades/detectar", json={}).status_code == 403
 
 
+def _envelhecer_agenda(db_session: Session, operacao_id: uuid.UUID, dias: int) -> None:
+    """Recua a agenda INTEIRA da operação em `dias`.
+
+    Vencimento é imutável (OC009) e a agenda é emitida pelo banco na
+    ativação — não existe caminho de produção que a reescreva, que é
+    justamente a garantia introduzida pela 007. Para fabricar o cenário o
+    teste desliga a guarda pelo tempo de um UPDATE: mesma manobra, e mesmo
+    motivo, de `_envelhecer` em tests/test_aging.py.
+
+    O deslocamento é RELATIVO ao vencimento já gravado — que o banco
+    calculou a partir do seu próprio `current_date` na ativação — e nunca
+    uma data vinda do Python. Os dois relógios divergem (o container roda
+    em Etc/UTC e a máquina local em UTC-3), e por três horas todo dia eles
+    discordam de um dia inteiro; ancorar o cenário no relógio errado já
+    produziu falha diária, no mesmo horário, sem nada de errado no código.
+
+    Recua a agenda toda, e não só a primeira parcela, para que ela continue
+    sendo uma agenda coerente: parcelas mensais consecutivas, a um mês uma
+    da outra. A REGRA 2 só lê `min(vencimento)`, mas um cenário em que a
+    parcela 1 vence depois da 2 descreveria um fato que o sistema não
+    produz.
+    """
+    db_session.execute(text("alter table parcela disable trigger trg_parcela_imutavel"))
+    db_session.execute(
+        text("""
+        update parcela
+           set vencimento = vencimento - make_interval(days => :dias)
+         where operacao_id = :op
+        """),
+        {"dias": dias, "op": str(operacao_id)},
+    )
+    db_session.execute(text("alter table parcela enable trigger trg_parcela_imutavel"))
+    db_session.commit()
+
+
+def _envelhecer_fato(db_session: Session, operacao_id: uuid.UUID, dias: int) -> None:
+    """Recua o FATO INTEIRO em `dias` — as DUAS pontas pelo MESMO tanto.
+
+    É a diferença entre simular o tempo passando e fabricar um fato
+    diferente, e ela não é sutil: `envelhecer_encerramento(anos=1)` somado a
+    `_envelhecer_agenda(dias=60)` não preserva coisa nenhuma. Medido nesta
+    suíte: a distância entre a liquidação e o primeiro vencimento salta de 31
+    para 336 dias. O cenário resultante continua sendo detectado, mas o que
+    ele exercita é uma antecipação de onze meses — um fato MAIS extremo,
+    não o mesmo fato visto mais tarde. Um teste montado assim provaria que a
+    regra pega antecipação grande e passada; não provaria a propriedade que
+    interessa.
+
+    Aqui as duas pontas andam o mesmo número de dias, de modo que a única
+    coisa que muda é a POSIÇÃO do fato em relação a `current_date`. É a única
+    forma de variar o relógio da varredura sem variar o que se varre.
+
+    Mesma manobra de `envelhecer_encerramento` (tests/conftest.py) para o
+    evento terminal e de `_envelhecer_agenda` para a agenda: desligar a guarda
+    append-only pelo tempo de um UPDATE, em banco descartável. O
+    `capital_ledger` NÃO é envelhecido junto, e isso é deliberado: desde a 020
+    seu `created_at` é escrito pelo banco (`new.created_at := now()`) e entra
+    no digest da hash-chain, de modo que antedatá-lo exigiria forjar o hash —
+    fabricar em teste exatamente o artefato que a 020 existe para tornar
+    impossível.
+    """
+    db_session.execute(
+        text("alter table operacao_evento disable trigger trg_operacao_evento_append_only")
+    )
+    afetados = db_session.execute(
+        text("""
+        update operacao_evento
+           set created_at = created_at - make_interval(days => :dias)
+         where operacao_id = :op
+           and status_novo in ('liquidada', 'renegociada', 'cancelada', 'baixada_prejuizo')
+        """),
+        {"op": str(operacao_id), "dias": dias},
+    ).rowcount
+    db_session.execute(
+        text("alter table operacao_evento enable trigger trg_operacao_evento_append_only")
+    )
+    db_session.commit()
+
+    # Zero aqui é cenário mal montado: sem evento terminal a REGRA 2 cairia no
+    # ramo "data não provada" e o teste passaria pelo motivo errado.
+    assert afetados > 0, (
+        f"operação {operacao_id} não tem evento de encerramento em operacao_evento: "
+        "não há fato terminal para envelhecer."
+    )
+
+    _envelhecer_agenda(db_session, operacao_id, dias)
+
+
+class TestLiquidacaoAntecipada:
+    """REGRA 2 de `fn_detectar_atipicidades` (migrations 010 e 023).
+
+    Tomar crédito e devolvê-lo antes mesmo da primeira parcela vencer não é
+    ilegal, mas é o formato de quem usa a operação para dar aparência lícita
+    a recurso que já tinha. A regra existe para pôr um par de olhos nisso.
+
+    A PROPRIEDADE CENTRAL que esta classe prova é que a resposta da varredura
+    depende do FATO e não do RELÓGIO. O filtro da 010 comparava o primeiro
+    vencimento com `current_date`: a mesma operação era detectada enquanto a
+    varredura rodasse antes do vencimento e deixava de ser detectada para
+    sempre no dia seguinte, embora nada sobre ela tivesse mudado. Como a
+    varredura só roda por clique manual, isso é uma loteria com data de
+    validade — e a validade tende a expirar antes do clique.
+    """
+
+    def _liquidada_antes_do_primeiro_vencimento(
+        self, db_session: Session, tomador_id: uuid.UUID
+    ) -> uuid.UUID:
+        """Operação levada até 'liquidada' pelo caminho real, sem atalho.
+
+        R$ 10.000 e não menos: abaixo do limiar padrão a mesma operação
+        entraria também na REGRA 1 (fracionamento) se houvesse três delas, e
+        o teste passaria a contar ocorrências de duas regras diferentes. E a
+        baixa é pelo valor exato da parcela, o que mantém a REGRA 3
+        (pagamento em excesso) fora do cenário — o total de ocorrências
+        esperado é 1, e é sobre esse 1 que a asserção fala.
+
+        Quitar antes de liquidar não é cerimônia: desde a 017 `ativa ->
+        liquidada` exige a agenda inteira baixada contra movimento bancário
+        (OC022).
+        """
+        op_id = _operacao(db_session, tomador_id, "10000")
+        confirmar_registro(db_session, op_id)
+        ativar_operacao(db_session, op_id)
+        assert quitar_operacao(db_session, op_id) == 12, "cenário sem agenda para quitar"
+        transicionar_operacao(db_session, op_id, "liquidada")
+        return op_id
+
+    def _fato(self, db_session: Session, operacao_id: uuid.UUID) -> Any:
+        """As três datas que descrevem o fato, lidas NO BANCO.
+
+        `liquidada_em` sai de `operacao_evento` (008) porque é a trilha das
+        transições de ESTADO — a que responde "quando isto virou liquidada".
+        O `capital_ledger` responde outra pergunta (quanto de capital voltou
+        ao teto), e as duas trilhas são separadas de propósito.
+
+        `min()` e não `max()`, igual à REGRA 2: onde a leitura da trilha é o
+        objeto do teste, ler diferente da regra seria medir outra coisa.
+        """
+        return db_session.execute(
+            text("""
+            select (select min(vencimento) from parcela where operacao_id = :o)
+                       as primeiro_venc,
+                   (select min(created_at)::date from operacao_evento
+                     where operacao_id = :o and status_novo = 'liquidada')
+                       as liquidada_em,
+                   current_date as hoje
+            """),
+            {"o": str(operacao_id)},
+        ).one()
+
+    def _detectar(self, db_session: Session) -> int:
+        return db_session.execute(  # type: ignore[no-any-return]
+            text("select fn_detectar_atipicidades()")
+        ).scalar_one()
+
+    def _ocorrencias(self, db_session: Session, operacao_id: uuid.UUID) -> list:
+        return db_session.execute(
+            text("""
+            select regra, severidade, detalhe from ocorrencia_atipicidade
+             where operacao_id = :o order by regra
+            """),
+            {"o": str(operacao_id)},
+        ).all()
+
+    def test_varredura_logo_depois_da_liquidacao_detecta(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """O caso que a REGRA 2 já pegava antes da 023: o vencimento ainda não
+        chegou.
+
+        É o cenário fácil — o único em que o filtro da 010 (`primeiro_venc >
+        current_date`) coincidia com o fato — e existe para que o teste
+        seguinte não possa ser lido como "a regra nunca funcionou". Ela
+        funcionava; o que não funcionava era continuar funcionando amanhã.
+        """
+        op_id = self._liquidada_antes_do_primeiro_vencimento(db_session, tomador_autorizado)
+
+        fato = self._fato(db_session, op_id)
+        assert fato.liquidada_em < fato.primeiro_venc
+        # A varredura roda ANTES do primeiro vencimento — é isto, e só isto,
+        # que distingue este cenário do próximo.
+        assert fato.primeiro_venc > fato.hoje
+
+        assert self._detectar(db_session) == 1
+        ocorrencias = self._ocorrencias(db_session, op_id)
+        assert [o.regra for o in ocorrencias] == ["liquidacao_antecipada"]
+        assert ocorrencias[0].severidade == "media"
+
+    # Dois meses, um ano, dez anos. Todos acima de 31 dias de propósito: a
+    # primeira parcela vence a ~31 dias da ativação, e um horizonte menor
+    # deixaria o vencimento ainda no futuro — o cenário fácil do teste
+    # anterior, disfarçado de horizonte novo, em que o filtro da 010 também
+    # acertava. O que se quer aqui é o dia em que a regra antiga desistia.
+    @pytest.mark.parametrize("dias", [60, 365, 3650])
+    def test_o_mesmo_fato_em_qualquer_horizonte_da_o_mesmo_veredito(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+        dias: int,
+    ) -> None:
+        """A propriedade central: um mês depois, um ano depois, dez anos
+        depois — o mesmo fato, o mesmo veredito.
+
+        O fato é montado uma vez e depois DESLOCADO no tempo, as duas pontas
+        pelo mesmo número de dias (ver `_envelhecer_fato`). A distância entre
+        a liquidação e o primeiro vencimento é medida antes e depois e tem de
+        ser IDÊNTICA: se ela mudar, o teste deixou de falar do mesmo fato e a
+        propriedade não foi provada, foi só encenada. Deslocar as duas pontas
+        junto é o que separa "simular o relógio andando" de "fabricar uma
+        operação mais suspeita e comemorar que a regra a pega".
+
+        Em todos os horizontes o primeiro vencimento já ficou no passado — que
+        é exatamente a condição sob a qual o filtro da 010 devolvia zero. Cada
+        parametrização, portanto, é um dia em que a regra antiga já teria
+        desistido do caso.
+        """
+        op_id = self._liquidada_antes_do_primeiro_vencimento(db_session, tomador_autorizado)
+        antes = self._fato(db_session, op_id)
+        distancia_antes = (antes.primeiro_venc - antes.liquidada_em).days
+
+        _envelhecer_fato(db_session, op_id, dias=dias)
+
+        fato = self._fato(db_session, op_id)
+        # O FATO é o mesmo: mesma folga entre a liquidação e o vencimento.
+        assert (fato.primeiro_venc - fato.liquidada_em).days == distancia_antes
+        assert fato.liquidada_em < fato.primeiro_venc
+        # O que mudou é só a posição dele em relação ao relógio da varredura:
+        # o vencimento, que antes estava no futuro, agora está no passado.
+        assert antes.primeiro_venc > antes.hoje
+        assert fato.primeiro_venc < fato.hoje
+
+        assert self._detectar(db_session) == 1
+        ocorrencias = self._ocorrencias(db_session, op_id)
+        assert [o.regra for o in ocorrencias] == ["liquidacao_antecipada"]
+        assert ocorrencias[0].severidade == "media"
+
+    def test_liquidada_depois_do_primeiro_vencimento_nao_e_marcada(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """O caminho feliz, e ele é metade da correção.
+
+        Uma regra que passasse a marcar TODA operação liquidada estaria
+        "corrigida" no teste anterior e seria pior do que o defeito: a tela de
+        compliance encheria de operação que pagou em dia, e o analista pararia
+        de olhar — o resultado que a própria 010 diz querer evitar.
+
+        O cenário é a imagem espelhada do outro: a agenda recua 60 dias ANTES
+        da quitação, de modo que o primeiro vencimento fica 30 dias no passado
+        e a liquidação acontece hoje, depois dele. Quitação normal, com
+        atraso, de quem pagou tudo.
+        """
+        op_id = _operacao(db_session, tomador_autorizado, "10000")
+        confirmar_registro(db_session, op_id)
+        ativar_operacao(db_session, op_id)
+        _envelhecer_agenda(db_session, op_id, dias=60)
+        assert quitar_operacao(db_session, op_id) == 12, "cenário sem agenda para quitar"
+        transicionar_operacao(db_session, op_id, "liquidada")
+
+        fato = self._fato(db_session, op_id)
+        assert fato.primeiro_venc < fato.liquidada_em
+
+        assert self._detectar(db_session) == 0
+        assert self._ocorrencias(db_session, op_id) == []
+
+    def test_liquidada_no_dia_do_primeiro_vencimento_nao_e_marcada(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """A BORDA: pagar NO DIA do vencimento é pagar em dia, não antes.
+
+        O teste anterior deixa 30 dias de folga entre o vencimento e a
+        quitação, e uma folga desse tamanho não distingue `<` de `<=`. Trocar
+        o operador da REGRA 2 por `<=` passaria por ele intacto — e marcaria
+        como atipicidade PLD toda operação quitada exatamente no vencimento,
+        que é o comportamento MAIS comum que existe num contrato de crédito.
+        Seria um falso positivo de massa: a tela de compliance encheria de
+        quem pagou certo, e um painel assim é lido uma vez e abandonado.
+
+        Por isso a asserção é sobre a igualdade das três datas, e não sobre
+        uma distância. O deslocamento da agenda é MEDIDO NO BANCO
+        (`min(vencimento) - current_date`) e aplicado por `_envelhecer_agenda`:
+        as duas pontas do cenário passam a sair do mesmo relógio, o do
+        Postgres. Ancorar a borda numa data vinda do Python poria o container
+        (Etc/UTC) contra a máquina local (UTC-3) e produziria falha diária, no
+        mesmo horário, sem nada de errado no código.
+        """
+        op_id = _operacao(db_session, tomador_autorizado, "10000")
+        confirmar_registro(db_session, op_id)
+        ativar_operacao(db_session, op_id)
+        distancia = db_session.execute(
+            text("""
+            select (select min(vencimento) from parcela where operacao_id = :o)
+                   - current_date
+            """),
+            {"o": str(op_id)},
+        ).scalar_one()
+        _envelhecer_agenda(db_session, op_id, dias=distancia)
+        assert quitar_operacao(db_session, op_id) == 12, "cenário sem agenda para quitar"
+        transicionar_operacao(db_session, op_id, "liquidada")
+
+        fato = self._fato(db_session, op_id)
+        assert fato.primeiro_venc == fato.liquidada_em == fato.hoje
+
+        assert self._detectar(db_session) == 0
+        assert self._ocorrencias(db_session, op_id) == []
+
+    def test_varredura_continua_idempotente(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Rodar duas vezes não pode produzir duas linhas do mesmo fato.
+
+        A REGRA 2 deixou de se deduplicar pelo TEXTO do detalhe (que agora
+        carrega a data da liquidação) e passou a se deduplicar por (regra,
+        operacao_id). A troca é invisível pelo lado de fora, e é justamente
+        por isso que precisa de asserção: o `on conflict` continua no lugar e
+        mascararia a ausência da guarda nova enquanto o texto não mudasse.
+        """
+        op_id = self._liquidada_antes_do_primeiro_vencimento(db_session, tomador_autorizado)
+
+        assert self._detectar(db_session) == 1
+        assert self._detectar(db_session) == 0
+        assert len(self._ocorrencias(db_session, op_id)) == 1
+
+    def test_ocorrencia_do_texto_antigo_nao_e_marcada_de_novo(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """A armadilha que a 023 tinha de desarmar, e que só aparece em base
+        que já rodou a varredura antes.
+
+        O detalhe da REGRA 2 entra no índice `ocorrencia_unica` (010). A 023
+        muda o texto — passa a gravar a data da liquidação ao lado do primeiro
+        vencimento, sem a qual a ocorrência é inavaliável — e uma mudança de
+        texto, sozinha, reinseriria sob a redação nova tudo que já estava
+        gravado sob a antiga. Como a ocorrência é append-only (OC014) e o
+        TRUNCATE é recusado (016), a duplicata seria permanente e apareceria
+        para sempre duas vezes na tela.
+
+        Aqui a linha antiga é gravada À MÃO, com a redação literal da 010, e
+        o que se prova é que a varredura nova a reconhece como o mesmo fato e
+        não escreve nada.
+        """
+        op_id = self._liquidada_antes_do_primeiro_vencimento(db_session, tomador_autorizado)
+        fato = self._fato(db_session, op_id)
+        detalhe_antigo = f"Liquidada antes do primeiro vencimento ({fato.primeiro_venc})"
+
+        db_session.execute(
+            text("""
+            insert into ocorrencia_atipicidade
+                (regra, severidade, tomador_id, operacao_id, detalhe)
+            values ('liquidacao_antecipada', 'media', :t, :o, :d)
+            """),
+            {"t": str(tomador_autorizado), "o": str(op_id), "d": detalhe_antigo},
+        )
+        db_session.commit()
+
+        assert self._detectar(db_session) == 0
+        ocorrencias = self._ocorrencias(db_session, op_id)
+        assert len(ocorrencias) == 1
+        assert ocorrencias[0].detalhe == detalhe_antigo
+
+    def test_write_off_antes_do_vencimento_e_outra_regra(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Baixar como prejuízo antes de a primeira parcela vencer.
+
+        Não houve oportunidade de inadimplência — não havia o que pagar
+        ainda —, e mesmo assim a ESC declarou o valor irrecuperável. O
+        significado econômico é o OPOSTO do da quitação antecipada (lá o
+        dinheiro voltou cedo demais; aqui não voltou), a providência do
+        analista é outra, e por isso a regra tem nome e severidade próprios em
+        vez de dividir o rótulo com a liquidação.
+
+        `ativa -> baixada_prejuizo` não passa pelo gate de quitação (OC022):
+        o write-off existe justamente para encerrar a cobrança SEM pagamento,
+        e por isso a agenda fica inteira em aberto.
+
+        O fato é envelhecido em bloco ANTES da varredura: a regra nasce já
+        ancorada na data do fato, e o cenário que a exercita é o que o filtro
+        da 010 nunca teria pego — baixa antiga, com o primeiro vencimento já
+        no passado.
+        """
+        op_id = _operacao(db_session, tomador_autorizado, "10000")
+        confirmar_registro(db_session, op_id)
+        ativar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "baixada_prejuizo")
+        _envelhecer_fato(db_session, op_id, dias=365)
+
+        baixada_em, primeiro_venc, hoje = db_session.execute(
+            text("""
+            select (select min(e.created_at)::date from operacao_evento e
+                     where e.operacao_id = :o and e.status_novo = 'baixada_prejuizo'),
+                   (select min(vencimento) from parcela where operacao_id = :o),
+                   current_date
+            """),
+            {"o": str(op_id)},
+        ).one()
+        assert baixada_em < primeiro_venc < hoje
+
+        assert self._detectar(db_session) == 1
+        ocorrencias = self._ocorrencias(db_session, op_id)
+        assert [o.regra for o in ocorrencias] == ["baixa_prejuizo_antecipada"]
+        assert ocorrencias[0].severidade == "alta"
+        assert "prejuízo" in ocorrencias[0].detalhe
+
+        # E não vira uma segunda linha na varredura seguinte.
+        assert self._detectar(db_session) == 0
+        assert len(self._ocorrencias(db_session, op_id)) == 1
+
+    def test_write_off_de_inadimplente_veterano_nao_e_marcado(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """O write-off ORDINÁRIO, que é a esmagadora maioria deles.
+
+        A regra `baixa_prejuizo_antecipada` nasce com severidade 'alta' — a
+        mais alta que existe — e é por severidade que a tela de compliance
+        ordena. Uma regra nesse posto sem prova do lado negativo é a receita
+        do painel que ninguém lê: bastaria a próxima alteração afrouxar o
+        filtro para que todo write-off da carteira subisse ao topo da lista, e
+        write-off de inadimplente antigo é justamente o caso NORMAL, o que a
+        ESC pratica depois de cobrar e não receber.
+
+        O cenário é o oposto do anterior em uma única coisa: aqui o
+        vencimento vem PRIMEIRO. A agenda recua 400 dias, a régua automática
+        da 008 (`fn_processar_aging`) faz `ativa -> inadimplente` como faria
+        em produção, e só então a perda é declarada. Houve oportunidade de
+        pagamento e ela foi desperdiçada — que é exatamente o que o write-off
+        precoce não tem, e a única coisa que separa os dois fatos.
+        """
+        op_id = _operacao(db_session, tomador_autorizado, "10000")
+        confirmar_registro(db_session, op_id)
+        ativar_operacao(db_session, op_id)
+        _envelhecer_agenda(db_session, op_id, dias=400)
+
+        db_session.execute(text("select fn_processar_aging()"))
+        db_session.commit()
+        assert (
+            db_session.execute(
+                text("select status from operacao_credito where id = :o"),
+                {"o": str(op_id)},
+            ).scalar_one()
+            == "inadimplente"
+        ), "cenário mal montado: a régua da 008 não chegou a declarar a inadimplência"
+
+        transicionar_operacao(db_session, op_id, "baixada_prejuizo")
+
+        primeiro_venc, baixada_em = db_session.execute(
+            text("""
+            select (select min(vencimento) from parcela where operacao_id = :o),
+                   (select min(e.created_at)::date from operacao_evento e
+                     where e.operacao_id = :o and e.status_novo = 'baixada_prejuizo')
+            """),
+            {"o": str(op_id)},
+        ).one()
+        assert primeiro_venc < baixada_em
+
+        assert self._detectar(db_session) == 0
+        assert self._ocorrencias(db_session, op_id) == []
+
+    def test_evento_forjado_com_carimbo_tardio_nao_apaga_a_deteccao(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """O preço da fonte escolhida, cobrado em teste — e a prova de que
+        `min()` é o que o torna suportável.
+
+        A 023 lê a data do encerramento de `operacao_evento` e não do
+        `capital_ledger`, e paga um preço por isso: o `created_at` de
+        `operacao_evento` é DEFAULT `clock_timestamp()`, não imposição do
+        banco. O append-only (OC010) recusa UPDATE e DELETE; não recusa uma
+        LINHA NOVA com o carimbo que o autor escolher. O INSERT abaixo é
+        exatamente isso, e repare no que ele NÃO precisa fazer: nenhum
+        `disable trigger`, nenhuma manobra. A trilha aceita a linha forjada de
+        primeira. Essa é a diferença concreta para o `capital_ledger`, cujo
+        `created_at` é sobrescrito pelo banco desde a 020 e entra no digest da
+        hash-chain.
+
+        Quem quer escapar da REGRA 2 precisa que a data lida seja TARDIA — que
+        o encerramento pareça ter acontecido DEPOIS do primeiro vencimento. O
+        evento forjado aqui carimba exatamente isso: primeiro vencimento mais
+        um dia. Com `max()` a regra leria a mentira e a operação sumiria da
+        tela; com `min()` o evento real continua sendo o menor e a mentira não
+        muda nada — só deixa na trilha uma linha a mais, que é o lado do erro
+        que não faz mal a ninguém.
+
+        É a asserção que faltava para que `min()` deixasse de ser uma escolha
+        documentada e virasse uma escolha PROVADA. Sem ela, trocar `min` por
+        `max` neste ponto passa na suíte inteira — e a troca é o edit mais
+        provável que alguém faria aqui, porque a 022 lê a MESMA trilha, para a
+        MESMA operação, com `max()` (lá, uma data antecipada encurtaria o
+        prazo legal de guarda; o lado perigoso é o oposto).
+        """
+        op_id = self._liquidada_antes_do_primeiro_vencimento(db_session, tomador_autorizado)
+        fato = self._fato(db_session, op_id)
+
+        db_session.execute(
+            text("""
+            insert into operacao_evento
+                (operacao_id, status_anterior, status_novo, origem, usuario_id, created_at)
+            values (:o, 'ativa', 'liquidada', 'usuario', 'forjador',
+                    (select min(vencimento) + 1 from parcela where operacao_id = :o))
+            """),
+            {"o": str(op_id)},
+        )
+        db_session.commit()
+
+        # A trilha passa a ter duas respostas para a mesma pergunta, e elas
+        # caem em lados opostos do primeiro vencimento: é isto que faz a
+        # escolha entre min() e max() decidir o resultado.
+        menor, maior = db_session.execute(
+            text("""
+            select min(created_at)::date, max(created_at)::date
+              from operacao_evento
+             where operacao_id = :o and status_novo = 'liquidada'
+            """),
+            {"o": str(op_id)},
+        ).one()
+        assert menor < fato.primeiro_venc < maior
+
+        assert self._detectar(db_session) == 1
+        ocorrencias = self._ocorrencias(db_session, op_id)
+        assert [o.regra for o in ocorrencias] == ["liquidacao_antecipada"]
+        # E o detalhe mostra a data REAL, não a forjada: a linha que o analista
+        # lê não repete a mentira que alguém plantou na trilha.
+        assert str(menor) in ocorrencias[0].detalhe
+        assert str(maior) not in ocorrencias[0].detalhe
+
+    def test_sem_evento_na_trilha_detecta_assim_mesmo(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Fail-closed: trilha de transições ausente não silencia a regra.
+
+        A REGRA 2 depende de `operacao_evento` para saber QUANDO a operação
+        encerrou. Se a resposta for nula, há duas saídas possíveis, e uma delas
+        é ruim de um jeito específico: filtrar a linha fora faria do
+        `disable trigger trg_registrar_evento_operacao` — um comando de uma
+        linha — o jeito mais barato de apagar um alerta de PLD, e o apagamento
+        seria invisível, porque a tela mostraria vazio e vazio se lê como "não
+        há o que ver". A 023 escolhe a outra: detecta assim mesmo, e escreve no
+        detalhe que a data não está provada.
+
+        O cenário reproduz a causa descrita, e não um atalho equivalente: o
+        gatilho da 008 fica desligado pelo tempo exato da transição terminal,
+        de modo que o evento 'liquidada' nunca chega a existir. Os eventos
+        anteriores ficam, que é o formato realista da manipulação — quem
+        desliga o gatilho, desliga na hora do ato que quer esconder.
+
+        Sem esta asserção, trocar `(encerrada_em is null or encerrada_em <
+        primeiro_venc)` por `encerrada_em < primeiro_venc` passa na suíte
+        inteira: `null < data` é NULL, a linha sai do filtro em silêncio, e a
+        regra fica fail-open sem que nada acuse.
+        """
+        op_id = _operacao(db_session, tomador_autorizado, "10000")
+        confirmar_registro(db_session, op_id)
+        ativar_operacao(db_session, op_id)
+        assert quitar_operacao(db_session, op_id) == 12, "cenário sem agenda para quitar"
+
+        db_session.execute(
+            text("alter table operacao_credito disable trigger trg_registrar_evento_operacao")
+        )
+        transicionar_operacao(db_session, op_id, "liquidada")
+        db_session.execute(
+            text("alter table operacao_credito enable trigger trg_registrar_evento_operacao")
+        )
+        db_session.commit()
+
+        sem_evento = db_session.execute(
+            text("""
+            select count(*) from operacao_evento
+             where operacao_id = :o and status_novo = 'liquidada'
+            """),
+            {"o": str(op_id)},
+        ).scalar_one()
+        assert sem_evento == 0, "cenário não reproduziu a trilha ausente"
+
+        assert self._detectar(db_session) == 1
+        ocorrencias = self._ocorrencias(db_session, op_id)
+        assert [o.regra for o in ocorrencias] == ["liquidacao_antecipada"]
+        assert "data não provada" in ocorrencias[0].detalhe
+
+
 class TestGateIdentificacao:
     """Migration 014: emprestar para quem não se sabe quem é passou a ser
     recusado pelo banco (Lei 9.613/98, art. 10, I)."""

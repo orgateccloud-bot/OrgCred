@@ -156,10 +156,11 @@ function CompliancePage() {
         <CardHeader>
           <CardTitle>Atipicidades detectadas</CardTitle>
           <CardDescription>
-            Detecção interna sobre os dados que já existem — fracionamento, liquidação antecipada e
-            pagamento em excesso. A comunicação a canal externo ainda não está ligada: o regime
-            PLD/COAF de uma ESC depende de parecer jurídico. As ocorrências ficam registradas até
-            lá, e são imutáveis.
+            Detecção interna sobre os dados que já existem — fracionamento, encerramento antes do
+            primeiro vencimento (liquidação antecipada e baixa por prejuízo antecipada) e pagamento
+            em excesso. A comunicação a canal externo ainda não está ligada: o regime PLD/COAF de
+            uma ESC depende de parecer jurídico. As ocorrências ficam registradas até lá, e são
+            imutáveis.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -51,6 +51,11 @@ const ORIGEM_EVENTO: Record<string, string> = {
 const REGRA_ATIPICIDADE: Record<string, string> = {
   fracionamento: 'Fracionamento',
   liquidacao_antecipada: 'Liquidação antecipada',
+  // Migration 023: write-off antes do primeiro vencimento. Regra separada da
+  // liquidação antecipada de propósito — lá o dinheiro voltou cedo demais,
+  // aqui não voltou —, e o rótulo precisa deixar os dois distinguíveis na
+  // lista sem que o analista abra o detalhe.
+  baixa_prejuizo_antecipada: 'Baixa por prejuízo antecipada',
   pagamento_em_excesso: 'Pagamento em excesso',
 }
 
