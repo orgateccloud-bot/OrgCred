@@ -115,10 +115,21 @@ select id, 'emprestimo', 2000, 2.5, 'PRICE', 12, 'registrada', 'REG-2000'
 from tomador where cnpj = '11122233000144';
 
 -- Registro CONFIRMADO para todas, menos a de 1000 (cenário 8), que nem existe
--- ainda. Confirmado exige protocolo e data — o CHECK da 012 não aceita menos.
-insert into registro_operacao (operacao_id, entidade, status, protocolo, confirmado_em)
-select id, 'CRDC', 'confirmado', 'PROTO-' || valor_principal, clock_timestamp()
-from operacao_credito;
+-- ainda. Em DOIS comandos, e não num INSERT já confirmado: desde a 021 o
+-- registro nasce obrigatoriamente em 'pendente' e sem protocolo (OC018), e a
+-- confirmação é o UPDATE — que é onde o CHECK da 012 passa a exigir protocolo
+-- e data. Montar o cenário pelo caminho de produção é o ponto: um seed que
+-- contorna a máquina de estados provaria o gate sobre um estado que a
+-- aplicação não consegue produzir.
+insert into registro_operacao (operacao_id, entidade)
+select id, 'CRDC' from operacao_credito;
+
+update registro_operacao r
+   set status = 'confirmado',
+       protocolo = 'PROTO-' || o.valor_principal,
+       confirmado_em = clock_timestamp()
+  from operacao_credito o
+ where o.id = r.operacao_id;
 SQL
 
 echo ">> Cenário 1: 30.000 sobre capital de 50.000 deve ATIVAR"

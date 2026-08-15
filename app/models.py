@@ -159,12 +159,26 @@ class TomadorDocumento(Base):
     bytes nunca existiram em lugar nenhum — ver a justificativa no cabeçalho
     da migration.
 
-    `retencao_ate` é materializada, não calculada na leitura — se o prazo
-    legal mudar, os documentos já arquivados mantêm a regra vigente à época,
-    que é o que se defende numa fiscalização. Apagar antes do prazo é
-    recusado pelo banco (OC013, Lei 9.613/98 art. 10, III), e o mesmo OC013
-    recusa QUALQUER update: repontar `storage_objeto` para outro objeto
-    trocaria o documento arquivado mantendo o hash, então nem isso passa.
+    `retencao_ate` É O PISO DA RETENÇÃO, NÃO O PRAZO (migration 022). Ela
+    continua materializada no arquivamento como `current_date + 5 anos`, e
+    continua materializada de propósito: se o prazo legal mudar, os documentos
+    já arquivados mantêm a regra vigente à época, que é o que se defende numa
+    fiscalização.
+
+    O que a 022 corrigiu é que essa data não era a exigida por lei. A Lei
+    9.613/98, art. 10, III conta os cinco anos do ENCERRAMENTO DA RELAÇÃO DE
+    NEGÓCIO; num contrato de 60 parcelas, o prazo gravado na abertura vencia
+    junto com o próprio contrato. O prazo que vale hoje é derivado —
+    `greatest(piso, último encerramento + 5 anos)`, ou indeterminado enquanto
+    houver operação viva — e mora em `fn_retencao_efetiva` / na view
+    `v_documento_retencao`, nunca numa coluna. Não podia morar numa coluna:
+    a data só se conhece anos depois, e OC013 recusa QUALQUER update aqui.
+
+    Essa recusa é a mesma que impede repontar `storage_objeto` para outro
+    objeto (o que trocaria o documento arquivado mantendo o hash) e a mesma
+    que impede "só estender" `retencao_ate` — a saída que a 022 considerou e
+    rejeitou, porque voltaria a depender de alguém rodar a rotina certa no
+    encerramento de cada operação.
     """
 
     __tablename__ = "tomador_documento"

@@ -15,10 +15,21 @@ const DB_URL =
  * Todo cenário que ativa (ou que oferece o botão Ativar) passa por aqui.
  */
 async function confirmarRegistro(client: Client, operacaoId: string, entidade = 'CRDC') {
+  // Em DOIS comandos, como os endpoints emitem. Desde a migration 021 a
+  // máquina de estados de `registro_operacao` guarda também o INSERT: o
+  // registro nasce em 'pendente' e sem protocolo/confirmado_em (OC018), e a
+  // confirmação é o UPDATE. O insert único já confirmado que estava aqui
+  // derrubaria o seed inteiro — e, antes disso, era o seed montando por um
+  // caminho que a aplicação não consegue produzir.
+  const { rows } = await client.query(
+    `insert into registro_operacao (operacao_id, entidade) values ($1, $2) returning id`,
+    [operacaoId, entidade],
+  )
   await client.query(
-    `insert into registro_operacao (operacao_id, entidade, status, protocolo, confirmado_em)
-     values ($1, $2, 'confirmado', $3, now())`,
-    [operacaoId, entidade, `PROTO-E2E-${operacaoId.slice(0, 8)}`],
+    `update registro_operacao
+        set status = 'confirmado', protocolo = $2, confirmado_em = clock_timestamp()
+      where id = $1`,
+    [rows[0].id, `PROTO-E2E-${operacaoId.slice(0, 8)}`],
   )
 }
 
@@ -57,7 +68,9 @@ async function zerarCenario(client: Client) {
   await client.query('alter table operacao_evento disable trigger trg_bloquear_truncate_evento')
   // O `cascade` alcança estas duas por chave estrangeira, então elas também
   // recebem o TRUNCATE e disparam a própria guarda.
-  await client.query('alter table tomador_documento disable trigger trg_bloquear_truncate_documento')
+  await client.query(
+    'alter table tomador_documento disable trigger trg_bloquear_truncate_documento',
+  )
   await client.query(
     'alter table ocorrencia_atipicidade disable trigger trg_bloquear_truncate_ocorrencia',
   )

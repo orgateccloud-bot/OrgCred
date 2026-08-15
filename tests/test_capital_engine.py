@@ -34,6 +34,7 @@ from tests.conftest import (
     arquivar_identificacao,
     baixar_parcelas,
     confirmar_registro,
+    envelhecer_encerramento,
     quitar_operacao,
     sqlstate_de,
 )
@@ -729,6 +730,14 @@ class TestTransicionarOperacao:
         O cenario e o real: a evidencia existia na ativacao (OC019 exige) e
         foi expurgada depois de vencida a retencao de 5 anos — que e como um
         tomador com dinheiro na rua acaba dentro desta view.
+
+        DESDE A 022 O EXPURGO EXIGE MAIS DO QUE O PISO VENCIDO, e o cenario
+        precisou acompanhar: os 5 anos contam do ENCERRAMENTO da relacao (Lei
+        9.613/98, art. 10, III), e a baixa como prejuizo e o encerramento. Sem
+        envelhecer esse encerramento o DELETE bate em OC013 — corretamente, e
+        essa e a nova regra. O que o teste descreve continua sendo o mesmo
+        estado de mundo: dinheiro perdido na rua, evidencia ja expurgada por
+        prazo legalmente vencido.
         """
         db_session.execute(
             text(
@@ -744,6 +753,7 @@ class TestTransicionarOperacao:
         op_id = _criar_operacao(db_session, tomador_sem_identificacao, 20_000)
         ativar_operacao(db_session, op_id)
         transicionar_operacao(db_session, op_id, "baixada_prejuizo")
+        envelhecer_encerramento(db_session, op_id, anos=6)
 
         db_session.execute(
             text("delete from tomador_documento where tomador_id = :t"),

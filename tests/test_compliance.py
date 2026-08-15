@@ -55,6 +55,7 @@ from app.routers.compliance import storage_de_documentos
 from tests.conftest import (
     arquivar_identificacao,
     confirmar_registro,
+    envelhecer_encerramento,
     quitar_operacao,
     sqlstate_de,
 )
@@ -808,6 +809,524 @@ class TestRetencao:
         assert restantes == ["contrato_social.pdf", "vigente.pdf"]
 
 
+def _documento_arquivado(
+    db_session: Session,
+    tomador_id: uuid.UUID,
+    nome: str,
+    dias_piso: int,
+    dias_atras: int = 0,
+) -> uuid.UUID:
+    """Evidência com o PISO e a data de arquivamento sob controle do teste.
+
+    `dias_piso` é relativo a hoje (negativo = piso já vencido) e `dias_atras`
+    recua `arquivado_em`. Os dois são escritos direto no INSERT porque é a
+    única janela em que isso é possível: depois de gravada, a linha é
+    congelada por OC013 em coluna nenhuma.
+    """
+    return db_session.execute(
+        text("""
+        insert into tomador_documento
+            (tomador_id, tipo, nome_arquivo, sha256, retencao_ate, arquivado_em)
+        values (:t, 'contrato_social', :nome, :sha,
+                current_date + make_interval(days => :piso),
+                clock_timestamp() - make_interval(days => :atras))
+        returning id
+        """),
+        {
+            "t": str(tomador_id),
+            "nome": nome,
+            "sha": _sha(nome.encode()),
+            "piso": dias_piso,
+            "atras": dias_atras,
+        },
+    ).scalar_one()
+
+
+class TestRetencaoAncoradaNoEncerramento:
+    """Migration 022: os 5 anos contam do ENCERRAMENTO DA RELAÇÃO.
+
+    O defeito corrigido: `retencao_ate` era materializado como `current_date +
+    5 anos` no ato do arquivamento, e a Lei 9.613/98, art. 10, III conta do
+    encerramento da relação de negócio. Numa operação de 60 parcelas o prazo
+    gravado vencia junto com o contrato — cerca de cinco anos cedo demais, e o
+    banco autorizava o DELETE com toda a autoridade de um invariante.
+
+    A coluna continua existindo e continua imutável: virou o PISO. Sobre ela
+    entra a derivação, e é ela que o trigger consulta.
+    """
+
+    def _operacao_encerrada(
+        self, db_session: Session, tomador_id: uuid.UUID, anos_atras: int = 0
+    ) -> uuid.UUID:
+        """Operação levada até 'liquidada' pelo caminho real, e envelhecida.
+
+        Quitar antes de liquidar não é cerimônia: desde a 017 `ativa ->
+        liquidada` exige a agenda inteira baixada contra movimento bancário
+        (OC022). O envelhecimento é a única parte artificial, e existe porque
+        nenhuma data de encerramento pode nascer no passado — ver
+        `envelhecer_encerramento` em tests/conftest.py.
+        """
+        op_id = _operacao(db_session, tomador_id, "10000")
+        confirmar_registro(db_session, op_id)
+        ativar_operacao(db_session, op_id)
+        quitar_operacao(db_session, op_id)
+        transicionar_operacao(db_session, op_id, "liquidada")
+        if anos_atras:
+            envelhecer_encerramento(db_session, op_id, anos_atras)
+        return op_id
+
+    def _retencao(self, db_session: Session, documento_id: uuid.UUID) -> Any:
+        return db_session.execute(
+            text("""
+            select retencao_piso, retencao_efetiva, relacao_em_curso,
+                   encerramento_relacao, motivo
+            from v_documento_retencao where documento_id = :d
+            """),
+            {"d": str(documento_id)},
+        ).one()
+
+    def _apagar(self, db_session: Session, nome: str) -> None:
+        db_session.execute(
+            text("delete from tomador_documento where nome_arquivo = :n"), {"n": nome}
+        )
+        db_session.flush()
+
+    # -----------------------------------------------------------------
+    # O bloqueio
+    # -----------------------------------------------------------------
+
+    def test_prazo_nao_corre_enquanto_a_relacao_esta_viva(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """O DEFEITO, no formato mais direto: piso vencido, crédito na rua.
+
+        Antes da 022 este DELETE passava — o banco comparava a data gravada
+        com hoje, via que tinha vencido e autorizava apagar a identificação de
+        um tomador que ESTÁ DEVENDO. É o pior momento possível para perder a
+        evidência de quem ele é.
+        """
+        doc_id = _documento_arquivado(db_session, tomador_autorizado, "vencido.pdf", dias_piso=-1)
+        op_id = _operacao(db_session, tomador_autorizado, "10000")
+        confirmar_registro(db_session, op_id)
+        ativar_operacao(db_session, op_id)
+
+        retencao = self._retencao(db_session, doc_id)
+        assert retencao.relacao_em_curso is True
+        # Indeterminada, não uma data qualquer: os cinco anos não começaram.
+        assert retencao.retencao_efetiva is None
+        assert "não começou a correr" in retencao.motivo
+
+        with pytest.raises(Exception) as exc:
+            self._apagar(db_session, "vencido.pdf")
+        assert sqlstate_de(exc.value) == "OC013"
+        db_session.rollback()
+
+    def test_prazo_conta_do_encerramento_e_nao_do_arquivamento(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Relação encerrada HOJE: o relógio começa agora, não terminou ontem."""
+        doc_id = _documento_arquivado(db_session, tomador_autorizado, "vencido.pdf", dias_piso=-1)
+        self._operacao_encerrada(db_session, tomador_autorizado)
+
+        retencao = self._retencao(db_session, doc_id)
+        hoje: date = db_session.execute(text("select current_date")).scalar_one()
+        assert retencao.relacao_em_curso is False
+        assert retencao.encerramento_relacao == hoje
+        assert retencao.retencao_efetiva == date(hoje.year + 5, hoje.month, hoje.day)
+        assert retencao.motivo == "ancorado no encerramento da relação + 5 anos"
+
+        with pytest.raises(Exception) as exc:
+            self._apagar(db_session, "vencido.pdf")
+        assert sqlstate_de(exc.value) == "OC013"
+        db_session.rollback()
+
+    def test_a_ancora_e_a_ultima_operacao_a_encerrar(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """ "Encerramento da relação" não é o encerramento de UMA operação.
+
+        Uma operação encerrada há seis anos já liberaria o expurgo sozinha. A
+        segunda, encerrada há um ano, é que manda — a relação com o tomador
+        acabou na última, não na primeira.
+        """
+        doc_id = _documento_arquivado(db_session, tomador_autorizado, "vencido.pdf", dias_piso=-1)
+        self._operacao_encerrada(db_session, tomador_autorizado, anos_atras=6)
+        self._operacao_encerrada(db_session, tomador_autorizado, anos_atras=1)
+
+        hoje: date = db_session.execute(text("select current_date")).scalar_one()
+        retencao = self._retencao(db_session, doc_id)
+        assert retencao.encerramento_relacao == date(hoje.year - 1, hoje.month, hoje.day)
+        assert retencao.retencao_efetiva == date(hoje.year + 4, hoje.month, hoje.day)
+
+        with pytest.raises(Exception) as exc:
+            self._apagar(db_session, "vencido.pdf")
+        assert sqlstate_de(exc.value) == "OC013"
+        db_session.rollback()
+
+    def test_relogio_reinicia_quando_o_tomador_volta_a_tomar_credito(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Crédito novo é relação nova, e a proteção VOLTA.
+
+        Um documento cujo prazo já tinha vencido e que ainda não foi expurgado
+        volta a ficar protegido quando o tomador reabre a relação. Isso é
+        deliberado: a relação de negócio é uma só, e ela recomeçou. É também
+        uma consequência que só a derivação entrega — com a data reescrita na
+        coluna, "voltar atrás" exigiria justamente o UPDATE que OC013 recusa.
+        """
+        doc_id = _documento_arquivado(db_session, tomador_autorizado, "vencido.pdf", dias_piso=-1)
+        self._operacao_encerrada(db_session, tomador_autorizado, anos_atras=6)
+
+        hoje: date = db_session.execute(text("select current_date")).scalar_one()
+        assert self._retencao(db_session, doc_id).retencao_efetiva == hoje - timedelta(days=1)
+
+        nova = _operacao(db_session, tomador_autorizado, "10000")
+        confirmar_registro(db_session, nova)
+        ativar_operacao(db_session, nova)
+
+        assert self._retencao(db_session, doc_id).retencao_efetiva is None
+        with pytest.raises(Exception) as exc:
+            self._apagar(db_session, "vencido.pdf")
+        assert sqlstate_de(exc.value) == "OC013"
+        db_session.rollback()
+
+    def test_o_piso_continua_sendo_piso(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """A âncora ESTENDE, nunca encurta.
+
+        Relação encerrada há seis anos, documento arquivado hoje: a âncora
+        (encerramento + 5 anos) já venceu, e mesmo assim o documento fica
+        guardado cinco anos a contar de hoje. Um prazo de guarda não retroage
+        sobre o que ainda não estava guardado — daí `greatest`, e não
+        substituição.
+        """
+        doc_id = _documento_arquivado(
+            db_session, tomador_autorizado, "novinho.pdf", dias_piso=5 * 365
+        )
+        self._operacao_encerrada(db_session, tomador_autorizado, anos_atras=6)
+
+        retencao = self._retencao(db_session, doc_id)
+        assert retencao.retencao_efetiva == retencao.retencao_piso
+        assert retencao.motivo == "piso do arquivamento é posterior ao encerramento + 5 anos"
+
+        with pytest.raises(Exception) as exc:
+            self._apagar(db_session, "novinho.pdf")
+        assert sqlstate_de(exc.value) == "OC013"
+        db_session.rollback()
+
+    @pytest.mark.parametrize("status", ["proposta", "registrada"])
+    def test_transacao_nao_concluida_tambem_segura_o_expurgo(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        status: str,
+    ) -> None:
+        """'proposta' e 'registrada' contam como relação viva.
+
+        O art. 10, III fala em encerramento da relação de negócio OU conclusão
+        da transação, e um crédito em análise não é nem uma coisa nem outra. É
+        justamente o momento em que a identificação do cliente mais importa:
+        ele já entregou os documentos e ainda não recebeu nada, então a única
+        coisa que o sistema tem sobre ele é a evidência que este teste impede
+        de apagar. Sem estes dois status na lista de `v_operacao_encerramento`,
+        o piso vencido liberaria o expurgo enquanto a proposta corre.
+
+        A lista é a única coisa que segura isto, e é uma lista de literais num
+        `case` — quem acrescentar um status novo à máquina de estados da 017
+        tem que decidir de que lado ele fica, e este teste é o que avisa se a
+        decisão passar batida.
+
+        Nenhum dos dois ocupa o teto do Art. 5º (017), e por isso o cenário
+        não pede capital constituído: a retenção responde a "a relação
+        existe?", não a "o dinheiro saiu?".
+        """
+        nome = f"em_analise_{status}.pdf"
+        doc_id = _documento_arquivado(db_session, tomador_autorizado, nome, dias_piso=-1)
+        op_id = _operacao(db_session, tomador_autorizado, "10000", status=status)
+
+        retencao = self._retencao(db_session, doc_id)
+        assert retencao.relacao_em_curso is True
+        # Indeterminada: os cinco anos não têm de onde começar a contar.
+        assert retencao.retencao_efetiva is None
+        assert retencao.encerramento_relacao is None
+        assert "não começou a correr" in retencao.motivo
+
+        # E a operação tem que aparecer como VIVA, não como fail-closed. Os
+        # dois caminhos bloqueiam o expurgo igual — status fora da lista de
+        # vivos cai no `coalesce(..., 'infinity')` e também segura —, e é
+        # justamente por isso que o bloqueio sozinho NÃO prova que
+        # 'proposta'/'registrada' estão na lista: tirá-las de lá não muda o
+        # que o trigger faz, só o que a trilha diz. E o que ela passaria a
+        # dizer é falso — "terminal sem evento que prove quando encerrou", ou
+        # seja, trilha adulterada — mandando investigar o que não aconteceu.
+        # O `null` aqui é o contrato escrito no comment de
+        # `v_operacao_encerramento`, e é ele que ancora a lista de status.
+        assert db_session.execute(
+            text("select encerrada_em is null from v_operacao_encerramento where operacao_id = :o"),
+            {"o": str(op_id)},
+        ).scalar_one()
+
+        with pytest.raises(Exception) as exc:
+            self._apagar(db_session, nome)
+        assert sqlstate_de(exc.value) == "OC013"
+        db_session.rollback()
+
+    def test_status_terminal_sem_evento_na_trilha_segue_protegido(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Encerramento não provado não autoriza apagar prova.
+
+        A âncora sai de `operacao_evento` (008). Operação em status terminal
+        cuja trilha não tem o evento que diz QUANDO ela chegou lá não tem data
+        de encerramento — e a 022 responde `infinity` em vez de inventar uma.
+        É o mesmo `coalesce(..., 'infinity')` da 018, aqui pela razão mais dura
+        das duas: sem prova de que a relação acabou, o prazo de cinco anos não
+        tem marco inicial, e o preço de errar é destruir a prova.
+
+        O cenário é o mesmo do caminho feliz — encerrado há seis anos, expurgo
+        liberado —, e a única diferença é a trilha faltando. Por isso o teste
+        confere ANTES que o expurgo estava liberado: sem esse passo ele
+        passaria mesmo se a proteção viesse do piso, e não da falta de prova.
+
+        O buraco só se produz desligando o append-only de OC010, e é essa a
+        prova de que ele não se produz por acidente — mesma manobra e mesmo
+        motivo de `envelhecer_encerramento` em tests/conftest.py.
+        """
+        doc_id = _documento_arquivado(
+            db_session, tomador_autorizado, "sem_trilha.pdf", dias_piso=-1
+        )
+        op_id = self._operacao_encerrada(db_session, tomador_autorizado, anos_atras=6)
+        assert self._retencao(db_session, doc_id).retencao_efetiva is not None
+
+        db_session.execute(
+            text("alter table operacao_evento disable trigger trg_operacao_evento_append_only")
+        )
+        apagados = db_session.execute(
+            text(
+                "delete from operacao_evento where operacao_id = :o and status_novo = 'liquidada'"
+            ),
+            {"o": str(op_id)},
+        ).rowcount
+        db_session.execute(
+            text("alter table operacao_evento enable trigger trg_operacao_evento_append_only")
+        )
+        db_session.commit()
+        assert apagados == 1, "o cenário depende de haver exatamente um evento de encerramento"
+
+        # A comparação é feita NO BANCO porque `infinity` não atravessa o
+        # driver: psycopg recusa carregar 'infinity'::date com DataError. É o
+        # que torna os `nullif(..., 'infinity')` da 022 obrigatórios em toda
+        # leitura que chega ao Python, e não um enfeite de apresentação.
+        assert db_session.execute(
+            text("""
+            select encerrada_em = 'infinity'::date
+            from v_operacao_encerramento where operacao_id = :o
+            """),
+            {"o": str(op_id)},
+        ).scalar_one()
+
+        assert self._retencao(db_session, doc_id).retencao_efetiva is None
+        with pytest.raises(Exception) as exc:
+            self._apagar(db_session, "sem_trilha.pdf")
+        assert sqlstate_de(exc.value) == "OC013"
+        db_session.rollback()
+
+    def test_estender_a_coluna_por_update_continua_recusado(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+    ) -> None:
+        """A saída que a 022 considerou e recusou, provada como recusada.
+
+        "Permitir UPDATE que só aumenta a data" era a solução mais óbvia para
+        ancorar no encerramento. Ela abriria em `tomador_documento` a exceção
+        que a 019 documentou como fechada ("UPDATE nunca, em coluna nenhuma")
+        — e a próxima exceção já encontraria o precedente. O prazo se estende
+        por derivação; a linha continua congelada.
+        """
+        _documento_arquivado(db_session, tomador_autorizado, "congelado.pdf", dias_piso=30)
+        db_session.commit()
+
+        with pytest.raises(Exception) as exc:
+            db_session.execute(
+                text("""
+                update tomador_documento
+                   set retencao_ate = current_date + 3650
+                 where nome_arquivo = 'congelado.pdf'
+                """)
+            )
+            db_session.flush()
+        assert sqlstate_de(exc.value) == "OC013"
+        db_session.rollback()
+
+    # -----------------------------------------------------------------
+    # Os caminhos felizes — a prova de que nada legítimo travou
+    # -----------------------------------------------------------------
+
+    def test_expurgo_permitido_cinco_anos_depois_do_encerramento(
+        self,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """A retenção é obrigação de guardar por cinco anos, não para sempre.
+
+        Vencidos o piso E a âncora, o expurgo volta a ser permitido — e é
+        desejável, por minimização de dados. Se este teste falhar, a 022
+        transformou uma correção de prazo numa proibição de apagar.
+        """
+        _documento_arquivado(db_session, tomador_autorizado, "expurgavel.pdf", dias_piso=-1)
+        self._operacao_encerrada(db_session, tomador_autorizado, anos_atras=6)
+
+        self._apagar(db_session, "expurgavel.pdf")
+        db_session.commit()
+
+        assert (
+            db_session.execute(
+                text("select count(*) from tomador_documento where nome_arquivo = 'expurgavel.pdf'")
+            ).scalar_one()
+            == 0
+        )
+
+    def test_tomador_sem_operacao_continua_valendo_o_piso(
+        self,
+        db_session: Session,
+        tomador_sem_identificacao: uuid.UUID,
+    ) -> None:
+        """Sem relação de negócio não há encerramento, e a regra da 010 fica.
+
+        É o caso que NÃO podia mudar de comportamento: quem só tem cadastro
+        não tem operação para ancorar nada, e a leitura disponível continua
+        sendo arquivamento + 5 anos.
+        """
+        doc_id = _documento_arquivado(
+            db_session, tomador_sem_identificacao, "so_cadastro.pdf", dias_piso=-1
+        )
+        retencao = self._retencao(db_session, doc_id)
+        assert retencao.relacao_em_curso is False
+        assert retencao.encerramento_relacao is None
+        assert retencao.retencao_efetiva == retencao.retencao_piso
+        assert retencao.motivo == "tomador sem operação encerrada: vale o piso do arquivamento"
+
+        self._apagar(db_session, "so_cadastro.pdf")
+        db_session.commit()
+
+    # -----------------------------------------------------------------
+    # A API
+    # -----------------------------------------------------------------
+
+    def test_documento_listado_traz_o_prazo_efetivo_ao_lado_do_piso(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """A tela deixa de exibir uma data que não é a que vale.
+
+        O piso continua no mesmo campo (`retencao_ate`) para não quebrar quem
+        já o consome; `retencao_efetiva` nulo é a forma de dizer "indeterminada
+        — a relação não encerrou", que é diferente de "sem prazo".
+        """
+        resposta = _arquivar(admin_client, tomador_autorizado, b"identidade", nome="rg.pdf")
+        assert resposta.status_code == 201
+        corpo = resposta.json()
+        assert corpo["relacao_em_curso"] is False
+        assert corpo["retencao_efetiva"] == corpo["retencao_ate"]
+
+        op_id = _operacao(db_session, tomador_autorizado, "10000")
+        confirmar_registro(db_session, op_id)
+        ativar_operacao(db_session, op_id)
+
+        listados = admin_client.get(
+            f"/api/compliance/tomadores/{tomador_autorizado}/documentos"
+        ).json()
+        rg = next(d for d in listados if d["nome_arquivo"] == "rg.pdf")
+        assert rg["relacao_em_curso"] is True
+        assert rg["retencao_efetiva"] is None
+        # O piso segue lá, intacto: é a regra congelada da época do
+        # arquivamento, não uma estimativa que a derivação substitui.
+        assert rg["retencao_ate"] == corpo["retencao_ate"]
+
+    def test_auditoria_responde_sobre_data_passada(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """ "Este documento podia ter sido apagado naquela data?"
+
+        É a pergunta da fiscalização, e é o argumento decisivo contra
+        sobrescrever a coluna: uma data reescrita só sabe dizer o valor de
+        hoje. Aqui o cenário é um documento arquivado há sete anos (piso
+        vencido há dois) de um tomador cuja relação encerrou há seis — âncora
+        em -1 ano. Ele é expurgável HOJE e não era há quatrocentos dias, e as
+        duas respostas saem da mesma função que o trigger consulta.
+        """
+        doc_id = _documento_arquivado(
+            db_session,
+            tomador_autorizado,
+            "antigo.pdf",
+            dias_piso=-2 * 365,
+            dias_atras=7 * 365,
+        )
+        self._operacao_encerrada(db_session, tomador_autorizado, anos_atras=6)
+
+        hoje = admin_client.get(f"/api/compliance/documentos/{doc_id}/retencao").json()
+        assert hoje["existia_na_referencia"] is True
+        assert hoje["relacao_em_curso"] is False
+        assert hoje["podia_ser_apagado"] is True
+
+        antes = admin_client.get(
+            f"/api/compliance/documentos/{doc_id}/retencao",
+            params={"em": (date.today() - timedelta(days=400)).isoformat()},
+        ).json()
+        assert antes["existia_na_referencia"] is True
+        # A âncora (encerramento + 5 anos) ainda não tinha vencido naquele dia.
+        assert antes["podia_ser_apagado"] is False
+        assert antes["retencao_efetiva"] == hoje["retencao_efetiva"]
+
+    def test_auditoria_nao_responde_sobre_documento_que_nao_existia(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+    ) -> None:
+        """Data anterior ao arquivamento: não havia o que apagar.
+
+        `podia_ser_apagado` falso aqui tem causa diferente de todas as outras,
+        e é por isso que `existia_na_referencia` vem junto — sem ele, a
+        resposta seria lida como "estava protegido"."""
+        doc_id = _documento_arquivado(db_session, tomador_autorizado, "recente.pdf", dias_piso=-1)
+
+        corpo = admin_client.get(
+            f"/api/compliance/documentos/{doc_id}/retencao",
+            params={"em": (date.today() - timedelta(days=30)).isoformat()},
+        ).json()
+        assert corpo["existia_na_referencia"] is False
+        assert corpo["podia_ser_apagado"] is False
+
+
 class TestReferenciaDoObjeto:
     """Migration 019: a coluna que liga a linha do banco ao arquivo.
 
@@ -1193,7 +1712,15 @@ class TestGateIdentificacao:
     ) -> None:
         """Documento apagado depois do prazo de retenção deixa de contar — e
         é correto: se a evidência não existe mais, não há o que apresentar
-        numa fiscalização."""
+        numa fiscalização.
+
+        O CENÁRIO PRECISOU DE UM PASSO A MAIS DESDE A 022, e o passo é a
+        própria correção: piso vencido não basta mais para autorizar o
+        expurgo. Como a operação acabara de ser liquidada, a âncora
+        (encerramento + 5 anos) segurava o documento — corretamente. Envelhecer
+        o encerramento em seis anos põe o cenário no único ponto em que apagar
+        é legítimo, que é o ponto que este teste sempre quis descrever.
+        """
         db_session.execute(
             text("""
             insert into tomador_documento
@@ -1212,6 +1739,7 @@ class TestGateIdentificacao:
         # capital ao teto e por isso passou a exigir a prova do pagamento.
         quitar_operacao(db_session, op_id)
         transicionar_operacao(db_session, op_id, "liquidada")
+        envelhecer_encerramento(db_session, op_id, anos=6)
         db_session.execute(text("delete from tomador_documento where nome_arquivo = 'vencido.pdf'"))
         db_session.commit()
 

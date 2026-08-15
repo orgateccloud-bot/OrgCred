@@ -57,6 +57,8 @@ MIGRATIONS = [
     "018_correcoes_fiscais",
     "019_storage_documento",
     "020_hashchain_monotonica",
+    "021_registro_nasce_pendente",
+    "022_retencao_ancorada",
 ]
 
 
@@ -217,21 +219,44 @@ def tomador_sem_identificacao(db_session: Session) -> uuid.UUID:
 def confirmar_registro(
     db_session: Session, operacao_id: uuid.UUID, entidade: str = "CRDC"
 ) -> uuid.UUID:
-    """Cria e confirma o registro em entidade registradora.
+    """Abre o registro em 'pendente' e o confirma — em dois comandos, nessa ordem.
 
     Desde a migration 013, ativar exige registro CONFIRMADO — o gate do
     Art. 5º §3º deixou de aceitar texto livre. Todo teste que ativa uma
     operação passa por aqui, o que também significa que o gate é exercido
     dezenas de vezes por execução da suíte.
+
+    ATÉ A 021 ISTO ERA UM ÚNICO INSERT com `status = 'confirmado'`, e era o
+    caminho mais curto justamente porque a máquina de estados da 012 não
+    guardava o INSERT. Era o helper de teste explorando o mesmo buraco que
+    permitiria a um operador registrar uma operação sem nunca ter enviado nada
+    à entidade registradora — ou seja, a suíte inteira provava o gate OC004
+    montando o cenário por um caminho que a 021 recusa.
+
+    Agora são os DOIS comandos que os endpoints de produção emitem
+    (`POST /operacoes/{id}/registros` e `POST /registros/{id}/confirmar`, em
+    app/routers/contratos.py), e o helper deixa de contornar a máquina de
+    estados para exercitá-la: cada chamada passa pela guarda de nascimento e
+    pela transição pendente -> confirmado. `confirmado_em` sai de
+    `clock_timestamp()` DENTRO do UPDATE, e não do INSERT, porque é isso que a
+    coluna significa — a hora em que a entidade confirmou.
     """
     registro_id = db_session.execute(
         text("""
-        insert into registro_operacao (operacao_id, entidade, status, protocolo, confirmado_em)
-        values (:o, :e, 'confirmado', :p, clock_timestamp())
+        insert into registro_operacao (operacao_id, entidade)
+        values (:o, :e)
         returning id
         """),
-        {"o": str(operacao_id), "e": entidade, "p": f"PROTO-{uuid.uuid4().hex[:10]}"},
+        {"o": str(operacao_id), "e": entidade},
     ).scalar_one()
+    db_session.execute(
+        text("""
+        update registro_operacao
+           set status = 'confirmado', protocolo = :p, confirmado_em = clock_timestamp()
+         where id = :r
+        """),
+        {"r": str(registro_id), "p": f"PROTO-{uuid.uuid4().hex[:10]}"},
+    )
     db_session.commit()
     return registro_id
 
@@ -272,6 +297,58 @@ def arquivar_identificacao(
     ).scalar_one()
     db_session.commit()
     return documento_id
+
+
+def envelhecer_encerramento(db_session: Session, operacao_id: uuid.UUID, anos: int) -> None:
+    """Recua em `anos` a data do evento que encerrou a operação.
+
+    Existe por uma limitação real do banco, não por conveniência: desde a 022 a
+    retenção de documento conta do ENCERRAMENTO da relação, e provar o caminho
+    feliz — "passados os cinco anos, o expurgo volta a ser permitido" — exige
+    um encerramento antigo. Não há como produzi-lo pelos caminhos normais:
+    `operacao_credito.updated_at` é reescrito por trigger (`new.updated_at :=
+    now()`, 017), `capital_ledger.created_at` idem (`new.created_at := now()`,
+    020), e `operacao_evento` não aceita UPDATE (OC010). Toda data de
+    encerramento nasce sendo HOJE.
+
+    Daí o `disable trigger`, na mesma linha do que `tests/test_fiscal.py` já
+    faz para envelhecer vencimento de parcela: desligar a guarda append-only
+    pelo tempo de um UPDATE, num banco descartável criado por esta suíte. A
+    manobra não existe em caminho de produção nenhum — e ter que escrevê-la
+    explicitamente é a prova de que a trilha deixou de ser editável por
+    acidente.
+
+    Recua APENAS o evento terminal. Os eventos anteriores (a ativação, a
+    inadimplência) ficam onde estão, o que produz uma trilha com ordem
+    invertida — irrelevante para a 022, que só lê `max(created_at)` entre os
+    status terminais, e melhor do que reescrever a trilha inteira e ter de
+    manter a coerência dela aqui.
+    """
+    db_session.execute(
+        text("alter table operacao_evento disable trigger trg_operacao_evento_append_only")
+    )
+    afetados = db_session.execute(
+        text("""
+        update operacao_evento
+           set created_at = created_at - make_interval(years => :anos)
+         where operacao_id = :op
+           and status_novo in ('liquidada', 'renegociada', 'cancelada', 'baixada_prejuizo')
+        """),
+        {"op": str(operacao_id), "anos": anos},
+    ).rowcount
+    db_session.execute(
+        text("alter table operacao_evento enable trigger trg_operacao_evento_append_only")
+    )
+    db_session.commit()
+
+    # Zero aqui significa cenário mal montado — a operação não chegou a um
+    # status terminal — e o teste que chamou isto passaria por engano, porque
+    # a operação continuaria contando como relação VIVA e o bloqueio de OC013
+    # que ele espera provar viria pelo motivo errado.
+    assert afetados > 0, (
+        f"operação {operacao_id} não tem evento de encerramento em operacao_evento: "
+        "ela não está em status terminal, e não há encerramento para envelhecer."
+    )
 
 
 def baixar_parcelas(db_session: Session, operacao_id: uuid.UUID, numeros: list[int]) -> None:

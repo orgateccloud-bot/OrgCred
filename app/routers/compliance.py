@@ -6,7 +6,11 @@ O regime PLD/COAF aplicável a uma ESC ainda depende de parecer jurídico
 sem esperar ninguém:
 
 - Identificação do tomador com EVIDÊNCIA ARQUIVADA e verificável por hash.
-- RETENÇÃO de 5 anos garantida pelo banco (Lei 9.613/98, art. 10, III).
+- RETENÇÃO de 5 anos garantida pelo banco (Lei 9.613/98, art. 10, III),
+  contados do ENCERRAMENTO DA RELAÇÃO desde a migration 022 — não do
+  arquivamento, que numa operação de 60 parcelas vencia cinco anos cedo
+  demais. `retencao_ate` continua sendo gravado e continua imutável, mas
+  virou o PISO; o prazo que vale é derivado e vem em `retencao_efetiva`.
 - DETECÇÃO INTERNA de atipicidade sobre os dados que já existem.
 
 O canal externo é ADAPTADOR: a ocorrência já nasce com os campos
@@ -38,7 +42,7 @@ from typing import Any, List, Literal, Optional
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import Row, text
 from sqlalchemy.exc import IntegrityError
@@ -107,12 +111,52 @@ class DocumentoOut(BaseModel):
     nome_arquivo: str
     sha256: str
     arquivado_em: datetime
+    # O PISO, não o prazo. Continua sendo a coluna `retencao_ate` gravada no
+    # arquivamento (arquivamento + 5 anos, sob a regra vigente naquele dia), e
+    # continua com o mesmo nome para não quebrar quem já o consome — o que a
+    # migration 022 mudou é que ele deixou de ser a última palavra.
     retencao_ate: date
+    # A última palavra: greatest(piso, encerramento da relação + 5 anos),
+    # Lei 9.613/98 art. 10, III. NULO significa INDETERMINADA — a relação de
+    # negócio com o tomador ainda não encerrou, então os cinco anos sequer
+    # começaram a correr e não existe data em que apagar seja legítimo.
+    retencao_efetiva: Optional[date]
+    relacao_em_curso: bool
+    encerramento_relacao: Optional[date]
     # Nulo só nas evidências anteriores à migration 019 — aquelas cujos bytes
     # nunca existiram. Exposto porque a diferença entre "identificação
     # arquivada" e "hash sem arquivo" é exatamente o que uma fiscalização
     # pergunta, e esconder o campo devolveria as duas coisas com a mesma cara.
     storage_objeto: Optional[str]
+
+
+# A leitura de documento sai TODA de `v_documento_retencao` (migration 022), e
+# não da tabela: o prazo efetivo é derivado, e derivá-lo de novo aqui em
+# Python criaria uma segunda implementação da regra — a que a tela mostra —
+# livre para divergir daquela que o trigger OC013 aplica. Sendo a view a única
+# fonte, tela e banco respondem sempre a mesma coisa.
+_SELECT_DOCUMENTO = """
+select documento_id, tomador_id, tipo, nome_arquivo, sha256, arquivado_em,
+       retencao_piso, retencao_efetiva, relacao_em_curso, encerramento_relacao,
+       storage_objeto
+from v_documento_retencao
+"""
+
+
+def _documento_out(r: Row[Any]) -> DocumentoOut:
+    return DocumentoOut(
+        id=r.documento_id,
+        tomador_id=r.tomador_id,
+        tipo=r.tipo,
+        nome_arquivo=r.nome_arquivo,
+        sha256=r.sha256,
+        arquivado_em=r.arquivado_em,
+        retencao_ate=r.retencao_piso,
+        retencao_efetiva=r.retencao_efetiva,
+        relacao_em_curso=r.relacao_em_curso,
+        encerramento_relacao=r.encerramento_relacao,
+        storage_objeto=r.storage_objeto,
+    )
 
 
 def _ler_upload(arquivo: UploadFile) -> bytes:
@@ -153,26 +197,10 @@ def get_documentos(
     user: Usuario = Depends(get_current_user),
 ) -> List[DocumentoOut]:
     rows = db.execute(
-        text("""
-        select id, tomador_id, tipo, nome_arquivo, sha256, arquivado_em, retencao_ate,
-               storage_objeto
-        from tomador_documento where tomador_id = :t order by arquivado_em desc
-    """),
+        text(f"{_SELECT_DOCUMENTO} where tomador_id = :t order by arquivado_em desc"),
         {"t": str(tomador_id)},
     ).all()
-    return [
-        DocumentoOut(
-            id=r.id,
-            tomador_id=r.tomador_id,
-            tipo=r.tipo,
-            nome_arquivo=r.nome_arquivo,
-            sha256=r.sha256,
-            arquivado_em=r.arquivado_em,
-            retencao_ate=r.retencao_ate,
-            storage_objeto=r.storage_objeto,
-        )
-        for r in rows
-    ]
+    return [_documento_out(r) for r in rows]
 
 
 @router.post("/tomadores/{tomador_id}/documentos", response_model=DocumentoOut, status_code=201)
@@ -204,6 +232,15 @@ def post_documento(
     `retencao_ate` é gravado agora, e não calculado na leitura: se o prazo
     legal mudar, os documentos já arquivados mantêm a regra vigente à época
     — que é o que se defende numa fiscalização.
+
+    O QUE A MIGRATION 022 MUDOU AQUI: nada na escrita, tudo na leitura. A
+    coluna continua sendo gravada com `current_date + 5 anos` e continua
+    imutável; ela passou a ser o PISO da retenção. O prazo que vale é
+    `retencao_efetiva` — greatest(piso, encerramento da relação + 5 anos) —,
+    derivado a cada consulta porque o encerramento só se conhece depois, e
+    porque a única alternativa seria reescrever esta linha anos depois, que é
+    justamente o que OC013 recusa. Ele vem no corpo da resposta, ao lado do
+    piso.
     """
     existe = db.execute(text("select 1 from tomador where id = :t"), {"t": str(tomador_id)}).first()
     if existe is None:
@@ -225,15 +262,14 @@ def post_documento(
         ) from exc
 
     try:
-        row = db.execute(
+        documento_id = db.execute(
             text("""
             insert into tomador_documento
                 (tomador_id, tipo, nome_arquivo, sha256, retencao_ate, usuario_id,
                  storage_objeto)
             values (:t, :tipo, :nome, :sha, current_date + make_interval(years => :anos), :u,
                     :obj)
-            returning id, tomador_id, tipo, nome_arquivo, sha256, arquivado_em, retencao_ate,
-                      storage_objeto
+            returning id
             """),
             {
                 "t": str(tomador_id),
@@ -244,7 +280,7 @@ def post_documento(
                 "u": str(user.id),
                 "obj": referencia,
             },
-        ).one()
+        ).scalar_one()
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -253,16 +289,15 @@ def post_documento(
             detail="Este arquivo já está arquivado para este tomador (mesmo hash).",
         ) from exc
 
-    return DocumentoOut(
-        id=row.id,
-        tomador_id=row.tomador_id,
-        tipo=row.tipo,
-        nome_arquivo=row.nome_arquivo,
-        sha256=row.sha256,
-        arquivado_em=row.arquivado_em,
-        retencao_ate=row.retencao_ate,
-        storage_objeto=row.storage_objeto,
-    )
+    # Releitura pela view em vez de `returning` com todas as colunas: o prazo
+    # efetivo é derivado e não existe como coluna para o INSERT devolver. Sai
+    # mais barato do que a alternativa — repetir a derivação aqui —, que
+    # criaria a segunda implementação da regra que `_SELECT_DOCUMENTO` existe
+    # para evitar.
+    row = db.execute(
+        text(f"{_SELECT_DOCUMENTO} where documento_id = :d"), {"d": str(documento_id)}
+    ).one()
+    return _documento_out(row)
 
 
 def _documento(db: Session, documento_id: UUID) -> Row[Any]:
@@ -418,6 +453,96 @@ def post_verificar_documento(
         sha256_arquivado=doc.sha256,
         confere=calculado == doc.sha256,
         storage_integro=integro,
+    )
+
+
+class RetencaoOut(BaseModel):
+    documento_id: UUID
+    tomador_id: UUID
+    nome_arquivo: str
+    arquivado_em: datetime
+    referencia: date
+    existia_na_referencia: bool
+    retencao_piso: date
+    relacao_em_curso: bool
+    encerramento_relacao: Optional[date]
+    # Nulo = indeterminada: a relação de negócio ainda não tinha encerrado na
+    # data de referência.
+    retencao_efetiva: Optional[date]
+    podia_ser_apagado: bool
+
+
+@router.get("/documentos/{documento_id}/retencao", response_model=RetencaoOut)
+def get_retencao_documento(
+    documento_id: UUID,
+    em: Optional[date] = Query(
+        default=None,
+        description="Data de referência da consulta. Ausente = hoje.",
+    ),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+) -> RetencaoOut:
+    """Responde "este documento podia ter sido apagado naquela data?".
+
+    É a pergunta que uma fiscalização faz, e é o motivo de a migration 022 ter
+    escolhido DERIVAR o prazo em vez de reescrever a coluna quando a relação
+    encerra. Uma coluna sobrescrita só sabe dizer o valor de hoje: perguntar
+    "e em março de 2029?" não teria resposta, porque não há versionamento de
+    `retencao_ate` — e não vai haver, já que OC013 recusa UPDATE.
+
+    A derivação responde porque tudo de que ela depende é imutável: o piso
+    (OC013), a existência e a data de nascimento da operação, e os eventos de
+    transição de status (`operacao_evento`, append-only por OC010). A conta é
+    a MESMA função que o trigger consulta para decidir o DELETE de hoje —
+    `fn_retencao_efetiva_em`, com a data de referência trocada —, então não há
+    como a resposta da auditoria discordar do comportamento do banco.
+
+    `existia_na_referencia` falso quando a data pedida é anterior ao
+    arquivamento: aí `podia_ser_apagado` é falso por uma razão diferente de
+    todas as outras — não havia o que apagar. Devolver `true` ali ("não estava
+    protegido") seria responder à pergunta errada.
+    """
+    # A data de referência sai de um CTE em vez de repetir o `coalesce` em
+    # cada chamada — e o cast é `cast(:em as date)`, não `:em::date`: o
+    # `text()` do SQLAlchemy não reconhece o bind quando ele é seguido de
+    # `::`, e o parâmetro chegava literal ao Postgres.
+    row = db.execute(
+        text("""
+        with ref as (select coalesce(cast(:em as date), current_date) as em)
+        select d.tomador_id, d.nome_arquivo, d.arquivado_em, d.retencao_ate,
+               ref.em as referencia,
+               fn_relacao_em_curso(d.tomador_id, ref.em) as relacao_em_curso,
+               fn_encerramento_relacao(d.tomador_id, ref.em) as encerramento_relacao,
+               nullif(
+                   fn_retencao_efetiva_em(d.tomador_id, d.retencao_ate, ref.em),
+                   'infinity'::date
+               ) as retencao_efetiva
+        from tomador_documento d, ref
+        where d.id = :d
+    """),
+        {"d": str(documento_id), "em": em},
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Documento {documento_id} não existe.")
+
+    existia = row.arquivado_em.date() <= row.referencia
+    # `retencao_efetiva` nula é retenção indeterminada, ou seja, protegido —
+    # não o contrário. O `and` com `existia` vem depois porque a proteção só
+    # faz sentido sobre documento que já existia.
+    vencida = row.retencao_efetiva is not None and row.retencao_efetiva < row.referencia
+
+    return RetencaoOut(
+        documento_id=documento_id,
+        tomador_id=row.tomador_id,
+        nome_arquivo=row.nome_arquivo,
+        arquivado_em=row.arquivado_em,
+        referencia=row.referencia,
+        existia_na_referencia=existia,
+        retencao_piso=row.retencao_ate,
+        relacao_em_curso=row.relacao_em_curso,
+        encerramento_relacao=row.encerramento_relacao,
+        retencao_efetiva=row.retencao_efetiva,
+        podia_ser_apagado=existia and vencida,
     )
 
 

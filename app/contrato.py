@@ -11,6 +11,16 @@ hash. Nada de data de geração ou identificador aleatório dentro do corpo —
 seria impossível conferir depois se duas emissões descrevem o mesmo acordo.
 A data de emissão fica na coluna `emitido_em`, fora do texto assinado.
 
+Os dados do registro (entidade, protocolo, data de confirmação) entram no
+corpo sem quebrar isso: 'confirmado' é estado TERMINAL (OC018), então essas
+três colunas não mudam mais depois de gravadas.
+
+DETERMINÍSTICO NÃO É IMUTÁVEL: duas emissões do MESMO estado dão o mesmo
+corpo, mas o estado muda com o tempo — a agenda só existe depois da
+ativação, o registro pode ser confirmado depois, o status avança. Por isso
+reemitir cria VERSÃO NOVA (migration 012) e a anterior fica intocada com o
+hash que o banco calculou nela.
+
 TIPO: "Contrato de Empréstimo ESC", não CCB. A CCB (Lei 10.931/2004) é
 instrumento de instituição financeira, e uma ESC não é — ver a nota no topo
 da migration 012.
@@ -26,6 +36,17 @@ _SISTEMAS = {
     "PRICE": "Tabela Price (prestações constantes)",
     "SAC": "Sistema de Amortização Constante (amortização constante)",
 }
+
+# Status em que o principal JÁ SAIU do caixa da ESC — hoje ou algum dia.
+# 'inadimplente' entra porque o dinheiro continua fora (mesma leitura de
+# `fn_check_teto_capital`); 'liquidada' e 'renegociada' entram porque foi
+# liberado um dia, e o instrumento não pode dizer que não foi. Existe para a
+# seção 4 não afirmar "nenhum valor é liberado" sobre operação que consumiu
+# teto: o gate da migration 013 só roda NA TRANSIÇÃO, então operações
+# ativadas antes dele seguem ativas sem registro confirmado — é o que a view
+# `v_operacoes_sem_registro_confirmado` conta, com coluna `tem_contrato` e
+# tudo.
+_STATUS_COM_CAPITAL_LIBERADO = frozenset({"ativa", "inadimplente", "liquidada", "renegociada"})
 
 
 def _moeda(valor: Decimal | int | str) -> str:
@@ -47,13 +68,20 @@ def _data(valor: Any) -> str:
     return str(valor.strftime("%d/%m/%Y"))
 
 
-def gerar_corpo(operacao: Any, tomador: Any, parcelas: List[Any], credor: Any) -> str:
+def gerar_corpo(
+    operacao: Any, tomador: Any, parcelas: List[Any], credor: Any, registro: Any | None
+) -> str:
     """
     Monta o texto do contrato.
 
     `credor` traz os dados da ESC (razão social, CNPJ, município/UF) — vêm de
     fora porque são dados da empresa, não da operação, e não há tabela de
     cadastro da própria ESC no schema.
+
+    `registro` é a linha CONFIRMADA de `registro_operacao` (entidade,
+    protocolo, confirmado_em), ou None quando ainda não existe. É parâmetro
+    obrigatório — sem default — justamente para que nenhum chamador emita o
+    instrumento sem antes ter olhado se há registro confirmado.
     """
     linhas: List[str] = []
     add = linhas.append
@@ -122,11 +150,50 @@ def gerar_corpo(operacao: Any, tomador: Any, parcelas: List[Any], credor: Any) -
     add("")
     add("4. REGISTRO EM ENTIDADE REGISTRADORA")
     add("")
-    add("  Nos termos do art. 5º, §3º, da Lei Complementar nº 167/2019, esta")
-    add("  operação será registrada em entidade registradora autorizada pelo")
-    add("  Banco Central do Brasil.")
-    referencia = operacao.registro_entidade_ref or "a informar"
-    add(f"  Referência do registro: {referencia}")
+    # Aqui se citava `operacao.registro_entidade_ref` — texto livre que a
+    # migration 013 rebaixou a campo informativo quando o gate passou a
+    # exigir registro CONFIRMADO. Este documento vai a terceiros: citar uma
+    # referência que ninguém validou seria afirmar no papel algo mais fraco
+    # do que o sistema sabe. O que vale é a linha confirmada de
+    # `registro_operacao` — entidade, protocolo e data, com protocolo
+    # garantido por constraint da migration 012.
+    if registro is not None:
+        add("  Nos termos do art. 5º, §3º, da Lei Complementar nº 167/2019, esta")
+        add("  operação está registrada em entidade registradora autorizada pelo")
+        add("  Banco Central do Brasil.")
+        add("")
+        add(f"  Entidade registradora: {registro.entidade}")
+        add(f"  Protocolo do registro: {registro.protocolo}")
+        add(f"  Registro confirmado em: {_data(registro.confirmado_em)}")
+    else:
+        # Recusar a emissão seria pior: a entidade registradora costuma pedir
+        # o instrumento para registrar, e travar a emissão até haver registro
+        # fecharia o ciclo sobre si mesmo. Então emite-se — mas dizendo, em
+        # letras de forma, que não há registro a citar.
+        add("  Nos termos do art. 5º, §3º, da Lei Complementar nº 167/2019, esta")
+        add("  operação deve ser registrada em entidade registradora autorizada")
+        add("  pelo Banco Central do Brasil.")
+        add("")
+        add("  SEM REGISTRO CONFIRMADO ATÉ ESTA EMISSÃO. Não há entidade nem")
+        add("  protocolo a citar.")
+        add("")
+        if operacao.status in _STATUS_COM_CAPITAL_LIBERADO:
+            # A ausência aqui não é "condição ainda não atingida": é PENDÊNCIA,
+            # com o dinheiro já fora. Dizer a frase do caso comum ("nenhum
+            # valor é liberado") sobre uma operação ativa seria o mesmo pecado
+            # que motivou esta seção — o papel afirmando algo que o sistema
+            # sabe ser falso, só que agora na direção que favorece a ESC.
+            add("  Esta operação JÁ COMPROMETEU CAPITAL da CREDORA: o valor foi")
+            add("  liberado sob a regra vigente à época da ativação, anterior à")
+            add("  exigência de registro confirmado. A ausência de registro é,")
+            add("  portanto, PENDÊNCIA A REGULARIZAR perante a entidade")
+            add("  registradora — e não condição ainda não atingida.")
+        else:
+            add("  Enquanto não houver registro confirmado a operação não pode")
+            add("  ser ativada e nenhum valor é liberado.")
+        add("")
+        add("  Confirmado o registro, este instrumento é reemitido em nova")
+        add("  versão citando a entidade e o protocolo.")
     add("")
     add("5. DISPOSIÇÕES")
     add("")

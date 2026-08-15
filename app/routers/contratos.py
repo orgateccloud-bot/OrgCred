@@ -8,7 +8,8 @@ registro virou entidade de primeira classe (entidade, protocolo, status,
 datas), com máquina de estados no banco.
 
 O GATE ESTÁ LIGADO desde a migration 013: ativar exige registro CONFIRMADO,
-e `registro_entidade_ref` virou campo informativo.
+e `registro_entidade_ref` virou campo informativo — tanto que saiu do corpo
+do contrato, que hoje cita a entidade e o protocolo do registro confirmado.
 `GET /contratos/registros/pendencias` deixou de ser só medida da lacuna — é
 a relação de operações que não conseguem ativar.
 
@@ -109,6 +110,13 @@ def post_emitir_contrato(
     Exige a ESC identificada em configuração. Sem isso, o contrato sairia
     com credora em branco — um documento com efeito jurídico e sem uma das
     partes.
+
+    NÃO exige registro confirmado: emitir antes é legítimo (a registradora
+    costuma pedir o instrumento para registrar). O que o corpo faz é dizer
+    a verdade sobre o que existe no momento da emissão — entidade e
+    protocolo quando há registro confirmado, marca explícita de ausência
+    quando não há. Confirmado depois, reemitir gera a versão que cita o
+    protocolo, e a anterior continua íntegra e válida.
     """
     if not settings.esc_identificada:
         raise HTTPException(
@@ -137,6 +145,20 @@ def post_emitir_contrato(
         {"o": str(operacao_id)},
     ).all()
 
+    # O corpo cita o registro CONFIRMADO, não mais o `registro_entidade_ref`
+    # de texto livre. `.first()` basta: o índice único parcial da migration
+    # 012 garante no máximo um confirmado por operação. Vindo None, o corpo
+    # imprime a marca de "sem registro confirmado" — a emissão não é recusada
+    # porque a registradora costuma exigir o instrumento para registrar.
+    registro = db.execute(
+        text("""
+        select entidade, protocolo, confirmado_em
+        from registro_operacao
+        where operacao_id = :o and status = 'confirmado'
+        """),
+        {"o": str(operacao_id)},
+    ).first()
+
     credor = type(
         "Credor",
         (),
@@ -148,7 +170,7 @@ def post_emitir_contrato(
         },
     )()
 
-    corpo = gerar_corpo(operacao, tomador, list(parcelas), credor)
+    corpo = gerar_corpo(operacao, tomador, list(parcelas), credor, registro)
 
     # O sha256 NÃO é enviado: o trigger da migration 012 o calcula a partir
     # do corpo. Assim corpo e hash não podem divergir, nem por bug aqui nem
