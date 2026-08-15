@@ -1,7 +1,7 @@
 # OrgCred — Mapeamento, scorecard e plano de entrada em produção
 
-> Revisado em **2026-08-15**, depois de fechados os quatro defeitos que o
-> levantamento deixou em aberto.
+> Revisado em **2026-08-15**, com **todos os defeitos de código do
+> levantamento fechados**.
 > O levantamento base é de 2026-08-12: 53 agentes sobre 10 domínios, com rodada
 > adversarial — todo achado grave passou por um cético encarregado de refutá-lo,
 > e **32 sobreviveram**. Este documento marca quais deles foram fechados e
@@ -37,11 +37,11 @@ riscos residuais que exigem integração externa, não código.
 
 | | Antes | Agora |
 |---|---|---|
-| Testes backend | 198 | **393** |
+| Testes backend | 198 | **405** |
 | Cobertura | 92% | **93,2%** (piso de 85% ativo na CI) |
 | Testes frontend | 50 | **148** |
 | E2E | 5 (todos quebrados) | **6, verdes** |
-| Migrations | 14 | **22** |
+| Migrations | 14 | **23** |
 | SQLSTATEs no banco | 18 | **21** |
 | Suíte local | 148s | **27s** |
 
@@ -76,7 +76,7 @@ riscos residuais que exigem integração externa, não código.
   era código morto; auditoria sem paginação.
 - **O logging não emitia nada** em produção.
 
-### Fechado depois — os quatro que o levantamento deixou em aberto
+### Fechado depois — os cinco que o levantamento deixou em aberto
 
 | Achado | Como foi fechado |
 |---|---|
@@ -85,11 +85,20 @@ riscos residuais que exigem integração externa, não código.
 | O contrato imprimia texto livre em vez do protocolo | Passou a citar entidade, protocolo e data de confirmação. Contratos já emitidos seguem válidos com o texto antigo — nada recalcula hash existente (OC017). |
 | Retenção ancorada no **arquivamento** | Migration 022: a coluna vira **piso** e a retenção efetiva é `greatest(piso, último encerramento + 5 anos)`; enquanto a relação não encerrou, é `infinity`. Tomador que encerra tudo e volta a tomar crédito reinicia o relógio. |
 
-### Continua aberto
+### Nenhum defeito de código em aberto
 
-| Achado | Onde | Situação |
-|---|---|---|
-| A regra de atipicidade por **liquidação antecipada** não tem teste e depende de `current_date` | [010:212](migrations/010_compliance_interno.sql:212) | Deixa de detectar sozinha com o passar dos dias, e a varredura só roda por clique manual. É o último defeito de código conhecido. |
+O último era a regra de atipicidade por **liquidação antecipada**, que comparava
+o primeiro vencimento com `current_date` em vez da data em que a liquidação
+aconteceu — detectava enquanto a varredura rodasse antes do vencimento e parava
+de detectar depois, com o fato inalterado. Fechado pela migration 023, ancorando
+na trilha de transições, com `min()` para que uma data forjada só possa
+ANTECIPAR (produzindo trabalho a mais para o analista) e nunca atrasar
+(escapando da regra). Entrou junto uma regra nova: write-off antes do primeiro
+vencimento, separada de propósito — lá o dinheiro voltou cedo demais, aqui não
+voltou.
+
+O que resta são **riscos residuais** (seção 6), que exigem integração ou decisão
+externa, e a fila de configuração (seção 4).
 
 ---
 
@@ -104,7 +113,7 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 | **Cobrança** | 🔴 | 🟡 | O furo crítico da liquidação está fechado (017, OC022), `baixada` não contorna mais o lastro, a baixa tem autor. Não é verde porque o lastro continua **auto-declarado**: não há importação de extrato. |
 | **Contratos e registro** | 🟡 | 🟢 | O registro não nasce mais confirmado (021), o corpo cita o protocolo confirmado, e a emissão concorrente já era tratada. Sem defeito aberto — o que impede usar é externo: registradora contratada, assinatura eletrônica e dados da ESC. |
 | **Fiscal (Lucro Presumido)** | 🔴 | 🟡 | Os quatro erros de conteúdo foram corrigidos e testados (018). Não é verde porque nenhum parâmetro real existe — a apuração é recusada por OC015, de propósito, até o contador informar. |
-| **Compliance PLD** | 🔴 | 🟡 | A evidência deixou de ser oca (bytes, hash no servidor, storage fail-closed, UI) e a retenção passou a contar do encerramento (022). Não é verde por um defeito que resta — a regra de liquidação antecipada sem teste, que para de detectar sozinha — e pelo regime COAF pendente de parecer. |
+| **Compliance PLD** | 🔴 | 🟢 | A evidência deixou de ser oca (bytes, hash no servidor, storage fail-closed, UI), a retenção conta do encerramento (022) e a detecção de atipicidade não depende mais de quando a varredura roda (023). Sem defeito aberto — o que falta é externo: parecer sobre o regime COAF, e agendar a varredura em vez de depender de clique. |
 | **Segurança e auditoria** | 🔴 | 🟡 | Guarda fail-closed de configuração, `/docs` desligado em produção, `/metrics` protegido, rate limiting de fato ligado, auditoria paginada com teto de página. Não é verde enquanto o serviço duplicado existir. |
 | **Frontend** | 🔴 | 🟢 | `baseUrl` relativo provado no artefato (zero ocorrências de `localhost` no bundle), UI de identificação e de write-off, dicionário completo, retry preservando o corpo, feedback anunciado por `role="alert"`. 148 testes e 6 E2E. |
 | **Qualidade e CI** | 🟡 | 🟢 | Falha dura sem banco (exit 4), teste de sincronia das três fontes de schema, piso de cobertura, docker build com smoke test, e a suíte de concorrência dentro do pytest. |
@@ -116,12 +125,14 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 
 ### Meu (código)
 
-1. **Teste da regra de atipicidade por liquidação antecipada**, e ancorá-la na
-   data de liquidação em vez de `current_date` — hoje ela deixa de detectar
-   sozinha com o passar dos dias. É o último defeito de código conhecido.
+**Nada.** Os cinco defeitos que estavam nesta lista — hash-chain, registro
+nascendo confirmado, protocolo no contrato, retenção e regra de atipicidade —
+foram fechados; ver seção 2.
 
-Os quatro que estavam aqui (hash-chain, registro nascendo confirmado, protocolo
-no contrato, retenção) foram fechados — ver seção 2.
+O que sobra do meu lado só existe como resposta a decisão sua: importação de
+extrato (para o lastro deixar de ser auto-declarado), adaptador de registradora,
+e notarização externa da hash-chain. Os três estão na seção 6 porque são
+mudanças de escopo, não correções.
 
 ### Seu (configuração e decisão)
 
@@ -155,10 +166,8 @@ e provadas por teste de mutação, a trilha de auditoria não acusa mais
 adulteração falsa nem aceita lançamento antedatado, e a interface funciona de
 ponta a ponta.
 
-O que impede operar agora é **configuração e dado de negócio**. Os quatro
-defeitos que restavam foram fechados, inclusive o da hash-chain, que era o
-único a comprometer uma garantia legal. Resta um, menor: a regra de atipicidade
-por liquidação antecipada, sem teste e que perde eficácia com o tempo.
+O que impede operar agora é **exclusivamente configuração e dado de negócio**.
+Nenhum defeito de código do levantamento continua aberto.
 
 O **piloto fechado** que a Condição 1 destravou está disponível: sem capital
 social carregado, sem parâmetro fiscal, poucos operadores, nenhuma operação

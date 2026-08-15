@@ -1,6 +1,6 @@
 # OrgCred — Relatório de execução, 12–15 de agosto de 2026
 
-Nove commits, ~12.000 linhas. O que segue é o que foi feito, o que
+Dez commits, ~12.500 linhas. O que segue é o que foi feito, o que
 foi provado, e o que continua aberto — nesta ordem, porque a terceira parte é a
 que decide se dá para operar.
 
@@ -92,6 +92,12 @@ texto livre que a migration 013 rebaixou. O instrumento vai a terceiros.
 efetiva é `greatest(piso, último encerramento + 5 anos)`; enquanto a relação não
 encerrou, é `infinity`.
 
+**Atipicidade ancorada na data do fato (023).** A regra de liquidação antecipada
+comparava o primeiro vencimento com `current_date` em vez da data da liquidação:
+detectava enquanto a varredura rodasse antes do vencimento e parava de detectar
+depois, com o fato inalterado. Como a varredura só roda por clique manual, na
+prática tendia a nunca disparar.
+
 ---
 
 ## 3. A decisão de negócio que destravou o gate
@@ -149,16 +155,16 @@ campo `sha256` — a garantia de que o cliente não voltou a mandar hash pronto.
 
 | | Antes | Depois |
 |---|---|---|
-| Testes backend | 198 | **393** |
+| Testes backend | 198 | **405** |
 | Cobertura | 92% | **93,2%** (piso de 85% ativo) |
 | Testes frontend | 50 | **148** |
 | E2E | 5 (todos quebrados) | **6, verdes** |
-| Migrations | 14 | **22** |
+| Migrations | 14 | **23** |
 | SQLSTATEs no banco | 18 | **21** |
 | Suíte local | 148s | **27s** |
 
 `ruff`, `ruff format`, `mypy` e `bandit` limpos. `alembic upgrade → downgrade →
-upgrade` verificado nas oito migrations novas.
+upgrade` verificado nas nove migrations novas.
 
 **A prova que mais importa não é a suíte verde, é a mutação.** Removendo o
 `pg_advisory_xact_lock` da migration 014, duas ativações concorrentes commitam e
@@ -172,21 +178,29 @@ redefinido cinco vezes depois.
 
 ## 6. O que continua aberto
 
-### Defeito conhecido, meu
+### Nenhum defeito conhecido em aberto
 
-Um só, e é o menor da lista original: a regra de atipicidade por **liquidação
-antecipada** ([010:212](migrations/010_compliance_interno.sql:212)) não tem
-teste e depende de `current_date`, então deixa de detectar sozinha com o passar
-dos dias — e a varredura só roda por clique manual.
+Os cinco foram fechados. Dois merecem nota, porque em ambos a **revisão** pegou
+o que a implementação não viu.
 
-Os quatro que estavam aqui foram fechados. O da hash-chain merece nota, porque
-a correção quase introduziu um defeito pior: ancorar em `seq` cortou um amarrio
-acidental — até então, percorrer por `created_at` obrigava o carimbo a ser
-coerente com a posição, e um append forjado com data retroativa era acusado.
-Medido: append antedatado em 400 dias, a versão anterior acusa duas quebras, a
-correção inicial não acusava nenhuma, e bastava privilégio de `INSERT`. Fechado
-com `new.created_at := now()` no trigger — antedatar virou impossível, não
-apenas detectável.
+**Hash-chain:** a correção quase introduziu um defeito pior que o original.
+Ancorar em `seq` cortou um amarrio acidental — até então, percorrer por
+`created_at` obrigava o carimbo a ser coerente com a posição, e um append
+forjado com data retroativa era acusado. Medido: append antedatado em 400 dias,
+a versão anterior acusa duas quebras, a correção inicial não acusava nenhuma, e
+bastava privilégio de `INSERT`. Fechado com `new.created_at := now()` no
+trigger — antedatar virou impossível, não apenas detectável.
+
+**Atipicidade:** o SQL estava certo, mas a suíte não provava o que dizia provar.
+Teste de mutação com cinco mutantes: trocar `min()` por `max()` e remover o ramo
+de encerramento nulo **sobreviviam à suíte inteira**. E o teste de invariância
+temporal movia as duas pontas do cenário juntas, então não testava invariância
+nenhuma.
+
+O padrão que se repetiu nas duas: correção que passa em todos os testes e mesmo
+assim está errada, porque os testes foram escritos por quem já acreditava na
+correção. O que quebrou o ciclo foi ter um revisor com uma lente única, obrigado
+a medir em vez de argumentar.
 
 ### Seu, e é o que impede operar
 
