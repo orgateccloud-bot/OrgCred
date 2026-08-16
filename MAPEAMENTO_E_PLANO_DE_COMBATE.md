@@ -9,17 +9,26 @@
 
 ---
 
-## 0. Leia isto primeiro
+## 0. Estado da infraestrutura (2026-08-15, fim do dia)
 
-**A exposição do serviço duplicado continua viva.** O serviço Railway `OrgCred`
-(`eaa4e36a-594b-4f24-ab00-1927b8c52e65`) tem a `ORGCRED_DATABASE_URL` do
-Postgres de produção e não tem `ORGCRED_SUPABASE_JWT_SECRET`. Nada do que foi
-feito no código muda isso — é configuração, e está no seu balde.
+**O gatilho do GitHub funciona.** Descoberto ao verificar outra coisa: os deploys
+do `orgcred-api` passaram a ter **hash de commit** (`e712b1d`, `981c013`,
+`95af562`, `b21f693`) — cada push em `main` vai para produção sozinho, e as
+migrations 015–023 já rodaram no banco de produção. O impasse que consumiu horas
+está resolvido.
 
-**Mitigação parcial que já existe:** a guarda fail-closed **recusa iniciar** em
-produção com a JWT secret no default. No próximo deploy esse serviço não sobe
-mais em modo inseguro — ele falha, ruidosamente. O `orgcred-api` também não
-subirá se a secret configurada nele não for a real.
+**O serviço duplicado foi neutralizado.** A `ORGCRED_DATABASE_URL` do `OrgCred`
+(`eaa4e36a-...`) foi sobrescrita com um valor inválido e autoexplicativo — o
+MCP do Railway não expõe remoção de variável. O serviço agora falha no
+`alembic` com `Could not parse SQLAlchemy URL` e está `FAILED`: não alcança mais
+o Postgres de produção. **Reversível** (recolocar a referência restaura), e a
+remoção definitiva do serviço continua sendo o passo irreversível do fim.
+
+**Produção rodava em modo `development`** — `/docs`, `/redoc` e `/openapi.json`
+abertos, guarda fail-closed inativa e CORS permissivo. Antes de corrigir,
+verifiquei se era seguro: assinei um token com a secret pública do repositório e
+chamei `/api/me`; a resposta foi `401 TOKEN_INVALIDO`, provando que a secret de
+produção é real. `ORGCRED_ENVIRONMENT=production` foi setada.
 
 ---
 
