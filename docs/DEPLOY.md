@@ -43,20 +43,30 @@ quando a guarda fail-closed recusa iniciar por configuração ausente
 causa no volume de log. Três tentativas cobrem falha transitória; além disso, o
 deploy fica `FAILED`, que é a informação correta.
 
-## O que este arquivo NÃO resolve
+### `preDeployCommand: ["alembic upgrade head"]`
 
-**As migrations continuam no `CMD`** (`Dockerfile:69`), e não numa fase de
-pré-deploy separada. Consequências, que seguem valendo:
+As migrations saíram do `CMD` do Dockerfile. A fase de pré-deploy roda **uma
+vez por deploy**, antes de qualquer réplica subir.
 
-- com mais de uma réplica, duas instâncias correm `alembic upgrade head` contra
-  o mesmo banco ao mesmo tempo;
-- uma migration que falhe no meio deixa o schema parcialmente aplicado e o
-  contêiner em loop de restart;
-- reverter o código não reverte o schema — o banco fica adiantado em relação à
-  imagem anterior.
+Enquanto estavam no `CMD`, cada réplica aplicava o schema no próprio start:
+com mais de uma, duas instâncias corriam `alembic upgrade head` contra o mesmo
+banco ao mesmo tempo. E uma migration que falhasse no meio deixava o schema
+parcialmente aplicado com o contêiner em loop de restart — cada tentativa
+partindo de um estado diferente da anterior.
 
-Mover para `preDeployCommand` resolve, mas muda **como as migrations chegam à
-produção** e merece ser feito e verificado por si, não de carona.
+Agora, migration que falha **falha o deploy**, e o contêiner anterior continua
+servindo. O schema deixa de avançar por acidente durante um restart.
+
+**O fluxo local não depende disso:** o `docker-compose.yml` sobrescreve
+`command` e aplica as migrations por lá. Quem rodar a imagem crua (sem compose)
+precisa aplicar as migrations por fora.
+
+## O que continua em aberto
+
+**Reverter o código não reverte o schema.** O banco fica adiantado em relação à
+imagem anterior, e um rollback de deploy não desfaz migration. `alembic
+downgrade` existe e é exercitado na CI, mas é ato manual e consciente — não
+acontece sozinho ao reverter um deploy.
 
 **Variável nova não recria o contêiner.** Gravar variável pelo painel ou pela
 API **não** dispara redeploy sozinho: ela fica pendente até o próximo deploy.

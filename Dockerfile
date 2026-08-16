@@ -66,4 +66,15 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# As migrations NÃO rodam aqui. Elas são a `preDeployCommand` do railway.json,
+# fase que executa UMA vez por deploy, antes de qualquer réplica subir.
+#
+# Enquanto estavam neste CMD, cada réplica aplicava o schema no seu próprio
+# start: com mais de uma, duas instâncias corriam `alembic upgrade head` contra
+# o mesmo banco ao mesmo tempo. E uma migration que falhasse no meio deixava o
+# schema parcialmente aplicado com o contêiner em loop de restart, tentando de
+# novo — cada tentativa partindo de um estado diferente do anterior.
+#
+# O fluxo local não depende disto: o docker-compose sobrescreve `command` e
+# aplica as migrations por lá (ver docker-compose.yml).
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
