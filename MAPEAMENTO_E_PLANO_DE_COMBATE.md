@@ -1,7 +1,7 @@
 # OrgCred — Mapeamento, scorecard e plano de entrada em produção
 
-> Revisado em **2026-08-15**, com **todos os defeitos de código do
-> levantamento fechados**.
+> Revisado em **2026-08-16**, com **todos os defeitos de código do levantamento
+> fechados** e a infraestrutura arrumada até onde não depende de credencial.
 > O levantamento base é de 2026-08-12: 53 agentes sobre 10 domínios, com rodada
 > adversarial — todo achado grave passou por um cético encarregado de refutá-lo,
 > e **32 sobreviveram**. Este documento marca quais deles foram fechados e
@@ -9,26 +9,35 @@
 
 ---
 
-## 0. Estado da infraestrutura (2026-08-15, fim do dia)
+## 0. Estado da infraestrutura (2026-08-16)
 
-**O gatilho do GitHub funciona.** Descoberto ao verificar outra coisa: os deploys
-do `orgcred-api` passaram a ter **hash de commit** (`e712b1d`, `981c013`,
-`95af562`, `b21f693`) — cada push em `main` vai para produção sozinho, e as
-migrations 015–023 já rodaram no banco de produção. O impasse que consumiu horas
-está resolvido.
+Tudo abaixo foi **verificado**, não apenas configurado.
 
-**O serviço duplicado foi neutralizado.** A `ORGCRED_DATABASE_URL` do `OrgCred`
-(`eaa4e36a-...`) foi sobrescrita com um valor inválido e autoexplicativo — o
-MCP do Railway não expõe remoção de variável. O serviço agora falha no
-`alembic` com `Could not parse SQLAlchemy URL` e está `FAILED`: não alcança mais
-o Postgres de produção. **Reversível** (recolocar a referência restaura), e a
-remoção definitiva do serviço continua sendo o passo irreversível do fim.
+| Item | Estado | Prova |
+|---|---|---|
+| Gatilho do GitHub | funciona | deploys com hash de commit (`a3397d5`, `694776d`, `c409339`…) |
+| Serviço duplicado `OrgCred` | **sem acesso ao banco** | `FAILED`, log: `Could not parse SQLAlchemy URL` |
+| Modo de execução | `production` | `/docs`, `/redoc` e `/openapi.json` caem no fallback do SPA |
+| Health check | `/health/ready` | log do Railway: `GET /health/ready 200 OK` |
+| Migrations | fase de pré-deploy | dois contêineres distintos no log: um roda `alembic` e **sai**, o outro sobe o uvicorn |
+| Logging estruturado | emite | `{"event": "app_startup", …}` em JSON |
 
-**Produção rodava em modo `development`** — `/docs`, `/redoc` e `/openapi.json`
-abertos, guarda fail-closed inativa e CORS permissivo. Antes de corrigir,
-verifiquei se era seguro: assinei um token com a secret pública do repositório e
-chamei `/api/me`; a resposta foi `401 TOKEN_INVALIDO`, provando que a secret de
-produção é real. `ORGCRED_ENVIRONMENT=production` foi setada.
+**Dois enganos que quase entraram no relatório**, e valem como método:
+
+`/docs` respondia **200** depois de ligar o modo produção — parecia exposição
+aberta. Era o **fallback do SPA**: `text/html`, 1.079 bytes, idêntico ao
+`index.html`. Se o `/openapi.json` estivesse mesmo exposto, viria
+`application/json` com dezenas de KB.
+
+`get_service_config` continua mostrando `Health check path: /health`. O
+`railway.json` sobrepõe **no deploy** sem reescrever o registro do serviço — a
+prova está no log da sonda, não na configuração lida pela API.
+
+**Antes de ligar o modo produção, verifiquei que era seguro** sem ver segredo
+nenhum: assinei um token com a secret pública do repositório e chamei
+`/api/me`. Resposta `401 TOKEN_INVALIDO` — a secret de produção é real, logo a
+guarda fail-closed não derrubaria o serviço. Se tivesse sido aceito, ligar o
+modo produção teria tirado produção do ar em vez de protegê-la.
 
 ---
 
@@ -42,7 +51,7 @@ riscos residuais que exigem integração externa, não código.
 
 ---
 
-## 2. O que mudou em 2026-08-12/15
+## 2. O que mudou em 2026-08-12/16
 
 | | Antes | Agora |
 |---|---|---|
@@ -123,10 +132,10 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 | **Contratos e registro** | 🟡 | 🟢 | O registro não nasce mais confirmado (021), o corpo cita o protocolo confirmado, e a emissão concorrente já era tratada. Sem defeito aberto — o que impede usar é externo: registradora contratada, assinatura eletrônica e dados da ESC. |
 | **Fiscal (Lucro Presumido)** | 🔴 | 🟡 | Os quatro erros de conteúdo foram corrigidos e testados (018). Não é verde porque nenhum parâmetro real existe — a apuração é recusada por OC015, de propósito, até o contador informar. |
 | **Compliance PLD** | 🔴 | 🟢 | A evidência deixou de ser oca (bytes, hash no servidor, storage fail-closed, UI), a retenção conta do encerramento (022) e a detecção de atipicidade não depende mais de quando a varredura roda (023). Sem defeito aberto — o que falta é externo: parecer sobre o regime COAF, e agendar a varredura em vez de depender de clique. |
-| **Segurança e auditoria** | 🔴 | 🟡 | Guarda fail-closed de configuração, `/docs` desligado em produção, `/metrics` protegido, rate limiting de fato ligado, auditoria paginada com teto de página. Não é verde enquanto o serviço duplicado existir. |
+| **Segurança e auditoria** | 🔴 | 🟢 | Guarda fail-closed ativa (o serviço roda em `production` agora), `/docs` e `/openapi.json` fora do ar, `/metrics` em 401, rate limiting ligado, auditoria paginada. A exposição do serviço duplicado está **fechada e verificada** — ele não alcança o banco. |
 | **Frontend** | 🔴 | 🟢 | `baseUrl` relativo provado no artefato (zero ocorrências de `localhost` no bundle), UI de identificação e de write-off, dicionário completo, retry preservando o corpo, feedback anunciado por `role="alert"`. 148 testes e 6 E2E. |
 | **Qualidade e CI** | 🟡 | 🟢 | Falha dura sem banco (exit 4), teste de sincronia das três fontes de schema, piso de cobertura, docker build com smoke test, e a suíte de concorrência dentro do pytest. |
-| **Infra e observabilidade** | 🔴 | 🔴 | O logging passou a emitir, mas o serviço duplicado segue vivo, as migrations continuam no `CMD`, o health check aponta para `/health` e não `/health/ready`, não há `railway.json` versionado nem alvo de rollback. |
+| **Infra e observabilidade** | 🔴 | 🟡 | `railway.json` versionado, health check em `/health/ready` provado no log, migrations em fase de pré-deploy separada, logging emitindo, deploys rastreáveis por commit. Não é verde por duas lacunas operacionais reais: **backup e restore-test não são agendados** (os scripts existem e ninguém os chama) e **não há alerta ativo** — a detecção de incidente depende de alguém abrir o painel. |
 
 ---
 
@@ -145,18 +154,24 @@ mudanças de escopo, não correções.
 
 ### Seu (configuração e decisão)
 
-1. **Cortar a `ORGCRED_DATABASE_URL` do serviço duplicado** — reversível, e é
-   a exposição viva.
-2. **Conferir a JWT Secret** no painel do Supabase. Agora é pré-requisito de
-   deploy: sem ela correta, a aplicação recusa iniciar.
-3. **Bucket e `service_role` key** do Supabase Storage — sem eles, arquivar
-   identificação é recusado, e sem identificação nenhuma operação ativa.
-4. **`railway.json` versionado, migrations fora do `CMD`, gatilho no serviço
-   certo**, health check em `/health/ready`.
-5. **Remover o serviço duplicado** (irreversível — por último).
-6. **Agendar** backup, restore test, régua de aging e varredura de atipicidade.
-7. **Dados reais da ESC e capital social** (irreversível na prática: o primeiro
-   contrato sela razão social e CNPJ num documento imutável por OC017).
+Feitos hoje, saíram da lista: cortar o acesso do serviço duplicado ao banco,
+conferir a JWT Secret, ligar o modo produção, versionar o `railway.json` com
+health check em `/health/ready` e separar as migrations do start.
+
+O que resta, em ordem:
+
+1. **Bucket e `service_role` key do Supabase Storage.** Sem eles, arquivar
+   identificação é recusado com 503 — e sem identificação arquivada nenhuma
+   operação ativa (OC019). É o próximo bloqueio do fluxo primário.
+2. **Agendar** backup, restore-test, régua de aging e varredura de atipicidade.
+   Os scripts e endpoints existem; ninguém os chama. Enquanto isso, a data em
+   que uma inadimplência é declarada depende de alguém lembrar de clicar.
+3. **Remover o serviço duplicado** `OrgCred`. **Irreversível** — por isso por
+   último. O risco já foi neutralizado, então não há pressa.
+4. **Dados reais da ESC e capital social.** Irreversível na prática: o primeiro
+   contrato sela razão social e CNPJ num documento imutável (OC017), e a
+   primeira apuração sela a base tributária (OC016). É o passo que finalmente
+   destrava operar.
 
 ### Terceiros
 

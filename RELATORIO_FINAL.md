@@ -1,6 +1,11 @@
-# OrgCred — Relatório de execução, 12–15 de agosto de 2026
+# OrgCred — Relatório de execução
 
-Dez commits, ~12.500 linhas. O que segue é o que foi feito, o que
+**Período: 12 a 16 de agosto de 2026.** Treze commits, ~12.700 linhas.
+
+> Este arquivo perdeu a data do nome de propósito: ele é o relatório corrente e
+> era renomeado a cada dia de trabalho. O período coberto está na linha acima, e
+> o histórico das versões anteriores está no git. `RELATORIO_FINAL_2026-08-09.md`
+> fica como registro daquela etapa. O que segue é o que foi feito, o que
 foi provado, e o que continua aberto — nesta ordem, porque a terceira parte é a
 que decide se dá para operar.
 
@@ -173,6 +178,51 @@ deu origem a este projeto, reproduzida 3 de 3 vezes. O teste novo a reprova.
 Antes disso, o único teste de concorrência aplicava as migrations 001–003 e
 estava excluído do pytest por `--ignore`: provava o lock de um trigger
 redefinido cinco vezes depois.
+
+---
+
+## 5-A. Infraestrutura (16 de agosto)
+
+O dia começou com uma descoberta que mudou o quadro: **o gatilho do GitHub
+funcionava havia dias**. Os deploys do `orgcred-api` tinham hash de commit, ou
+seja, cada push ia para produção sozinho — e as migrations 015–023 já haviam
+rodado no banco de produção. O impasse que consumiu horas estava resolvido e
+ninguém sabia.
+
+Feito e verificado:
+
+- **Serviço duplicado neutralizado.** A `ORGCRED_DATABASE_URL` foi sobrescrita
+  com um valor inválido e autoexplicativo (o MCP do Railway não expõe remoção).
+  O serviço está `FAILED` com `Could not parse SQLAlchemy URL` e não alcança
+  mais o banco de produção. Reversível; a remoção definitiva fica por último.
+- **Produção rodava como `development`** — `/docs` aberto, guarda fail-closed
+  inativa, CORS permissivo. Antes de corrigir, provei que era seguro sem ver
+  segredo nenhum: token assinado com a secret pública do repositório recebeu
+  `401 TOKEN_INVALIDO`, logo a secret de produção é real e a guarda não
+  derrubaria o serviço. Se tivesse sido aceito, ligar o modo produção teria
+  tirado produção do ar.
+- **`railway.json` versionado**, com health check em `/health/ready` — que faz
+  `SELECT 1` — no lugar de `/health`, que só prova que o processo subiu. Antes,
+  um contêiner que subisse sem alcançar o Postgres era promovido a ativo:
+  deploy verde, aplicação inútil.
+- **Migrations saíram do `CMD`** para a fase de pré-deploy. O log mostra dois
+  contêineres distintos: um roda `alembic` e **sai**, o outro sobe o uvicorn.
+
+### Dois enganos que quase entraram neste relatório
+
+`/docs` respondia **200** depois de ligar o modo produção. Parecia exposição
+aberta; era o **fallback do SPA** — `text/html`, 1.079 bytes, idêntico ao
+`index.html`. O `/openapi.json` exposto viria como `application/json` com
+dezenas de KB.
+
+`get_service_config` continua mostrando `Health check path: /health`. O
+`railway.json` sobrepõe **no deploy** sem reescrever o registro do serviço. A
+prova está no log da sonda (`GET /health/ready 200 OK`), não na configuração
+lida pela API.
+
+Os dois têm a mesma forma: **a leitura mais conveniente parecia conclusiva e
+não era.** É a mesma armadilha do `200 text/html` que já havia enganado antes
+nesta mesma semana.
 
 ---
 
