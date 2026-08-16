@@ -16,7 +16,7 @@ Tudo abaixo foi **verificado**, não apenas configurado.
 | Item | Estado | Prova |
 |---|---|---|
 | Gatilho do GitHub | funciona | deploys com hash de commit (`a3397d5`, `694776d`, `c409339`…) |
-| Serviço duplicado `OrgCred` | **sem acesso ao banco** | `FAILED`, log: `Could not parse SQLAlchemy URL` |
+| Serviço duplicado `OrgCred` | **removido** | `list_services` devolve só `orgcred-api` e `Postgres` |
 | Modo de execução | `production` | `/docs`, `/redoc` e `/openapi.json` caem no fallback do SPA |
 | Health check | `/health/ready` | log do Railway: `GET /health/ready 200 OK` |
 | Migrations | fase de pré-deploy | dois contêineres distintos no log: um roda `alembic` e **sai**, o outro sobe o uvicorn |
@@ -132,7 +132,7 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 | **Contratos e registro** | 🟡 | 🟢 | O registro não nasce mais confirmado (021), o corpo cita o protocolo confirmado, e a emissão concorrente já era tratada. Sem defeito aberto — o que impede usar é externo: registradora contratada, assinatura eletrônica e dados da ESC. |
 | **Fiscal (Lucro Presumido)** | 🔴 | 🟡 | Os quatro erros de conteúdo foram corrigidos e testados (018). Não é verde porque nenhum parâmetro real existe — a apuração é recusada por OC015, de propósito, até o contador informar. |
 | **Compliance PLD** | 🔴 | 🟢 | A evidência deixou de ser oca (bytes, hash no servidor, storage fail-closed, UI), a retenção conta do encerramento (022) e a detecção de atipicidade não depende mais de quando a varredura roda (023). Sem defeito aberto — o que falta é externo: parecer sobre o regime COAF, e agendar a varredura em vez de depender de clique. |
-| **Segurança e auditoria** | 🔴 | 🟢 | Guarda fail-closed ativa (o serviço roda em `production` agora), `/docs` e `/openapi.json` fora do ar, `/metrics` em 401, rate limiting ligado, auditoria paginada. A exposição do serviço duplicado está **fechada e verificada** — ele não alcança o banco. |
+| **Segurança e auditoria** | 🔴 | 🟢 | Guarda fail-closed ativa (o serviço roda em `production` agora), `/docs` e `/openapi.json` fora do ar, `/metrics` em 401, rate limiting ligado, auditoria paginada. O serviço duplicado foi **removido**. |
 | **Frontend** | 🔴 | 🟢 | `baseUrl` relativo provado no artefato (zero ocorrências de `localhost` no bundle), UI de identificação e de write-off, dicionário completo, retry preservando o corpo, feedback anunciado por `role="alert"`. 148 testes e 6 E2E. |
 | **Qualidade e CI** | 🟡 | 🟢 | Falha dura sem banco (exit 4), teste de sincronia das três fontes de schema, piso de cobertura, docker build com smoke test, e a suíte de concorrência dentro do pytest. |
 | **Infra e observabilidade** | 🔴 | 🟡 | `railway.json` versionado, health check em `/health/ready` provado no log, migrations em fase de pré-deploy separada, logging emitindo, deploys rastreáveis por commit. Não é verde por duas lacunas operacionais reais: **backup e restore-test não são agendados** (os scripts existem e ninguém os chama) e **não há alerta ativo** — a detecção de incidente depende de alguém abrir o painel. |
@@ -166,9 +166,7 @@ O que resta, em ordem:
 2. **Agendar** backup, restore-test, régua de aging e varredura de atipicidade.
    Os scripts e endpoints existem; ninguém os chama. Enquanto isso, a data em
    que uma inadimplência é declarada depende de alguém lembrar de clicar.
-3. **Remover o serviço duplicado** `OrgCred`. **Irreversível** — por isso por
-   último. O risco já foi neutralizado, então não há pressa.
-4. **Dados reais da ESC e capital social.** Irreversível na prática: o primeiro
+3. **Dados reais da ESC e capital social.** Irreversível na prática: o primeiro
    contrato sela razão social e CNPJ num documento imutável (OC017), e a
    primeira apuração sela a base tributária (OC016). É o passo que finalmente
    destrava operar.
