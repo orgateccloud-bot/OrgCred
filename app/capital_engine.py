@@ -41,7 +41,7 @@ separadamente.
 
 from datetime import date
 from decimal import Decimal
-from typing import NamedTuple, Optional
+from typing import Dict, NamedTuple, Optional, Sequence
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -52,6 +52,7 @@ from app.core.db_errors import extrair_sqlstate, traduzir_erro_banco
 from app.core.exceptions import MovimentoDuplicado, OperacaoNaoEncontrada
 from app.core.metrics import registrar_ativacao
 from app.models import EscCapitalSocial, OperacaoCredito
+from app.ofx import TransacaoOfx
 
 
 # Tradução SQLSTATE -> exceção vive em app/core/db_errors.py desde que
@@ -270,23 +271,29 @@ def registrar_movimento_bancario(
     valor: Decimal,
     documento: str,
     descricao: Optional[str] = None,
-    origem: str = "manual",
     usuario_id: Optional[str] = None,
 ) -> UUID:
     """
-    Registra uma linha de extrato. Devolve o id do movimento.
+    Registra uma linha de extrato DIGITADA. Devolve o id do movimento.
 
     `documento` é UNIQUE no banco: reimportar o mesmo extrato — coisa
     rotineira na operação real — não duplica crédito. A violação de unique
     sobe como IntegrityError e é traduzida aqui para uma mensagem que diz o
     que de fato aconteceu, em vez de vazar o nome da constraint.
+
+    `origem` DEIXOU DE SER PARÂMETRO na migration 024, e a fixação em 'manual'
+    é o ponto: esta função é o caminho da digitação, e não coleta arquivo
+    nenhum. Desde a 024, `origem = 'ofx'` exige `arquivo_sha256` — deixar o
+    valor aberto aqui só ofereceria um jeito de carimbar de importado algo que
+    ninguém importou (recusado pelo banco com 23514, que a API devolveria como
+    500). Importação de extrato tem função própria: `importar_extrato_ofx`.
     """
     try:
         movimento_id = db.execute(
             text("""
             insert into movimento_bancario
                 (data_movimento, valor, documento, descricao, origem, usuario_id)
-            values (:data, :valor, :documento, :descricao, :origem, :usuario)
+            values (:data, :valor, :documento, :descricao, 'manual', :usuario)
             returning id
             """),
             {
@@ -294,7 +301,6 @@ def registrar_movimento_bancario(
                 "valor": valor,
                 "documento": documento,
                 "descricao": descricao,
-                "origem": origem,
                 "usuario": usuario_id,
             },
         ).scalar_one()
@@ -308,6 +314,146 @@ def registrar_movimento_bancario(
         db.rollback()
         raise _traduz_erro_banco(exc) from exc
     return movimento_id  # type: ignore[no-any-return]
+
+
+class ResultadoImportacaoOfx(NamedTuple):
+    """O que a importação de um extrato fez — em números, sempre todos.
+
+    Nenhum campo é omitido quando zera. Um relatório que só mostra o que
+    aconteceu deixa o operador sem distinguir "o arquivo não tinha débito" de
+    "débito não foi considerado", e é justamente nessa dúvida que ele decide
+    se precisa lançar algo à mão.
+
+    Os quatro últimos números fecham em `lidas`:
+        lidas = criados + ja_registrados + repetidos_no_arquivo + debitos_ignorados
+    """
+
+    lidas: int
+    creditos: int
+    criados: int
+    ja_registrados: int
+    repetidos_no_arquivo: int
+    debitos_ignorados: int
+    periodo_inicio: Optional[date]
+    periodo_fim: Optional[date]
+
+
+def importar_extrato_ofx(
+    db: Session,
+    *,
+    transacoes: Sequence[TransacaoOfx],
+    arquivo_sha256: str,
+    usuario_id: Optional[str] = None,
+) -> ResultadoImportacaoOfx:
+    """
+    Cria movimentos bancários a partir das transações lidas de um OFX.
+
+    NÃO BAIXA PARCELA NENHUMA, de propósito. Amarrar crédito a parcela continua
+    sendo ato do operador (`POST /cobranca/parcelas/{id}/baixar`): a conciliação
+    automática por valor erraria exatamente onde dói — duas parcelas de mesmo
+    valor, pagamento parcial, juros de mora — e a baixa é o único ato
+    irreversível do ciclo (não há estorno, migration 009). O import entrega o
+    lastro; quem decide contra o quê ele vale é gente, com nome na trilha.
+
+    TRÊS DECISÕES QUE VALEM A PENA ESTAREM ESCRITAS:
+
+    1) REIMPORTAR É ROTINA, NÃO ERRO. O extrato do mês seguinte contém os dias
+       do anterior; o operador reimporta o mesmo arquivo por dúvida; o banco
+       reemite com mais uma linha. Nos três casos o certo é criar o que falta e
+       PULAR o resto. Daí `on conflict (documento) do nothing` em vez do
+       `IntegrityError` de `registrar_movimento_bancario`: a duplicidade de um
+       lançamento digitado é engano de quem digitou e merece 409; a de um
+       arquivo é o funcionamento normal e merece um número no relatório.
+
+    2) SÓ CRÉDITO ENTRA. `movimento_bancario` tem check `valor > 0` (009) e
+       débito não baixa parcela — importar despesa da ESC nesta tabela criaria
+       linhas que nenhum caminho consome e poluiria a lista de movimentos
+       disponíveis para conciliação. Débito é contabilidade, não recebimento.
+       Os ignorados são CONTADOS: sumir com eles em silêncio faria o operador
+       procurar por um lançamento que o sistema decidiu descartar sem dizer.
+
+    3) UM ÚNICO INSERT, e não um laço de N inserts. É o que impede o arquivo
+       grande de virar timeout: um extrato anual com milhares de linhas custa
+       UMA ida ao banco (`unnest` das colunas em paralelo) em vez de milhares
+       de round-trips, cada um com seu commit. O `returning id` devolve
+       exatamente as linhas criadas, o que dá a contagem sem uma segunda
+       consulta e sem confiar em `rowcount`.
+
+    A DEDUPLICAÇÃO DENTRO DO ARQUIVO é feita aqui, em Python, antes do INSERT.
+    Não é só defesa contra o `ON CONFLICT` sobre linhas repetidas no mesmo
+    comando: é o que permite contar `repetidos_no_arquivo` separado de
+    `ja_registrados`. Os dois viram "não criado", mas significam coisas
+    diferentes — o segundo é reimportação normal, o primeiro é um FITID
+    duplicado pelo BANCO, anomalia do arquivo que o operador deve enxergar.
+    """
+    lidas = len(transacoes)
+    creditos = [t for t in transacoes if t.valor > 0]
+    debitos_ignorados = lidas - len(creditos)
+
+    # Primeira ocorrência vence: se o mesmo FITID aparece duas vezes com dados
+    # divergentes, a de cima é a que o banco emitiu primeiro no arquivo.
+    unicas: Dict[str, TransacaoOfx] = {}
+    for transacao in creditos:
+        unicas.setdefault(transacao.fitid, transacao)
+    repetidos_no_arquivo = len(creditos) - len(unicas)
+
+    datas = [t.data_movimento for t in transacoes] if transacoes else []
+    periodo_inicio = min(datas) if datas else None
+    periodo_fim = max(datas) if datas else None
+
+    def _resultado(criados: int) -> ResultadoImportacaoOfx:
+        return ResultadoImportacaoOfx(
+            lidas=lidas,
+            creditos=len(creditos),
+            criados=criados,
+            ja_registrados=len(unicas) - criados,
+            repetidos_no_arquivo=repetidos_no_arquivo,
+            debitos_ignorados=debitos_ignorados,
+            periodo_inicio=periodo_inicio,
+            periodo_fim=periodo_fim,
+        )
+
+    if not unicas:
+        # Arquivo sem crédito novo: nem chega ao banco. Um INSERT com arrays
+        # vazios funcionaria, mas gastar uma transação para não escrever nada
+        # não é de graça num endpoint que a UI pode chamar em sequência.
+        return _resultado(0)
+
+    valores = list(unicas.values())
+    try:
+        criadas = db.execute(
+            text("""
+            insert into movimento_bancario
+                (data_movimento, valor, documento, descricao, origem, usuario_id,
+                 conta_origem, arquivo_sha256)
+            select t.data, t.valor, t.documento, t.descricao, 'ofx', :usuario,
+                   t.conta, :sha
+              from unnest(
+                     cast(:datas as date[]),
+                     cast(:valores as numeric[]),
+                     cast(:documentos as text[]),
+                     cast(:descricoes as text[]),
+                     cast(:contas as text[])
+                   ) as t(data, valor, documento, descricao, conta)
+             on conflict (documento) do nothing
+             returning id
+            """),
+            {
+                "usuario": usuario_id,
+                "sha": arquivo_sha256,
+                "datas": [t.data_movimento for t in valores],
+                "valores": [t.valor for t in valores],
+                "documentos": [t.fitid for t in valores],
+                "descricoes": [t.descricao for t in valores],
+                "contas": [t.conta for t in valores],
+            },
+        ).all()
+        db.commit()
+    except DBAPIError as exc:
+        db.rollback()
+        raise _traduz_erro_banco(exc) from exc
+
+    return _resultado(len(criadas))
 
 
 def baixar_parcela(

@@ -60,6 +60,7 @@ MIGRATIONS = [
     "021_registro_nasce_pendente",
     "022_retencao_ancorada",
     "023_atipicidade_ancorada",
+    "024_proveniencia_do_extrato",
 ]
 
 
