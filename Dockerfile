@@ -57,11 +57,16 @@ WORKDIR /app
 # commit que a API. Duplicar a imagem para economizar ~30 MB traria de volta o
 # risco de as duas versões divergirem sem ninguém notar.
 #
-# A VERSÃO IMPORTA e é o motivo de puxar do repositório PGDG em vez de usar o
-# `postgresql-client` do Debian: o servidor é Postgres 16, e o `pg_dump` RECUSA
-# dumpar um servidor mais novo que ele ("server version is newer than pg_dump
-# version — aborting"). O Debian estável entrega uma versão anterior, então o
-# backup falharia todo dia com uma mensagem que não se parece com incompatível.
+# A VERSÃO IMPORTA, e a regra é assimétrica: `pg_dump` MAIS NOVO que o servidor
+# funciona; mais ANTIGO é recusado ("aborting because of server version
+# mismatch"). Por isso o pacote vem do PGDG sem número de versão — ele traz
+# sempre o cliente mais recente, que serve qualquer servidor atual ou anterior.
+#
+# Pinar a versão parece mais controlado e é pior: eu cravei `-16` lendo o
+# `postgres:16` do docker-compose, que é o banco LOCAL. O de produção é 18.4, e
+# o backup falhou na primeira execução real. Com a versão pinada, a próxima
+# atualização do servidor quebraria o backup de novo — em silêncio, num dia
+# qualquer, com uma mensagem que não se parece com "sua imagem está velha".
 #
 # O codinome sai de /etc/os-release em vez de ficar cravado: quando a imagem
 # base do Python mudar de release, isto continua resolvendo.
@@ -75,7 +80,7 @@ RUN set -eux; \
 https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
         > /etc/apt/sources.list.d/pgdg.list; \
     apt-get update; \
-    apt-get install -y --no-install-recommends postgresql-client-16; \
+    apt-get install -y --no-install-recommends postgresql-client; \
     apt-get purge -y --auto-remove curl gnupg; \
     rm -rf /var/lib/apt/lists/*
 
