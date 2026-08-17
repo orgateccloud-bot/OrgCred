@@ -324,3 +324,44 @@ que divergem em silêncio do repositório.
 O botão continua existindo. Um operador ainda pode disparar a régua ou a
 varredura pela tela quando quiser — o cron não substitui a decisão humana, ele
 garante o piso.
+
+## Agendamento no Railway
+
+As rotinas rodam num serviço **separado** do `orgcred-api`, chamado
+`orgcred-rotinas`, a partir da MESMA imagem e do mesmo commit — o que garante
+que a régua de aging que roda de madrugada é exatamente a mesma que o botão da
+tela dispara.
+
+### Por que um arquivo de configuração próprio
+
+O serviço aponta para `railway.cron.json`, e não para o `railway.json` da raiz.
+Herdar o da API daria dois problemas silenciosos:
+
+- **`healthcheckPath: /health/ready`** — um job de cron não sobe servidor HTTP.
+  A sonda nunca responderia e o Railway marcaria como falha uma execução que
+  terminou bem.
+- **`preDeployCommand: alembic upgrade head`** — migration é responsabilidade
+  do deploy da API. Rodá-la antes de cada execução do cron não quebra nada hoje
+  (é no-op quando o schema já está em `head`), mas cria uma segunda porta pela
+  qual o schema pode avançar, e uma corrida com o deploy da API.
+
+`restartPolicyType: NEVER` pelo mesmo motivo: reiniciar um job que terminou é
+rodá-lo duas vezes. Quem decide o que fazer com falha é o operador, olhando o
+log — e a rotina já sai com código diferente de zero quando falha.
+
+### A agenda
+
+`0 6 * * *` — uma vez por dia, 06:00 UTC (03:00 em Brasília). Depois do
+fechamento bancário do dia anterior e antes do expediente, para que o painel de
+aging já esteja atualizado quando alguém abrir a tela.
+
+Uma agenda só, e não quatro: o que roda em cada dia é decidido em
+`app/rotinas.py`, coberto por teste. Quatro agendas de painel ninguém revisa, e
+a que estiver errada só aparece quando faltar.
+
+### Segredos
+
+O serviço de cron usa **variáveis de referência** para o banco e para o JWT
+secret, apontando para o serviço da API. Assim o segredo existe num lugar só:
+girar a credencial na API leva o cron junto, sem ninguém lembrar de sincronizar
+dois lugares.
