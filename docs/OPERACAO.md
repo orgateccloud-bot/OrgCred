@@ -365,3 +365,49 @@ O serviço de cron usa **variáveis de referência** para o banco e para o JWT
 secret, apontando para o serviço da API. Assim o segredo existe num lugar só:
 girar a credencial na API leva o cron junto, sem ninguém lembrar de sincronizar
 dois lugares.
+
+### O serviço de cron NÃO reconstrói sozinho no push
+
+Descoberto montando o serviço: enquanto o `orgcred-api` faz deploy automático a
+cada push em `main`, o `orgcred-rotinas` ficou parado num commit antigo — as
+execuções continuavam rodando a imagem velha. Só reconstruiu quando uma
+variável foi alterada.
+
+**Por que isso é grave:** a promessa de "uma imagem só para os dois serviços" é
+o que garante que a régua da madrugada roda o mesmo código que a tela dispara.
+Se o cron não acompanha os deploys, essa garantia se desfaz em silêncio — e o
+sintoma aparece como comportamento inexplicável, não como erro.
+
+**Foi assim que o backup ficou quebrado por duas rodadas:** a correção do
+cliente Postgres estava commitada e implantada na API, e o cron seguia
+executando a imagem anterior, falhando com a mesma mensagem de antes.
+
+**Enquanto o autodeploy não for habilitado** para este serviço no painel
+(Settings → Source → Enable), depois de qualquer mudança que afete as rotinas é
+preciso forçar o deploy — alterar qualquer variável basta — e **conferir o
+commit**:
+
+```bash
+railway deployment list --service orgcred-rotinas --json
+```
+
+### Deploy `SUCCESS` não significa execução bem-sucedida
+
+Num serviço de cron o deploy só prepara a imagem. A execução acontece no
+horário agendado e aparece depois, com status próprio — `CRASHED` quando a
+rotina sai com código diferente de zero. Olhar só o deploy dá falsa segurança.
+
+### Verificação registrada (2026-08-17)
+
+Execução completa contra produção, com as quatro rotinas:
+
+```
+aging         transicionadas=0
+atipicidades  novas_ocorrencias=0
+backup        "Backup concluído: 28K" + rotação de 30 dias
+restore_test  "OK — backup restaurável e íntegro", competência 2026-08
+falhas=[]     event="rotinas_concluidas"
+```
+
+O restore-test restaura num banco temporário, confere a integridade do
+`capital_ledger` e descarta o banco — só então grava o marcador da competência.
