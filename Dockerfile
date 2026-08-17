@@ -50,6 +50,35 @@ FROM python:3.12-slim AS runtime
 RUN useradd --create-home --shell /bin/bash orgcred
 WORKDIR /app
 
+# Cliente do Postgres, para as rotinas de backup e restore-test
+# (`scripts/backup.sh` usa `pg_dump`; `restore_test.sh` usa `createdb`, `psql` e
+# `dropdb`). O serviço da API não precisa deles, mas a mesma imagem serve os
+# dois serviços — e é isso que garante que a rotina de madrugada roda o mesmo
+# commit que a API. Duplicar a imagem para economizar ~30 MB traria de volta o
+# risco de as duas versões divergirem sem ninguém notar.
+#
+# A VERSÃO IMPORTA e é o motivo de puxar do repositório PGDG em vez de usar o
+# `postgresql-client` do Debian: o servidor é Postgres 16, e o `pg_dump` RECUSA
+# dumpar um servidor mais novo que ele ("server version is newer than pg_dump
+# version — aborting"). O Debian estável entrega uma versão anterior, então o
+# backup falharia todo dia com uma mensagem que não se parece com incompatível.
+#
+# O codinome sai de /etc/os-release em vez de ficar cravado: quando a imagem
+# base do Python mudar de release, isto continua resolvendo.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl gnupg; \
+    install -d /usr/share/postgresql-common/pgdg; \
+    curl --fail -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+        https://www.postgresql.org/media/keys/ACCC4CF8.asc; \
+    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends postgresql-client-16; \
+    apt-get purge -y --auto-remove curl gnupg; \
+    rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
@@ -57,6 +86,11 @@ COPY app/ ./app/
 COPY migrations/ ./migrations/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
+# As rotinas periódicas (app/rotinas.py) chamam estes scripts pelo caminho
+# `/app/scripts/`. Sem esta linha o serviço de cron sobe, roda aging e
+# atipicidade normalmente, e falha só no backup — que foi exatamente o que
+# aconteceu na primeira execução real.
+COPY scripts/ ./scripts/
 COPY --from=frontend-builder /frontend/dist ./static/
 
 USER orgcred
