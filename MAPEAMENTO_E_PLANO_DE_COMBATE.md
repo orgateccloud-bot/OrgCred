@@ -59,7 +59,7 @@ riscos residuais que exigem integração externa, não código.
 |---|---|---|
 | Testes backend | 198 | **525** |
 | Cobertura | 92% | **93,7%** (piso de 85% ativo na CI) |
-| Testes frontend | 50 | **148** |
+| Testes frontend | 50 | **172** |
 | E2E | 5 (todos quebrados) | **6, verdes** |
 | Migrations | 14 | **24** |
 | SQLSTATEs no banco | 18 | **21** |
@@ -122,7 +122,7 @@ voltou.
 Duas coisas que não eram defeito, e sim ausência — atacadas para tirar dois
 domínios do amarelo:
 
-**Importação de extrato OFX (migration 024).** O único produtor de
+**Importação de extrato OFX (migration 024) e a tela que a torna usável.** O único produtor de
 `movimento_bancario` era um formulário que aceitava data, valor e documento
 arbitrários: o lastro era estrutural ("existe um registro apontado"), não
 probatório ("o dinheiro entrou"). O parser lê OFX 1.x (SGML) e 2.x (XML) sem
@@ -160,7 +160,7 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 |---|---|---|---|
 | **Capital e teto (Art. 5º)** | 🔴 | 🟢 | Três bordas fechadas (015), concorrência da versão vigente provada — mutação que remove o advisory lock reproduz a falha original 3 de 3 — e a hash-chain ancorada em chave monotônica (020), que também tornou impossível antedatar lançamento. |
 | **Operações e novação** | 🟡 | 🟢 | Máquina de estados no trigger, novação atômica com prova de não-dupla-contagem, e agora testes HTTP das transições e do gate de liquidação. |
-| **Cobrança** | 🔴 | 🟡 | O furo crítico da liquidação está fechado (017, OC022), `baixada` não contorna mais o lastro, a baixa tem autor, e a **importação de extrato OFX** (024) tirou o lastro de auto-declarado: o movimento passa a vir de arquivo do banco, com o sha256 dos bytes gravado. Não é verde porque **a tela ainda não tem o botão de importar** — o endpoint existe e nenhum componente o chama, que é a mesma forma do defeito que o gate OC019 teve. |
+| **Cobrança** | 🔴 | 🟢 | Furo da liquidação fechado (017, OC022), `baixada` não contorna mais o lastro, a baixa tem autor, o lastro deixou de ser auto-declarado (024: o movimento vem de arquivo do banco com o sha256 dos bytes gravado) e **a tela de importação existe**, com o relatório que permite conferir que nenhuma linha do extrato se perdeu e a proveniência visível na lista. |
 | **Contratos e registro** | 🟡 | 🟢 | O registro não nasce mais confirmado (021), o corpo cita o protocolo confirmado, e a emissão concorrente já era tratada. Sem defeito aberto — o que impede usar é externo: registradora contratada, assinatura eletrônica e dados da ESC. |
 | **Fiscal (Lucro Presumido)** | 🔴 | 🟡 | Os quatro erros de conteúdo foram corrigidos e testados (018). Não é verde porque nenhum parâmetro real existe — a apuração é recusada por OC015, de propósito, até o contador informar. |
 | **Compliance PLD** | 🔴 | 🟢 | A evidência deixou de ser oca (bytes, hash no servidor, storage fail-closed, UI), a retenção conta do encerramento (022) e a detecção de atipicidade não depende mais de quando a varredura roda (023). Sem defeito aberto — o que falta é externo: parecer sobre o regime COAF, e agendar a varredura em vez de depender de clique. |
@@ -226,7 +226,9 @@ adulteração falsa nem aceita lançamento antedatado, e a interface funciona de
 ponta a ponta.
 
 O que impede operar agora é **exclusivamente configuração e dado de negócio**.
-Nenhum defeito de código do levantamento continua aberto.
+Nenhum defeito de código do levantamento continua aberto, e as duas ausências
+atacadas depois dele — lastro probatório e rotinas agendadas — estão fechadas
+de ponta a ponta, backend e tela.
 
 O **piloto fechado** que a Condição 1 destravou está disponível: sem capital
 social carregado, sem parâmetro fiscal, poucos operadores, nenhuma operação
