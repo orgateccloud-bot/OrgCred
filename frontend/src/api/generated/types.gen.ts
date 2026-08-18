@@ -308,6 +308,16 @@ export type BodyPostDocumentoApiComplianceTomadoresTomadorIdDocumentosPost = {
 }
 
 /**
+ * Body_post_importar_ofx_api_cobranca_movimentos_importar_ofx_post
+ */
+export type BodyPostImportarOfxApiCobrancaMovimentosImportarOfxPost = {
+  /**
+   * Arquivo
+   */
+  arquivo: Blob | File
+}
+
+/**
  * Body_post_verificar_documento_api_compliance_documentos__documento_id__verificar_post
  */
 export type BodyPostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost = {
@@ -540,6 +550,18 @@ export type DocumentoOut = {
    */
   retencao_ate: string
   /**
+   * Retencao Efetiva
+   */
+  retencao_efetiva: string | null
+  /**
+   * Relacao Em Curso
+   */
+  relacao_em_curso: boolean
+  /**
+   * Encerramento Relacao
+   */
+  encerramento_relacao: string | null
+  /**
    * Storage Objeto
    */
   storage_objeto: string | null
@@ -592,6 +614,62 @@ export type HttpValidationError = {
    * Detail
    */
   detail?: Array<ValidationError>
+}
+
+/**
+ * ImportacaoOfxOut
+ *
+ * O relatório da importação. Todos os números, sempre.
+ *
+ * `lidas` fecha com a soma dos quatro destinos possíveis, e é essa aritmética
+ * que permite ao operador verificar que nenhuma linha do extrato dele se
+ * perdeu pelo caminho.
+ */
+export type ImportacaoOfxOut = {
+  /**
+   * Arquivo
+   */
+  arquivo: string
+  /**
+   * Arquivo Sha256
+   */
+  arquivo_sha256: string
+  /**
+   * Contas
+   */
+  contas: Array<string>
+  /**
+   * Lidas
+   */
+  lidas: number
+  /**
+   * Creditos
+   */
+  creditos: number
+  /**
+   * Criados
+   */
+  criados: number
+  /**
+   * Ja Registrados
+   */
+  ja_registrados: number
+  /**
+   * Repetidos No Arquivo
+   */
+  repetidos_no_arquivo: number
+  /**
+   * Debitos Ignorados
+   */
+  debitos_ignorados: number
+  /**
+   * Periodo Inicio
+   */
+  periodo_inicio: string | null
+  /**
+   * Periodo Fim
+   */
+  periodo_fim: string | null
 }
 
 /**
@@ -720,6 +798,14 @@ export type MovimentoOut = {
    * Conciliado
    */
   conciliado: boolean
+  /**
+   * Conta Origem
+   */
+  conta_origem?: string | null
+  /**
+   * Arquivo Sha256
+   */
+  arquivo_sha256?: string | null
 }
 
 /**
@@ -1241,6 +1327,56 @@ export type RejeitarRegistroIn = {
    * Motivo
    */
   motivo: string
+}
+
+/**
+ * RetencaoOut
+ */
+export type RetencaoOut = {
+  /**
+   * Documento Id
+   */
+  documento_id: string
+  /**
+   * Tomador Id
+   */
+  tomador_id: string
+  /**
+   * Nome Arquivo
+   */
+  nome_arquivo: string
+  /**
+   * Arquivado Em
+   */
+  arquivado_em: string
+  /**
+   * Referencia
+   */
+  referencia: string
+  /**
+   * Existia Na Referencia
+   */
+  existia_na_referencia: boolean
+  /**
+   * Retencao Piso
+   */
+  retencao_piso: string
+  /**
+   * Relacao Em Curso
+   */
+  relacao_em_curso: boolean
+  /**
+   * Encerramento Relacao
+   */
+  encerramento_relacao: string | null
+  /**
+   * Retencao Efetiva
+   */
+  retencao_efetiva: string | null
+  /**
+   * Podia Ser Apagado
+   */
+  podia_ser_apagado: boolean
 }
 
 /**
@@ -2454,6 +2590,45 @@ export type PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPos
 export type PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponse =
   PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses[keyof PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses]
 
+export type GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetData = {
+  body?: never
+  path: {
+    /**
+     * Documento Id
+     */
+    documento_id: string
+  }
+  query?: {
+    /**
+     * Em
+     *
+     * Data de referência da consulta. Ausente = hoje.
+     */
+    em?: string | null
+  }
+  url: '/api/compliance/documentos/{documento_id}/retencao'
+}
+
+export type GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetError =
+  GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetErrors[keyof GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetErrors]
+
+export type GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: RetencaoOut
+}
+
+export type GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetResponse =
+  GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetResponses[keyof GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetResponses]
+
 export type GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData = {
   body?: never
   path?: never
@@ -2623,6 +2798,33 @@ export type PostMovimentoApiCobrancaMovimentosPostResponses = {
 
 export type PostMovimentoApiCobrancaMovimentosPostResponse =
   PostMovimentoApiCobrancaMovimentosPostResponses[keyof PostMovimentoApiCobrancaMovimentosPostResponses]
+
+export type PostImportarOfxApiCobrancaMovimentosImportarOfxPostData = {
+  body: BodyPostImportarOfxApiCobrancaMovimentosImportarOfxPost
+  path?: never
+  query?: never
+  url: '/api/cobranca/movimentos/importar-ofx'
+}
+
+export type PostImportarOfxApiCobrancaMovimentosImportarOfxPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostImportarOfxApiCobrancaMovimentosImportarOfxPostError =
+  PostImportarOfxApiCobrancaMovimentosImportarOfxPostErrors[keyof PostImportarOfxApiCobrancaMovimentosImportarOfxPostErrors]
+
+export type PostImportarOfxApiCobrancaMovimentosImportarOfxPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ImportacaoOfxOut
+}
+
+export type PostImportarOfxApiCobrancaMovimentosImportarOfxPostResponse =
+  PostImportarOfxApiCobrancaMovimentosImportarOfxPostResponses[keyof PostImportarOfxApiCobrancaMovimentosImportarOfxPostResponses]
 
 export type PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData = {
   body: BaixarParcelaIn

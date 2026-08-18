@@ -58,6 +58,9 @@ import type {
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses,
+  GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetData,
+  GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetErrors,
+  GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetResponses,
   GetTomadorApiTomadoresTomadorIdGetData,
   GetTomadorApiTomadoresTomadorIdGetErrors,
   GetTomadorApiTomadoresTomadorIdGetResponses,
@@ -109,6 +112,9 @@ import type {
   PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostData,
   PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostErrors,
   PostEmitirContratoApiContratosOperacoesOperacaoIdContratoPostResponses,
+  PostImportarOfxApiCobrancaMovimentosImportarOfxPostData,
+  PostImportarOfxApiCobrancaMovimentosImportarOfxPostErrors,
+  PostImportarOfxApiCobrancaMovimentosImportarOfxPostResponses,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostData,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostErrors,
   PostLiquidarOperacaoApiOperacoesOperacaoIdLiquidarPostResponses,
@@ -720,6 +726,13 @@ export const getContratoApiContratosOperacoesOperacaoIdContratoGet = <
  * Exige a ESC identificada em configuração. Sem isso, o contrato sairia
  * com credora em branco — um documento com efeito jurídico e sem uma das
  * partes.
+ *
+ * NÃO exige registro confirmado: emitir antes é legítimo (a registradora
+ * costuma pedir o instrumento para registrar). O que o corpo faz é dizer
+ * a verdade sobre o que existe no momento da emissão — entidade e
+ * protocolo quando há registro confirmado, marca explícita de ausência
+ * quando não há. Confirmado depois, reemitir gera a versão que cita o
+ * protocolo, e a anterior continua íntegra e válida.
  */
 export const postEmitirContratoApiContratosOperacoesOperacaoIdContratoPost = <
   ThrowOnError extends boolean = false,
@@ -1094,6 +1107,15 @@ export const getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet = <
  * `retencao_ate` é gravado agora, e não calculado na leitura: se o prazo
  * legal mudar, os documentos já arquivados mantêm a regra vigente à época
  * — que é o que se defende numa fiscalização.
+ *
+ * O QUE A MIGRATION 022 MUDOU AQUI: nada na escrita, tudo na leitura. A
+ * coluna continua sendo gravada com `current_date + 5 anos` e continua
+ * imutável; ela passou a ser o PISO da retenção. O prazo que vale é
+ * `retencao_efetiva` — greatest(piso, encerramento da relação + 5 anos) —,
+ * derivado a cada consulta porque o encerramento só se conhece depois, e
+ * porque a única alternativa seria reescrever esta linha anos depois, que é
+ * justamente o que OC013 recusa. Ele vem no corpo da resposta, ao lado do
+ * piso.
  */
 export const postDocumentoApiComplianceTomadoresTomadorIdDocumentosPost = <
   ThrowOnError extends boolean = false,
@@ -1200,6 +1222,51 @@ export const postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPo
       'Content-Type': null,
       ...options.headers,
     },
+  })
+
+/**
+ * Get Retencao Documento
+ *
+ * Responde "este documento podia ter sido apagado naquela data?".
+ *
+ * É a pergunta que uma fiscalização faz, e é o motivo de a migration 022 ter
+ * escolhido DERIVAR o prazo em vez de reescrever a coluna quando a relação
+ * encerra. Uma coluna sobrescrita só sabe dizer o valor de hoje: perguntar
+ * "e em março de 2029?" não teria resposta, porque não há versionamento de
+ * `retencao_ate` — e não vai haver, já que OC013 recusa UPDATE.
+ *
+ * A derivação responde porque tudo de que ela depende é imutável: o piso
+ * (OC013), a existência e a data de nascimento da operação, e os eventos de
+ * transição de status (`operacao_evento`, append-only por OC010). A conta é
+ * a MESMA função que o trigger consulta para decidir o DELETE de hoje —
+ * `fn_retencao_efetiva_em`, com a data de referência trocada —, então não há
+ * como a resposta da auditoria discordar do comportamento do banco.
+ *
+ * `existia_na_referencia` falso quando a data pedida é anterior ao
+ * arquivamento: aí `podia_ser_apagado` é falso por uma razão diferente de
+ * todas as outras — não havia o que apagar. Devolver `true` ali ("não estava
+ * protegido") seria responder à pergunta errada.
+ */
+export const getRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetData,
+    ThrowOnError
+  >,
+): RequestResult<
+  GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetResponses,
+  GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetResponses,
+    GetRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/compliance/documentos/{documento_id}/retencao',
+    ...options,
   })
 
 /**
@@ -1388,6 +1455,62 @@ export const postMovimentoApiCobrancaMovimentosPost = <ThrowOnError extends bool
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Post Importar Ofx
+ *
+ * Importa um extrato OFX e cria os movimentos de CRÉDITO que ainda não existem.
+ *
+ * POR QUE ESTE ENDPOINT EXISTE, e não é conveniência de digitação: até ele, o
+ * único produtor de `movimento_bancario` era `POST /cobranca/movimentos` — um
+ * formulário que aceita data, valor e documento arbitrários. O invariante que
+ * a migration 009 entrega (não há parcela 'paga' sem movimento apontado) é
+ * ESTRUTURAL, não PROBATÓRIO: prova que existe um registro, não que o dinheiro
+ * entrou. Para uma ESC que se defende pela rastreabilidade do fluxo
+ * financeiro, a distinção é a defesa inteira. Aqui o movimento nasce dos bytes
+ * que o banco emitiu, com o hash desses bytes gravado ao lado (migration 024).
+ * O formulário manual CONTINUA existindo — extrato que não se consegue exportar
+ * ainda precisa de caminho —, mas agora ele é distinguível na leitura.
+ *
+ * HTTP 200 E NÃO 201, ao contrário de `POST /movimentos`. A resposta certa
+ * para uma reimportação que criou zero linhas não é "Created"; e devolver 201
+ * ou 200 conforme o número criado faria o cliente ramificar sobre o status
+ * para descobrir algo que já está no corpo. O resultado desta chamada é o
+ * RELATÓRIO — sempre o mesmo formato, criando ou não.
+ *
+ * NENHUMA PARCELA É BAIXADA. Ver a nota longa em
+ * `capital_engine.importar_extrato_ofx`: conciliação automática por valor erra
+ * onde dói (parcelas de mesmo valor, pagamento parcial, juros de mora) e a
+ * baixa não tem estorno. O import entrega o lastro; a amarração é ato de gente.
+ *
+ * OPERADOR E NÃO ADMIN: conciliar recebimento é a rotina diária de quem opera
+ * a carteira, e a importação não decide nada — só traz o que o banco disse.
+ * A escolha do papel segue a mesma régua de `POST /movimentos` (operador) e de
+ * `/aging/processar` (admin, porque declara inadimplência).
+ */
+export const postImportarOfxApiCobrancaMovimentosImportarOfxPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostImportarOfxApiCobrancaMovimentosImportarOfxPostData, ThrowOnError>,
+): RequestResult<
+  PostImportarOfxApiCobrancaMovimentosImportarOfxPostResponses,
+  PostImportarOfxApiCobrancaMovimentosImportarOfxPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostImportarOfxApiCobrancaMovimentosImportarOfxPostResponses,
+    PostImportarOfxApiCobrancaMovimentosImportarOfxPostErrors,
+    ThrowOnError
+  >({
+    ...formDataBodySerializer,
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/cobranca/movimentos/importar-ofx',
+    ...options,
+    headers: {
+      'Content-Type': null,
       ...options.headers,
     },
   })
