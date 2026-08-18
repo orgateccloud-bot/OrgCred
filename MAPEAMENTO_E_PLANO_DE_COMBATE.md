@@ -162,12 +162,12 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 | **Operações e novação** | 🟡 | 🟢 | Máquina de estados no trigger, novação atômica com prova de não-dupla-contagem, e agora testes HTTP das transições e do gate de liquidação. |
 | **Cobrança** | 🔴 | 🟢 | Furo da liquidação fechado (017, OC022), `baixada` não contorna mais o lastro, a baixa tem autor, o lastro deixou de ser auto-declarado (024: o movimento vem de arquivo do banco com o sha256 dos bytes gravado) e **a tela de importação existe**, com o relatório que permite conferir que nenhuma linha do extrato se perdeu e a proveniência visível na lista. |
 | **Contratos e registro** | 🟡 | 🟢 | O registro não nasce mais confirmado (021), o corpo cita o protocolo confirmado, e a emissão concorrente já era tratada. Sem defeito aberto — o que impede usar é externo: registradora contratada, assinatura eletrônica e dados da ESC. |
-| **Fiscal (Lucro Presumido)** | 🔴 | 🟡 | Os quatro erros de conteúdo foram corrigidos e testados (018). Não é verde porque nenhum parâmetro real existe — a apuração é recusada por OC015, de propósito, até o contador informar. |
+| **Fiscal (Lucro Presumido)** | 🔴 | 🟡 | Os quatro erros de conteúdo foram corrigidos e testados (018), e a apuração guarda o snapshot dos parâmetros usados. Duas coisas o seguram, e só uma é sua: **nenhum parâmetro real existe** (a apuração recusa com OC015 até o contador informar — comportamento deliberado, não defeito), e **não há memória de cálculo** — o contador recebe tributos apurados sem conseguir conferir a derivação, numa linha que OC016 torna imutável. |
 | **Compliance PLD** | 🔴 | 🟢 | A evidência deixou de ser oca (bytes, hash no servidor, storage fail-closed, UI), a retenção conta do encerramento (022) e a detecção de atipicidade não depende mais de quando a varredura roda (023). Sem defeito aberto — o que falta é externo: parecer sobre o regime COAF, e agendar a varredura em vez de depender de clique. |
 | **Segurança e auditoria** | 🔴 | 🟢 | Guarda fail-closed ativa (o serviço roda em `production` agora), `/docs` e `/openapi.json` fora do ar, `/metrics` em 401, rate limiting ligado, auditoria paginada. O serviço duplicado foi **removido**. |
 | **Frontend** | 🔴 | 🟢 | `baseUrl` relativo provado no artefato (zero ocorrências de `localhost` no bundle), UI de identificação e de write-off, dicionário completo, retry preservando o corpo, feedback anunciado por `role="alert"`. 148 testes e 6 E2E. |
 | **Qualidade e CI** | 🟡 | 🟢 | Falha dura sem banco (exit 4), teste de sincronia das três fontes de schema, piso de cobertura, docker build com smoke test, e a suíte de concorrência dentro do pytest. |
-| **Infra e observabilidade** | 🔴 | 🟡 | `railway.json` versionado, health check em `/health/ready` provado no log, migrations em pré-deploy separado, logging emitindo, deploys rastreáveis por commit, e as **quatro rotinas agendadas e verificadas em produção** (`falhas=[]`, backup restaurado e validado). Não é verde por uma lacuna que permanece: **não há alerta ativo** — a falha fica visível no painel, mas depende de alguém olhar. E o serviço de cron **não reconstrói sozinho no push** (ver docs/OPERACAO.md). |
+| **Infra e observabilidade** | 🔴 | 🟡 | `railway.json` versionado, health check em `/health/ready` provado no log, migrations em pré-deploy separado, logging emitindo, deploys rastreáveis por commit, e as quatro rotinas agendadas e verificadas em produção. O que o segura é mais fundo que "falta um canal de alerta": **nenhuma execução é registrada no banco**, então o sistema não sabe o próprio estado — não consegue dizer que o último backup foi há nove dias. Sem isso, qualquer alerta dependeria de alguém abrir o painel. E o serviço de cron **não reconstrói sozinho no push** (docs/OPERACAO.md). |
 
 ---
 
@@ -200,9 +200,11 @@ O que resta, em ordem:
    Hoje ele não reconstrói no push e pode executar código velho em silêncio —
    foi o que manteve o backup quebrado por duas rodadas depois de a correção já
    estar em produção.
-3. **Escolher um canal de alerta.** A falha de rotina fica visível no painel e
-   depende de alguém olhar. Sem canal — e-mail, Slack, o que for — não há como
-   avisar, e é o que mantém Infra em amarelo.
+3. **Escolher um canal de alerta** — e-mail, Slack, o que for. Passou a ser
+   incremento, não pré-requisito: a lacuna anterior a essa é o sistema não
+   registrar as execuções, e essa é minha (em andamento). Sabendo o próprio
+   estado, ele mostra o atraso na tela; o canal serve para avisar quem não está
+   olhando.
 4. **Dados reais da ESC e capital social.** Irreversível na prática: o primeiro
    contrato sela razão social e CNPJ num documento imutável (OC017), e a
    primeira apuração sela a base tributária (OC016). É o passo que finalmente
