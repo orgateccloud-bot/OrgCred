@@ -20,25 +20,27 @@ export function resolverBaseUrl(valor: string | undefined): string {
 }
 
 /**
- * Produção: caminho relativo. O FastAPI serve a SPA na mesma origem — o SPA é
- * montado depois dos routers `/api` (app/main.py) —, então relativo sempre
- * acerta a API sem depender de nenhuma variável existir no build.
+ * RELATIVO NOS DOIS MODOS, e é a mesma razão em produção e em desenvolvimento:
+ * a API responde na mesma origem que serviu a página.
  *
- * Desenvolvimento: backend local. `vite dev` sobe o front em :5173 e o back
- * fica em :8000 (origens distintas, liberadas no CORS de app/main.py) e não há
- * proxy no vite.config.ts; com caminho relativo, `npm run dev` e o Playwright
- * — que sobe o dev server sem VITE_API_BASE_URL, ver playwright.config.ts —
- * bateriam em :5173/api/... e receberiam o index.html do SPA em vez de JSON.
+ * Em produção porque o FastAPI serve a SPA (montada depois dos routers `/api`,
+ * ver app/main.py). Em desenvolvimento porque o `vite.config.ts` faz proxy de
+ * `/api` e `/health` para o backend local.
  *
- * `import.meta.env.DEV` vira `false` no build, então o ramo de dev é eliminado
- * do bundle de produção. VITE_API_BASE_URL continua valendo como override
- * explícito em qualquer modo.
+ * ESTE RAMO JÁ EXISTIU e foi `import.meta.env.DEV ? 'http://localhost:8000'`,
+ * escrito quando o proxy ainda não existia. Ele apontava absoluto para :8000 a
+ * partir de :5173 e passou a ser bloqueado por CORS assim que o backend deixou
+ * de rodar em modo permissivo — quebrando metade do E2E com um erro que não se
+ * parece com "o baseUrl está errado". Duas fontes de verdade para o mesmo
+ * endereço (aqui e o proxy) é o que produz esse tipo de divergência: agora há
+ * uma só.
+ *
+ * VITE_API_BASE_URL continua valendo como override explícito, para quem aponta
+ * o front para um backend em outro host.
  */
 const override = resolverBaseUrl(import.meta.env.VITE_API_BASE_URL)
 
-client.setConfig({
-  baseUrl: override || (import.meta.env.DEV ? 'http://localhost:8000' : ''),
-})
+client.setConfig({ baseUrl: override })
 
 /**
  * Cópia intacta de cada requisição em voo, para poder reexecutá-la depois do

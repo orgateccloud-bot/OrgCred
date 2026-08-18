@@ -21,7 +21,7 @@ devolver um valor plausível e errado.
 """
 
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import List, Literal, Optional
 from uuid import UUID
 
@@ -266,3 +266,290 @@ def post_apurar(
         text("select * from apuracao_fiscal where id = :id"), {"id": str(apuracao_id)}
     ).one()
     return _apuracao_out(row)
+
+
+# ---------------------------------------------------------------------
+# Memória de cálculo
+# ---------------------------------------------------------------------
+#
+# O contador recebe números prontos. Numa base tributária IMUTÁVEL (OC016), um
+# número sem derivação é um número que ninguém consegue conferir nem contestar
+# — e a apuração é exatamente o documento que alguém vai ter que defender.
+#
+# NADA AQUI CONSULTA parcela, movimento_bancario NEM parametro_fiscal. A
+# memória é derivada da PRÓPRIA linha de apuracao_fiscal: as duas receitas e o
+# snapshot de percentuais, alíquotas e limite que a 011 gravou dentro dela.
+# Derivar do snapshot é melhor do que duplicar o dado numa tabela nova — a
+# memória passa a ser reproduzível a partir da linha imutável, e a memória de
+# um trimestre de 2021 sai igual hoje e daqui a cinco anos porque a entrada
+# dela não pode mudar.
+#
+# E é justamente por reproduzir a fórmula, em vez de copiar o resultado, que a
+# memória PODE DIVERGIR do gravado: se fn_apurar_trimestre mudar depois de uma
+# apuração existir — foi o que a 018 fez com a 011 —, o recálculo a partir do
+# mesmo snapshot dá outro número. A divergência é REPORTADA, nunca escondida.
+# OC016 impede corrigir a linha, então a única providência possível é retificar
+# o trimestre, e para isso é preciso enxergar o problema. Uma memória que se
+# alinhasse ao gravado por construção não teria valor nenhum de conferência.
+#
+# O PREÇO DISSO, ESCRITO AQUI PARA NÃO SER DESCOBERTO DEPOIS: `_memoria_de` é
+# uma SEGUNDA implementação da mesma fórmula, em outra linguagem. Ela não segue
+# fn_apurar_trimestre sozinha. Quem alterar a função no banco tem que alterar
+# esta função na mesma migration — senão a memória passa a acusar divergência
+# em TODA apuração nova, e a leitura na tela ("o gravado está errado, retifique
+# o trimestre") fica invertida: o desatualizado é o recálculo, e retificar não
+# conserta nada. Os testes de TestMemoriaDeCalculo travam cada passo contra o
+# Postgres de verdade e é neles que essa dessincronização aparece primeiro.
+
+
+_CENTAVO = Decimal("0.01")
+
+
+def _round2(valor: Decimal) -> Decimal:
+    """Mesmo arredondamento do `round(numeric, 2)` do Postgres.
+
+    O Postgres desempata para LONGE DO ZERO; o default do Python é
+    ROUND_HALF_EVEN (arredondamento bancário). Sem esta função a memória
+    acusaria divergência de um centavo em toda apuração cujo produto caísse
+    exatamente na metade — alarme falso no único indicador que precisa ser
+    confiável.
+    """
+    return valor.quantize(_CENTAVO, rounding=ROUND_HALF_UP)
+
+
+class LinhaMemoriaOut(BaseModel):
+    """Um tributo, do que entrou até o que saiu.
+
+    `percentual_presuncao`, `limite` e `excedente` são nulos onde o conceito
+    não existe: presunção é de IRPJ/CSLL (PIS e COFINS cumulativos incidem
+    sobre a receita) e limite só faz sentido no adicional. Nulo, e não zero —
+    zero seria uma presunção de 0%, que é outra afirmação.
+    """
+
+    chave: str
+    tributo: str
+    receita_considerada: Decimal
+    percentual_presuncao: Optional[Decimal]
+    base_calculo: Decimal
+    limite: Optional[Decimal]
+    excedente: Optional[Decimal]
+    aliquota: Decimal
+    valor: Decimal
+    valor_gravado: Decimal
+    confere: bool
+
+
+class DivergenciaOut(BaseModel):
+    campo: str
+    rotulo: str
+    calculado: Decimal
+    gravado: Decimal
+    diferenca: Decimal
+
+
+class MemoriaCalculoOut(BaseModel):
+    apuracao_id: UUID
+    ano: int
+    trimestre: int
+    versao: int
+    regime_reconhecimento: str
+    receita_juros: Decimal
+    receita_demais: Decimal
+    receita_total: Decimal
+    receita_total_gravada: Decimal
+    linhas: List[LinhaMemoriaOut]
+    total_tributos: Decimal
+    total_tributos_gravado: Decimal
+    confere: bool
+    divergencias: List[DivergenciaOut]
+
+
+def _linha(
+    chave: str,
+    tributo: str,
+    receita_considerada: Decimal,
+    percentual_presuncao: Optional[Decimal],
+    base_calculo: Decimal,
+    aliquota: Decimal,
+    valor: Decimal,
+    valor_gravado: Decimal,
+    limite: Optional[Decimal] = None,
+    excedente: Optional[Decimal] = None,
+) -> LinhaMemoriaOut:
+    return LinhaMemoriaOut(
+        chave=chave,
+        tributo=tributo,
+        receita_considerada=receita_considerada,
+        percentual_presuncao=percentual_presuncao,
+        base_calculo=base_calculo,
+        limite=limite,
+        excedente=excedente,
+        aliquota=aliquota,
+        valor=valor,
+        valor_gravado=valor_gravado,
+        confere=valor == valor_gravado,
+    )
+
+
+def _memoria_de(r: object) -> MemoriaCalculoOut:
+    """Reproduz, passo a passo, a aritmética de fn_apurar_trimestre (018).
+
+    A ordem das contas é a da função, e não uma reescrita "equivalente":
+    presunção sobre a receita total, alíquota sobre a base presumida,
+    PIS/COFINS sobre a receita crua, adicional só sobre o excedente do limite
+    trimestral, com arredondamento nos mesmos pontos. Duas fórmulas
+    algebricamente iguais arredondam diferente — e um centavo de diferença
+    faria a memória acusar erro onde não há.
+    """
+    receita_juros: Decimal = r.receita_juros  # type: ignore[attr-defined]
+    receita_demais: Decimal = r.receita_demais  # type: ignore[attr-defined]
+    receita_total_gravada: Decimal = r.receita_total  # type: ignore[attr-defined]
+    # `receita_total` é coluna GERADA no banco (018) e não pode divergir — mas
+    # a soma é refeita aqui do mesmo jeito, porque a memória não confere o que
+    # ela própria copiou.
+    receita_total = receita_juros + receita_demais
+
+    presuncao_irpj: Decimal = r.percentual_presuncao_irpj  # type: ignore[attr-defined]
+    presuncao_csll: Decimal = r.percentual_presuncao_csll  # type: ignore[attr-defined]
+    aliquota_irpj: Decimal = r.aliquota_irpj  # type: ignore[attr-defined]
+    aliquota_csll: Decimal = r.aliquota_csll  # type: ignore[attr-defined]
+    adicional_aliquota: Decimal = r.adicional_irpj_aliquota  # type: ignore[attr-defined]
+    adicional_limite: Decimal = r.adicional_irpj_limite  # type: ignore[attr-defined]
+    aliquota_pis: Decimal = r.aliquota_pis  # type: ignore[attr-defined]
+    aliquota_cofins: Decimal = r.aliquota_cofins  # type: ignore[attr-defined]
+
+    base_irpj = _round2(receita_total * presuncao_irpj)
+    base_csll = _round2(receita_total * presuncao_csll)
+
+    irpj = _round2(base_irpj * aliquota_irpj)
+    # O excedente NÃO é arredondado antes de entrar na multiplicação: a função
+    # do banco aplica `round` uma vez só, sobre o produto.
+    excedente = max(base_irpj - adicional_limite, Decimal("0"))
+    adicional = _round2(excedente * adicional_aliquota)
+    csll = _round2(base_csll * aliquota_csll)
+    pis = _round2(receita_total * aliquota_pis)
+    cofins = _round2(receita_total * aliquota_cofins)
+    total = irpj + adicional + csll + pis + cofins
+
+    linhas = [
+        _linha(
+            "irpj",
+            "IRPJ",
+            receita_total,
+            presuncao_irpj,
+            base_irpj,
+            aliquota_irpj,
+            irpj,
+            r.irpj,  # type: ignore[attr-defined]
+        ),
+        # A linha que mais gera dúvida, e a única com limite e excedente
+        # explícitos: sem eles, "adicional 0,00" parece esquecimento em vez de
+        # "a base não chegou ao limite do trimestre".
+        _linha(
+            "adicional_irpj",
+            "Adicional de IRPJ",
+            receita_total,
+            presuncao_irpj,
+            base_irpj,
+            adicional_aliquota,
+            adicional,
+            r.adicional_irpj,  # type: ignore[attr-defined]
+            limite=adicional_limite,
+            excedente=excedente,
+        ),
+        _linha(
+            "csll",
+            "CSLL",
+            receita_total,
+            presuncao_csll,
+            base_csll,
+            aliquota_csll,
+            csll,
+            r.csll,  # type: ignore[attr-defined]
+        ),
+        # PIS/COFINS cumulativos: a base É a receita. Presunção é conceito de
+        # IRPJ/CSLL e vai nula aqui, não zerada.
+        _linha(
+            "pis",
+            "PIS",
+            receita_total,
+            None,
+            receita_total,
+            aliquota_pis,
+            pis,
+            r.pis,  # type: ignore[attr-defined]
+        ),
+        _linha(
+            "cofins",
+            "COFINS",
+            receita_total,
+            None,
+            receita_total,
+            aliquota_cofins,
+            cofins,
+            r.cofins,  # type: ignore[attr-defined]
+        ),
+    ]
+
+    # As bases entram na conferência junto com os tributos: base errada com
+    # tributo certo é impossível, mas é a base que EXPLICA o tributo errado —
+    # sem ela o contador vê a divergência e não sabe onde ela nasceu.
+    candidatas: List[tuple[str, str, Decimal, Decimal]] = [
+        ("receita_total", "Receita total tributada", receita_total, receita_total_gravada),
+        ("base_irpj", "Base de cálculo do IRPJ", base_irpj, r.base_irpj),  # type: ignore[attr-defined]
+        ("base_csll", "Base de cálculo da CSLL", base_csll, r.base_csll),  # type: ignore[attr-defined]
+        *[(linha.chave, linha.tributo, linha.valor, linha.valor_gravado) for linha in linhas],
+        ("total_tributos", "Total de tributos", total, r.total_tributos),  # type: ignore[attr-defined]
+    ]
+    divergencias = [
+        DivergenciaOut(
+            campo=campo,
+            rotulo=rotulo,
+            calculado=calculado,
+            gravado=gravado,
+            diferenca=calculado - gravado,
+        )
+        for campo, rotulo, calculado, gravado in candidatas
+        if calculado != gravado
+    ]
+
+    return MemoriaCalculoOut(
+        apuracao_id=r.id,  # type: ignore[attr-defined]
+        ano=r.ano,  # type: ignore[attr-defined]
+        trimestre=r.trimestre,  # type: ignore[attr-defined]
+        versao=r.versao,  # type: ignore[attr-defined]
+        regime_reconhecimento=r.regime_reconhecimento,  # type: ignore[attr-defined]
+        receita_juros=receita_juros,
+        receita_demais=receita_demais,
+        receita_total=receita_total,
+        receita_total_gravada=receita_total_gravada,
+        linhas=linhas,
+        total_tributos=total,
+        total_tributos_gravado=r.total_tributos,  # type: ignore[attr-defined]
+        confere=not divergencias,
+        divergencias=divergencias,
+    )
+
+
+@router.get("/apuracoes/{apuracao_id}/memoria", response_model=MemoriaCalculoOut)
+def get_memoria_calculo(
+    apuracao_id: UUID,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+) -> MemoriaCalculoOut:
+    """Memória de cálculo de UMA apuração, derivada do snapshot dela.
+
+    Aberta ao operador, e não restrita ao admin: quem apura é o admin, mas
+    quem CONFERE é o contador — e conferência que exige privilégio de escrita
+    não é conferência.
+
+    Busca por `id`, e não por (ano, trimestre): a retificação não apaga a
+    versão anterior, e a memória da versão 1 precisa continuar acessível para
+    explicar a diferença entre o que foi declarado e o que foi retificado.
+    """
+    row = db.execute(
+        text("select * from apuracao_fiscal where id = :id"), {"id": str(apuracao_id)}
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Apuração fiscal não encontrada.")
+    return _memoria_de(row)

@@ -44,6 +44,7 @@ AS TRÊS PROPRIEDADES QUE FAZEM ISTO SER CONFIÁVEL
 """
 
 import argparse
+import json
 import os
 import shutil
 
@@ -99,6 +100,72 @@ MARCADOR_RESTORE_TEST = ".ultimo_restore_test"
 # não rodar sem nunca ter falhado, que é o pior estado possível.
 TIMEOUT_BACKUP_S = 30 * 60
 TIMEOUT_RESTORE_TEST_S = 45 * 60
+
+
+# ---------------------------------------------------------------------
+# A trilha de execução (migration 025)
+# ---------------------------------------------------------------------
+# Os três valores de `execucao_rotina.resultado`. 'dispensada' é a execução que
+# terminou bem SEM fazer o trabalho — o restore-test nos ~30 dias do mês em que
+# a competência já está coberta. Ver o cabeçalho da migration 025: contá-la
+# como sucesso renovaria o relógio de frescor todo dia, e a tela diria
+# "restore-test em dia" sobre um teste de restauração que pode não acontecer há
+# meses.
+RESULTADO_SUCESSO = "sucesso"
+RESULTADO_FALHA = "falha"
+RESULTADO_DISPENSADA = "dispensada"
+
+
+# ---------------------------------------------------------------------
+# QUANTO TEMPO SEM RODAR JÁ É ATRASO — os limiares, e por que estes
+# ---------------------------------------------------------------------
+# Este dicionário é o CONTRATO DE PONTUALIDADE das rotinas, e mora aqui, ao
+# lado da definição delas, por um motivo prático: quem muda a agenda do cron
+# muda este arquivo. Deixá-lo no router faria a tela afirmar uma periodicidade
+# que o executor não pratica mais, e ninguém perceberia — o número da tela
+# continuaria bonito.
+#
+# O critério, para os três diários (aging, atipicidades, backup): o cron roda
+# UMA vez por dia, então a distância normal entre dois sucessos é 24h mais o
+# jitter do agendador (fila do Railway, cold start do contêiner, uma execução
+# que demorou 40 minutos a mais que a de ontem).
+#
+#   - 24h NÃO SERVE como limiar: qualquer execução que comece cinco minutos
+#     depois da de ontem já o ultrapassa. Um aviso que dispara por construção é
+#     um aviso que as pessoas aprendem a ignorar em uma semana — e a partir daí
+#     o atraso REAL fica indistinguível do ruído, que é o mesmo defeito que a
+#     020 descreveu sobre a cadeia de hash acusando sozinha.
+#   - 36h = 24h + 12h de tolerância. Só se alcança se um ciclo diário INTEIRO
+#     tiver sido pulado — não há jitter de doze horas num cron diário. E as 12h
+#     de folga colocam o aviso no ar durante o dia seguinte à madrugada
+#     perdida, ou seja, na frente de quem abrir o painel de manhã ou à tarde.
+#   - 48h seria pior, e não "mais conservador": deixa DUAS madrugadas se
+#     perderem antes de alguém ouvir falar. Para o backup são dois dumps que
+#     não existem; para a régua de aging é inadimplência declarada com dois
+#     dias de atraso, sobre tomadores reais.
+#
+# O critério do restore-test é outro porque a periodicidade é outra: ele é
+# MENSAL POR COMPETÊNCIA (roda na primeira execução de cada mês — ver
+# `deve_rodar_restore_test`). A maior distância LEGÍTIMA entre duas
+# restaurações de verdade não é 30 dias: é ~31 quando as duas caem no dia 1, e
+# chega perto de 40 quando a de um dos meses escorrega para o dia 9, que é
+# exatamente o cenário que aquela função foi escrita para tolerar.
+#
+#   - 31 dias como limiar dispararia todo fim de mês, por construção, na
+#     véspera de a rotina rodar. Mesmo defeito de 24h acima.
+#   - 45 dias = 31 + 14. Cruzá-lo significa uma de duas coisas, e as duas
+#     merecem ação: a competência corrente já passou da metade sem o teste, ou
+#     uma competência inteira foi pulada.
+#   - 60 dias seria inútil pelo motivo oposto: dois meses sem restaurar é
+#     tempo suficiente para o dump ter mudado de formato, a versão do Postgres
+#     ter subido (já aconteceu neste projeto) ou o volume ter sido recriado. Um
+#     backup não testado há dois meses é um arquivo, não um backup.
+LIMITE_ATRASO_HORAS: dict[str, int] = {
+    NOME_AGING: 36,
+    NOME_ATIPICIDADES: 36,
+    NOME_BACKUP: 36,
+    NOME_RESTORE_TEST: 45 * 24,
+}
 
 
 class RotinaError(RuntimeError):
@@ -554,19 +621,151 @@ def montar_plano(
 
 
 # ---------------------------------------------------------------------
+# Registro da execução — o sistema passando a saber o próprio estado
+# ---------------------------------------------------------------------
+
+
+def resultado_para_trilha(resultado: Resultado) -> str:
+    """Traduz o que aconteceu para o domínio de `execucao_rotina.resultado`.
+
+    A única sutileza é 'dispensada', e ela é reconhecida pelo MESMO campo que o
+    log já mostrava: `executado: False`, que só `executar_restore_test` produz,
+    e produz justamente quando decidiu não fazer o trabalho. Reconhecer pelo
+    NOME da rotina ("se é restore_test, então...") seria acoplar a trilha à
+    identidade de quem, hoje, tem regra mensal — e a próxima rotina com
+    periodicidade própria nasceria registrando sucesso em dia de folga.
+    """
+    if not resultado.ok:
+        return RESULTADO_FALHA
+    if resultado.detalhe.get("executado") is False:
+        return RESULTADO_DISPENSADA
+    return RESULTADO_SUCESSO
+
+
+def registrar_execucao(db: Session, resultado: Resultado) -> None:
+    """Grava UMA execução na trilha. Levanta se o banco recusar.
+
+    `registrada_em` não é passado: quem o escreve é o banco (migration 025,
+    `fn_execucao_rotina_carimbo`), e passá-lo aqui seria inútil de qualquer
+    forma — o trigger sobrescreve. É de propósito: numa trilha cuja única
+    pergunta é "há quanto tempo?", um carimbo ditado por quem escreve faz de
+    "rotina em dia" uma auto-declaração.
+
+    `default=str` no json.dumps porque o detalhe carrega o que a rotina
+    devolveu, e nem tudo que cabe num log estruturado é serializável (Decimal,
+    date, Path). Um detalhe exótico não pode derrubar o registro da execução —
+    seria a rotina certa desaparecendo da tela por causa de um valor de
+    diagnóstico.
+    """
+    situacao = resultado_para_trilha(resultado)
+    # O CHECK `execucao_rotina_erro_coerente` exige texto não vazio em 'falha'.
+    # O executor sempre produz `"{Tipo}: {mensagem}"`, mas uma exceção com
+    # `str()` vazio existiria: sem este fallback ela viraria uma violação de
+    # constraint, e a FALHA da rotina sumiria da trilha por causa da forma da
+    # mensagem — o pior momento possível para o registro não acontecer.
+    erro = None
+    if situacao == RESULTADO_FALHA:
+        erro = (resultado.erro or "").strip() or (
+            "falha sem mensagem — ver o traceback na linha rotina_falhou do log"
+        )
+
+    db.execute(
+        text("""
+        insert into execucao_rotina (rotina, resultado, duracao_s, detalhe, erro)
+        values (:rotina, :resultado, :duracao, cast(:detalhe as jsonb), :erro)
+        """),
+        {
+            "rotina": resultado.nome,
+            "resultado": situacao,
+            "duracao": resultado.duracao_s,
+            "detalhe": json.dumps(resultado.detalhe, default=str, ensure_ascii=False),
+            "erro": erro,
+        },
+    )
+    db.commit()
+
+
+def registrar_execucao_no_banco(
+    resultado: Resultado,
+    *,
+    sessao_factory: Callable[[], Session] = SessionLocal,
+) -> bool:
+    """Registra a execução e devolve se conseguiu. NUNCA levanta.
+
+    ESTA É A DECISÃO MAIS IMPORTANTE DESTE ARQUIVO, e ela tem duas partes.
+
+    PRIMEIRA: O REGISTRO ACONTECE DEPOIS DO FATO, e o fracasso dele não vira
+    falha da rotina. Se o Postgres estiver fora, `aging` e `atipicidades` já
+    falham por conta própria (é o banco que elas manipulam) — mas o BACKUP não:
+    ele é `pg_dump` contra o servidor de produção e pode perfeitamente concluir
+    num momento em que a aplicação não consegue abrir sessão. Deixar a exceção
+    subir daqui faria a escrituração derrubar a rotina, ou seja, transformaria
+    o ato de anotar em pré-requisito do ato de fazer. Numa noite de incidente,
+    isso é perder o backup POR CAUSA do mecanismo que existe para provar que
+    ele foi feito.
+
+    SEGUNDA: A FALHA DE REGISTRO NÃO É SILENCIOSA, e não precisa de canal
+    próprio para ser vista. A rotina rodou e não deixou linha; o endpoint de
+    estado vai dizer que ela está atrasada, e o painel vai mostrar o aviso. É a
+    resposta correta, não um falso positivo: o sistema realmente NÃO SABE que
+    ela rodou. Um registro que falha em silêncio devolveria uma tela verde
+    sobre uma ignorância — que é exatamente o estado do qual esta trilha existe
+    para sair.
+
+    O código de saída do processo tampouco muda por causa daqui: ele responde
+    sobre as ROTINAS, não sobre a escrituração delas. Um `exit 1` por falha de
+    INSERT mandaria o operador investigar o backup que deu certo.
+
+    Sessão PRÓPRIA e curta, aberta só agora: reusar a sessão da rotina traria
+    de volta o acoplamento que `_com_sessao` desfez — a de `aging` pode estar
+    em estado indefinido justamente quando a rotina falhou, que é quando mais
+    se precisa gravar a linha.
+    """
+    logger = get_logger("app.rotinas")
+    try:
+        db = sessao_factory()
+        try:
+            registrar_execucao(db, resultado)
+        finally:
+            db.close()
+    except Exception as exc:
+        # `.exception()` para levar o traceback: sem ele, "não gravei" é uma
+        # afirmação sem diagnóstico, e a causa (banco fora, migration 025 não
+        # aplicada, constraint violada) muda completamente a providência.
+        logger.exception(
+            "registro_de_execucao_falhou",
+            rotina=resultado.nome,
+            erro=f"{type(exc).__name__}: {exc}",
+        )
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------
 # Executor
 # ---------------------------------------------------------------------
 
 
-def executar_rotinas(rotinas: Sequence[Rotina]) -> list[Resultado]:
+def executar_rotinas(
+    rotinas: Sequence[Rotina],
+    *,
+    registrar: Callable[[Resultado], bool] | None = None,
+) -> list[Resultado]:
     """Roda todas as rotinas, coleta os erros, não interrompe por falha.
 
     O `except Exception` largo é deliberado e é a razão de este executor
     existir: qualquer exceção de uma rotina precisa virar um `Resultado`
     vermelho, não o fim do plano. `BaseException` fica de fora de propósito —
     `KeyboardInterrupt` e `SystemExit` são pedidos de parada e devem parar.
+
+    CADA RESULTADO É REGISTRADO NA TRILHA (migration 025), sucesso ou falha, e
+    o registro é a última coisa que acontece com ele. `registrar` é parâmetro
+    para o teste poder observar o que seria gravado sem Postgres — o default é
+    o caminho de produção, resolvido no corpo (e não na assinatura) para que
+    substituir o atributo do módulo também funcione.
     """
     logger = get_logger("app.rotinas")
+    gravar = registrar_execucao_no_banco if registrar is None else registrar
     resultados: list[Resultado] = []
 
     for rotina in rotinas:
@@ -580,14 +779,29 @@ def executar_rotinas(rotinas: Sequence[Rotina]) -> list[Resultado]:
             # `.exception()` e não `.error()`: sem o traceback, diagnosticar
             # uma falha de madrugada vira arqueologia sobre uma linha de texto.
             logger.exception("rotina_falhou", rotina=rotina.nome, duracao_s=duracao, erro=erro)
-            resultados.append(Resultado(rotina.nome, False, duracao, erro=erro))
+            resultado = Resultado(rotina.nome, False, duracao, erro=erro)
         else:
             duracao = round(time.monotonic() - inicio, 3)
             # `detalhe` aninhado, não espalhado com **: uma chave chamada
             # "rotina" ou "duracao_s" vinda de uma rotina sobrescreveria os
             # campos que identificam a linha do log.
             logger.info("rotina_concluida", rotina=rotina.nome, duracao_s=duracao, detalhe=detalhe)
-            resultados.append(Resultado(rotina.nome, True, duracao, detalhe=detalhe))
+            resultado = Resultado(rotina.nome, True, duracao, detalhe=detalhe)
+
+        # Fora do try/except da rotina de propósito: uma exceção que escapasse
+        # daqui não pode ser confundida com falha da rotina. `gravar` já promete
+        # não levantar; se um dia levantar, é bug de escrituração e deve subir
+        # como tal, não virar uma linha vermelha sobre o backup.
+        if not gravar(resultado):
+            logger.error(
+                "execucao_nao_registrada",
+                rotina=resultado.nome,
+                consequencia=(
+                    "a rotina rodou e o banco não registrou: ela vai aparecer como "
+                    "ATRASADA no painel até a próxima execução gravar"
+                ),
+            )
+        resultados.append(resultado)
 
     return resultados
 

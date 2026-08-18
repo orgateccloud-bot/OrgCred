@@ -15,6 +15,7 @@ from sqlalchemy import (
     Numeric,
     String,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -317,6 +318,42 @@ class CapitalLedger(Base):
     prev_hash = Column(String(64), nullable=True)
     current_hash = Column(String(64), nullable=True)
     seq = Column(BigInteger, nullable=False)  # default nextval no banco (migration 020)
+
+
+class ExecucaoRotina(Base):
+    """Execução de uma rotina periódica (migration 025).
+
+    Append-only (OC023). Uma linha por rotina por execução, gravada DEPOIS do
+    fato — nunca antes, porque um "iniciei" que precisasse ser fechado por
+    UPDATE não caberia numa trilha que recusa UPDATE.
+
+    `registrada_em` é escrito pelo BANCO (`fn_execucao_rotina_carimbo`,
+    `clock_timestamp()`), sobrescrevendo o que o INSERT passar. É a âncora de
+    "há quanto tempo esta rotina rodou pela última vez" — a pergunta que
+    detecta a rotina que PAROU de rodar, e que nenhum painel de execuções
+    responde, porque a execução ausente não produz linha em lugar nenhum.
+
+    `resultado` tem TRÊS valores, e a terceira não é redundante: 'dispensada' é
+    a execução que terminou bem sem fazer o trabalho — o restore-test nos ~30
+    dias do mês em que a competência já está coberta. Contá-la como sucesso
+    renovaria o relógio de frescor todo dia e a tela diria "restore-test em
+    dia" sobre um teste de restauração que pode não acontecer há meses.
+
+    O INÍCIO NÃO É COLUNA de propósito: é derivado na leitura como
+    `registrada_em - duracao_s`. Início é fato que só a aplicação conhece, e
+    uma coluna escrita por ela seria o carimbo ditado por quem escreve que a
+    migration 020 tirou de circulação no ledger.
+    """
+
+    __tablename__ = "execucao_rotina"
+
+    id = Column(PG_UUID(as_uuid=True), primary_key=True)
+    rotina = Column(String, nullable=False)
+    resultado = Column(String, nullable=False)  # sucesso, falha, dispensada
+    duracao_s = Column(Numeric(12, 3), nullable=False)
+    detalhe = Column(JSONB, nullable=False, default=dict)
+    erro = Column(String, nullable=True)  # obrigatório em 'falha', proibido fora
+    registrada_em = Column(DateTime(timezone=True), nullable=False)
 
 
 class EscCapitalSocial(Base):

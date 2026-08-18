@@ -12,6 +12,7 @@ import {
   postParametroApiFiscalParametrosPostMutation,
 } from '@/api/generated/@tanstack/react-query.gen'
 import { mensagemDeErro } from '@/api/errors'
+import { MemoriaDeCalculoDialog } from '@/components/fiscal/memoria-de-calculo-dialog'
 import { formatarMoeda } from '@/lib/format'
 import { formatarPercentual } from '@/lib/rotulos'
 import { Button } from '@/components/ui/button'
@@ -137,7 +138,8 @@ function FiscalPage() {
           <CardDescription>
             A base é a <strong>receita de juros</strong>, tirada da agenda de parcelas — nunca a
             amortização, que devolve principal e não é resultado. Reapurar grava uma nova versão em
-            vez de sobrescrever.
+            vez de sobrescrever. Cada linha abre a <strong>memória de cálculo</strong>: um número
+            numa base que não se edita precisa vir com a derivação, ou ninguém consegue conferi-lo.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -161,6 +163,7 @@ function FiscalPage() {
                     <TableHead className="text-right">PIS</TableHead>
                     <TableHead className="text-right">COFINS</TableHead>
                     <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Memória</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -194,6 +197,12 @@ function FiscalPage() {
                       </TableCell>
                       <TableCell className="text-right font-mono font-medium tabular-nums">
                         {formatarMoeda(String(a.total_tributos))}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <MemoriaDeCalculoDialog
+                          apuracaoId={a.id}
+                          rotulo={`${a.trimestre}º tri/${a.ano}`}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}

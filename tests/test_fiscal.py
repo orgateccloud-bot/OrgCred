@@ -1017,3 +1017,415 @@ class TestMoraEMulta:
         ).json()
         assert Decimal(c["receita_demais"]) == Decimal("0.00")
         assert Decimal(c["receita_total"]) == juros
+
+
+# ---------------------------------------------------------------------
+# Memória de cálculo — derivada do snapshot da própria apuração
+# ---------------------------------------------------------------------
+
+
+def _memoria(client_: TestClient, apuracao_id: str) -> dict:
+    resposta = client_.get(f"/api/fiscal/apuracoes/{apuracao_id}/memoria")
+    assert resposta.status_code == 200, resposta.text
+    return resposta.json()  # type: ignore[no-any-return]
+
+
+def _linha(memoria: dict, chave: str) -> dict:
+    return next(linha for linha in memoria["linhas"] if linha["chave"] == chave)  # type: ignore[no-any-return]
+
+
+class TestMemoriaDeCalculo:
+    """A apuração é imutável (OC016) e chega ao contador como números prontos.
+
+    Sem derivação, um número numa base que não pode ser corrigida é um número
+    que ninguém consegue conferir nem contestar. A memória reproduz a
+    aritmética de fn_apurar_trimestre a partir da PRÓPRIA linha gravada — as
+    duas receitas e o snapshot de percentuais, alíquotas e limite —, e por isso
+    ela pode DISCORDAR do valor gravado. Discordar é o ponto: se a fórmula
+    mudar depois de uma apuração existir, é a única forma de o fato aparecer.
+    """
+
+    def test_memoria_confere_com_o_gravado(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """O BLOQUEIO PRINCIPAL: a memória tem que reproduzir centavo a centavo
+        o que o banco gravou, ou ela não serve para conferir nada.
+
+        Inclui o arredondamento: o Postgres desempata para longe do zero e o
+        Python, por default, para o par mais próximo. Uma memória escrita sem
+        cuidar disso acusaria divergência de um centavo em apuração correta.
+        """
+        admin_client.post("/api/fiscal/parametros", json=PARAMETROS)
+        op_id = _operacao_com_agenda(db_session, tomador_autorizado)
+        ano, trimestre = _trimestre_da_parcela(db_session, op_id, 1)
+        apurada = admin_client.post(
+            "/api/fiscal/apuracoes", json={"ano": ano, "trimestre": trimestre}
+        ).json()
+
+        memoria = _memoria(admin_client, apurada["id"])
+
+        assert memoria["confere"] is True
+        assert memoria["divergencias"] == []
+        assert all(linha["confere"] for linha in memoria["linhas"])
+
+        # Cada tributo recalculado bate com a coluna gravada...
+        for chave in ("irpj", "adicional_irpj", "csll", "pis", "cofins"):
+            linha = _linha(memoria, chave)
+            assert Decimal(linha["valor"]) == Decimal(apurada[chave])
+            assert Decimal(linha["valor_gravado"]) == Decimal(apurada[chave])
+        # ...e o total também.
+        assert Decimal(memoria["total_tributos"]) == Decimal(apurada["total_tributos"])
+        assert Decimal(memoria["total_tributos_gravado"]) == Decimal(apurada["total_tributos"])
+
+        # O cenário só prova algo se houve receita: com zero, qualquer fórmula
+        # errada bateria com o gravado.
+        assert Decimal(memoria["receita_total"]) > 0
+
+    def test_derivacao_de_cada_tributo_e_explicita(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Receita considerada -> base (presunção, quando aplicável) ->
+        alíquota -> valor. É o caminho que o contador vai refazer à mão.
+
+        E a presunção é NULA em PIS/COFINS, não zero: cumulativos incidem sobre
+        a receita, e presunção é conceito de IRPJ/CSLL. Zero ali seria uma
+        presunção de 0%, que é outra afirmação — e daria base zero.
+        """
+        admin_client.post("/api/fiscal/parametros", json=PARAMETROS)
+        op_id = _operacao_com_agenda(db_session, tomador_autorizado)
+        ano, trimestre = _trimestre_da_parcela(db_session, op_id, 1)
+        apurada = admin_client.post(
+            "/api/fiscal/apuracoes", json={"ano": ano, "trimestre": trimestre}
+        ).json()
+
+        memoria = _memoria(admin_client, apurada["id"])
+        receita = Decimal(memoria["receita_total"])
+        assert receita == Decimal(apurada["receita_juros"]) + Decimal(apurada["receita_demais"])
+
+        irpj = _linha(memoria, "irpj")
+        assert Decimal(irpj["receita_considerada"]) == receita
+        assert Decimal(irpj["percentual_presuncao"]) == Decimal("0.32")
+        assert Decimal(irpj["base_calculo"]) == round(receita * Decimal("0.32"), 2)
+        assert Decimal(irpj["aliquota"]) == Decimal("0.15")
+        assert Decimal(irpj["valor"]) == round(Decimal(irpj["base_calculo"]) * Decimal("0.15"), 2)
+
+        csll = _linha(memoria, "csll")
+        assert Decimal(csll["base_calculo"]) == round(receita * Decimal("0.32"), 2)
+        assert Decimal(csll["valor"]) == round(Decimal(csll["base_calculo"]) * Decimal("0.09"), 2)
+
+        for chave, aliquota in (("pis", Decimal("0.0065")), ("cofins", Decimal("0.03"))):
+            linha = _linha(memoria, chave)
+            assert linha["percentual_presuncao"] is None
+            assert Decimal(linha["base_calculo"]) == receita
+            assert Decimal(linha["valor"]) == round(receita * aliquota, 2)
+
+    def test_adicional_mostra_limite_e_excedente_zerado_abaixo_do_limite(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Sem limite e excedente à vista, "adicional 0,00" parece esquecimento
+        em vez de "a base não chegou ao limite do trimestre" — e é a linha que
+        mais gera dúvida.
+        """
+        admin_client.post("/api/fiscal/parametros", json=PARAMETROS)  # limite 60.000
+        op_id = _operacao_com_agenda(db_session, tomador_autorizado)
+        ano, trimestre = _trimestre_da_parcela(db_session, op_id, 1)
+        apurada = admin_client.post(
+            "/api/fiscal/apuracoes", json={"ano": ano, "trimestre": trimestre}
+        ).json()
+
+        adicional = _linha(_memoria(admin_client, apurada["id"]), "adicional_irpj")
+        assert Decimal(adicional["limite"]) == Decimal("60000.00")
+        assert Decimal(adicional["base_calculo"]) < Decimal("60000.00")
+        assert Decimal(adicional["excedente"]) == Decimal("0")
+        assert Decimal(adicional["valor"]) == Decimal("0.00")
+        assert adicional["confere"] is True
+
+    def test_adicional_aparece_acima_do_limite(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """O OUTRO LADO. Sem este teste, uma memória que devolvesse excedente
+        sempre zero passaria no anterior.
+
+        O limite baixo é artifício de cenário — o valor real é matéria
+        tributária e vem do parâmetro, como tudo mais.
+        """
+        admin_client.post(
+            "/api/fiscal/parametros", json={**PARAMETROS, "adicional_irpj_limite": "10.00"}
+        )
+        op_id = _operacao_com_agenda(db_session, tomador_autorizado)
+        ano, trimestre = _trimestre_da_parcela(db_session, op_id, 1)
+        apurada = admin_client.post(
+            "/api/fiscal/apuracoes", json={"ano": ano, "trimestre": trimestre}
+        ).json()
+
+        adicional = _linha(_memoria(admin_client, apurada["id"]), "adicional_irpj")
+        base = Decimal(adicional["base_calculo"])
+        assert base > Decimal("10.00")
+        # O excedente é a base MENOS o limite, e o adicional incide só sobre
+        # ele — nunca sobre a base inteira.
+        assert Decimal(adicional["excedente"]) == base - Decimal("10.00")
+        assert Decimal(adicional["valor"]) == round((base - Decimal("10.00")) * Decimal("0.10"), 2)
+        assert Decimal(adicional["valor"]) > 0
+        assert Decimal(adicional["valor"]) == Decimal(apurada["adicional_irpj"])
+
+    def test_memoria_usa_o_snapshot_e_nao_o_parametro_de_hoje(
+        self, admin_client: TestClient, db_session: Session
+    ) -> None:
+        """A memória se deriva da linha imutável, não do parâmetro vigente.
+
+        Se ela lesse `parametro_fiscal`, a memória de um trimestre antigo
+        mudaria sozinha na primeira alteração de alíquota — que é exatamente o
+        defeito que o snapshot da 011 existe para impedir.
+        """
+        admin_client.post("/api/fiscal/parametros", json=PARAMETROS)
+        apurada = admin_client.post(
+            "/api/fiscal/apuracoes", json={"ano": 2021, "trimestre": 1}
+        ).json()
+
+        admin_client.post(
+            "/api/fiscal/parametros",
+            json={**PARAMETROS, "vigencia_inicio": "2024-01-01", "aliquota_irpj": "0.25"},
+        )
+
+        memoria = _memoria(admin_client, apurada["id"])
+        assert Decimal(_linha(memoria, "irpj")["aliquota"]) == Decimal("0.15")
+        assert memoria["confere"] is True
+
+    def test_divergencia_e_denunciada_quando_a_formula_discorda_do_gravado(
+        self, admin_client: TestClient, db_session: Session
+    ) -> None:
+        """O CASO QUE JUSTIFICA A MEMÓRIA EXISTIR.
+
+        Um valor gravado que a fórmula atual não reproduz só acontece se a
+        fórmula mudou depois da apuração — foi o que a 018 fez com a 011. OC016
+        impede corrigir a linha, então esconder a divergência deixaria uma
+        declaração errada com aparência de auditada; a única providência
+        possível é retificar o trimestre, e para isso é preciso vê-la.
+
+        O cenário é montado por INSERT direto, e não por UPDATE: o trigger da
+        011 é `before update or delete`, então inserir uma linha já torta não
+        precisa desligar proteção nenhuma — e é assim que uma apuração gravada
+        por uma fórmula antiga de fato existiria no banco.
+        """
+        torto = db_session.execute(
+            text("""
+            insert into apuracao_fiscal (
+                ano, trimestre, versao, receita_juros, receita_demais,
+                base_irpj, irpj, adicional_irpj, base_csll, csll, pis, cofins, total_tributos,
+                percentual_presuncao_irpj, percentual_presuncao_csll,
+                aliquota_irpj, aliquota_csll, adicional_irpj_aliquota, adicional_irpj_limite,
+                aliquota_pis, aliquota_cofins, regime_reconhecimento
+            ) values (
+                2021, 3, 1, 1000.00, 0.00,
+                320.00, 999.99, 0.00, 320.00, 28.80, 6.50, 30.00, 1065.29,
+                0.32, 0.32, 0.15, 0.09, 0.10, 60000.00, 0.0065, 0.03, 'competencia'
+            ) returning id
+            """)
+        ).scalar_one()
+        db_session.commit()
+
+        memoria = _memoria(admin_client, str(torto))
+
+        assert memoria["confere"] is False
+        divergentes = {d["campo"]: d for d in memoria["divergencias"]}
+        # O IRPJ gravado (999,99) não é o que 320,00 x 15% produz (48,00)...
+        assert Decimal(divergentes["irpj"]["calculado"]) == Decimal("48.00")
+        assert Decimal(divergentes["irpj"]["gravado"]) == Decimal("999.99")
+        assert Decimal(divergentes["irpj"]["diferenca"]) == Decimal("-951.99")
+        # ...e o total carrega o erro junto, sem ninguém precisar somar à mão.
+        assert Decimal(divergentes["total_tributos"]["calculado"]) == Decimal("113.30")
+        assert Decimal(divergentes["total_tributos"]["gravado"]) == Decimal("1065.29")
+
+        # A linha do tributo divergente é marcada, para a tela não precisar
+        # cruzar a lista de divergências com a tabela.
+        assert _linha(memoria, "irpj")["confere"] is False
+        # E o que está certo continua certo: uma memória que marcasse tudo como
+        # divergente ao primeiro erro seria tão inútil quanto uma que não
+        # marcasse nada.
+        assert _linha(memoria, "csll")["confere"] is True
+        assert "csll" not in divergentes
+
+    def test_memoria_da_versao_retificada_continua_acessivel(
+        self, admin_client: TestClient, db_session: Session
+    ) -> None:
+        """Busca por id, não por (ano, trimestre): a versão 1 permanece no
+        banco e a memória dela é o que explica a diferença entre o que foi
+        declarado e o que foi retificado."""
+        admin_client.post("/api/fiscal/parametros", json=PARAMETROS)
+        primeira = admin_client.post(
+            "/api/fiscal/apuracoes", json={"ano": 2021, "trimestre": 1}
+        ).json()
+        segunda = admin_client.post(
+            "/api/fiscal/apuracoes", json={"ano": 2021, "trimestre": 1}
+        ).json()
+
+        assert _memoria(admin_client, primeira["id"])["versao"] == 1
+        assert _memoria(admin_client, segunda["id"])["versao"] == 2
+
+    def test_operador_confere_a_memoria(
+        self, admin_client: TestClient, operador_client: TestClient
+    ) -> None:
+        """Quem apura é o admin; quem confere é o contador. Conferência que
+        exige privilégio de escrita não é conferência."""
+        admin_client.post("/api/fiscal/parametros", json=PARAMETROS)
+        apurada = admin_client.post(
+            "/api/fiscal/apuracoes", json={"ano": 2021, "trimestre": 1}
+        ).json()
+
+        # O override de admin SAI DE CENA aqui. As duas fixtures compartilham o
+        # mesmo TestClient, e deixá-lo de pé faz `Depends(get_admin_user)`
+        # devolver o admin até na requisição do operador — o teste passaria
+        # verde com a rota fechada ao contador, afirmando o contrário do que
+        # verifica. Sem o override, quem responde é a dependência de verdade.
+        app.dependency_overrides.pop(get_admin_user, None)
+
+        resposta = operador_client.get(f"/api/fiscal/apuracoes/{apurada['id']}/memoria")
+        assert resposta.status_code == 200, resposta.text
+        assert resposta.json()["confere"] is True
+
+    def test_memoria_inclui_a_mora_na_base(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """A base é a receita TOTAL: juro contratual MAIS mora recebida (018).
+
+        Em todos os outros cenários desta classe a mora é zero, então uma
+        memória que derivasse tudo de `receita_juros` passaria em todos eles —
+        e acusaria divergência em toda apuração de carteira que recebe
+        atrasado, que numa ESC de microcrédito é a maioria. Alarme falso no
+        indicador que existe justamente para ser confiável é pior que
+        indicador nenhum.
+        """
+        admin_client.post(
+            "/api/fiscal/parametros", json={**PARAMETROS, "regime_reconhecimento": "caixa"}
+        )
+        op_id = _operacao_com_agenda(db_session, tomador_autorizado)
+        hoje = date.today()
+        parcela = db_session.execute(
+            text(
+                "select id, valor_total, valor_juros from parcela "
+                "where operacao_id = :o and numero = 1"
+            ),
+            {"o": str(op_id)},
+        ).one()
+        mora = Decimal("57.30")
+        movimento = registrar_movimento_bancario(
+            db_session,
+            data_movimento=hoje,
+            valor=parcela.valor_total + mora,
+            documento=f"FITID-MEMORIA-{uuid.uuid4().hex[:8]}",
+        )
+        baixar_parcela(db_session, parcela.id, movimento)
+
+        apurada = admin_client.post(
+            "/api/fiscal/apuracoes",
+            json={"ano": hoje.year, "trimestre": (hoje.month - 1) // 3 + 1},
+        ).json()
+        memoria = _memoria(admin_client, apurada["id"])
+
+        receita = parcela.valor_juros + mora
+        # O cenário só prova algo se a mora existir de verdade.
+        assert Decimal(memoria["receita_demais"]) == mora
+        assert Decimal(memoria["receita_total"]) == receita
+        # A receita considerada de CADA tributo é a total, não só o juro.
+        for chave in ("irpj", "adicional_irpj", "csll", "pis", "cofins"):
+            assert Decimal(_linha(memoria, chave)["receita_considerada"]) == receita
+        assert Decimal(_linha(memoria, "irpj")["base_calculo"]) == round(
+            receita * Decimal("0.32"), 2
+        )
+        assert Decimal(_linha(memoria, "pis")["base_calculo"]) == receita
+        assert memoria["confere"] is True
+
+    def test_arredondamento_empatado_nao_vira_divergencia(
+        self, admin_client: TestClient, db_session: Session
+    ) -> None:
+        """O EMPATE, que é onde as duas linguagens discordam.
+
+        O Postgres desempata para LONGE DO ZERO; o `round` do Python vai para o
+        par mais próximo. Numa apuração cujo produto cai exatamente na metade,
+        as duas regras diferem em um centavo — e a memória denunciaria como
+        erro uma conta que está certa, com a providência escrita na tela sendo
+        retificar um trimestre que não tem defeito nenhum.
+
+        Receita 9,69 com presunção de 32% dá base 3,10; 3,10 x 15% = 0,465,
+        empate exato. O banco grava 0,47; o Python "correto por default" diria
+        0,46. As colunas são calculadas AQUI pelas mesmas expressões da 018,
+        para o esperado vir do Postgres e não da aritmética do teste.
+
+        INSERT direto, e não `fn_apurar_trimestre`: a receita precisa ser um
+        valor escolhido a dedo para cair no empate, e ela é derivada da agenda.
+        O trigger OC016 é `before update or delete`, então inserir não desliga
+        proteção nenhuma.
+        """
+        empatada = db_session.execute(
+            text("""
+            with p as (
+                select 9.69::numeric(14,2)     as receita,
+                       0.3200::numeric(6,4)    as presuncao,
+                       0.1500::numeric(6,4)    as ali_irpj,
+                       0.0900::numeric(6,4)    as ali_csll,
+                       0.1000::numeric(6,4)    as ad_ali,
+                       60000.00::numeric(14,2) as ad_limite,
+                       0.0065::numeric(6,4)    as ali_pis,
+                       0.0300::numeric(6,4)    as ali_cofins
+            ), b as (
+                select p.*, round(receita * presuncao, 2) as base from p
+            ), t as (
+                select b.*,
+                       round(base * ali_irpj, 2) as irpj,
+                       round(greatest(base - ad_limite, 0) * ad_ali, 2) as adicional,
+                       round(base * ali_csll, 2) as csll,
+                       round(receita * ali_pis, 2) as pis,
+                       round(receita * ali_cofins, 2) as cofins
+                from b
+            )
+            insert into apuracao_fiscal (
+                ano, trimestre, versao, receita_juros, receita_demais,
+                base_irpj, irpj, adicional_irpj, base_csll, csll, pis, cofins, total_tributos,
+                percentual_presuncao_irpj, percentual_presuncao_csll,
+                aliquota_irpj, aliquota_csll, adicional_irpj_aliquota, adicional_irpj_limite,
+                aliquota_pis, aliquota_cofins, regime_reconhecimento
+            )
+            select 2022, 2, 1, receita, 0,
+                   base, irpj, adicional, base, csll, pis, cofins,
+                   irpj + adicional + csll + pis + cofins,
+                   presuncao, presuncao, ali_irpj, ali_csll, ad_ali, ad_limite,
+                   ali_pis, ali_cofins, 'competencia'
+            from t
+            returning id
+            """)
+        ).scalar_one()
+        db_session.commit()
+
+        memoria = _memoria(admin_client, str(empatada))
+
+        # O empate aconteceu mesmo: o banco arredondou 0,465 para longe do zero.
+        assert Decimal(_linha(memoria, "irpj")["valor_gravado"]) == Decimal("0.47")
+        # E a memória chegou ao MESMO centavo — com o default do Python daria
+        # 0,46 e esta apuração correta apareceria como divergente.
+        assert Decimal(_linha(memoria, "irpj")["valor"]) == Decimal("0.47")
+        assert memoria["confere"] is True
+        assert memoria["divergencias"] == []
+
+    def test_apuracao_inexistente_e_404(self, admin_client: TestClient) -> None:
+        resposta = admin_client.get(f"/api/fiscal/apuracoes/{uuid.uuid4()}/memoria")
+        assert resposta.status_code == 404

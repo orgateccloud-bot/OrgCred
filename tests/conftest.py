@@ -61,6 +61,7 @@ MIGRATIONS = [
     "022_retencao_ancorada",
     "023_atipicidade_ancorada",
     "024_proveniencia_do_extrato",
+    "025_registro_de_execucao",
 ]
 
 
@@ -351,6 +352,64 @@ def envelhecer_encerramento(db_session: Session, operacao_id: uuid.UUID, anos: i
         f"operação {operacao_id} não tem evento de encerramento em operacao_evento: "
         "ela não está em status terminal, e não há encerramento para envelhecer."
     )
+
+
+def envelhecer_execucao_rotina(db_session: Session, rotina: str, horas: float) -> int:
+    """Recua em `horas` o carimbo de TODAS as execuções de uma rotina.
+
+    Existe pela mesma limitação de `envelhecer_encerramento`, e por uma razão a
+    mais: em `execucao_rotina` (migration 025) o carimbo não é só imutável
+    (OC023 recusa UPDATE), ele é ESCRITO PELO BANCO no INSERT — o trigger
+    `trg_execucao_rotina_carimbo` sobrescreve `registrada_em` com
+    `clock_timestamp()` mesmo quando o INSERT informa outro valor. Ou seja: não
+    existe caminho, nem em teste, para uma execução nascer velha. Toda linha
+    nasce agora.
+
+    E envelhecer é justamente o que os testes de atraso precisam: o defeito que
+    a 025 corrige é a rotina que PAROU DE RODAR, e provar que a leitura o
+    enxerga exige uma execução antiga e nenhuma nova. Sem esta função os testes
+    só conseguiriam exercitar o caso trivial (nunca executou).
+
+    Os DOIS triggers saem do caminho, e é a prova de que os dois existem: sem
+    desligar o de INSERT, o UPDATE passaria e a linha voltaria a ser carimbada
+    na próxima escrita; sem desligar o append-only, o UPDATE seria recusado com
+    OC023. Nenhum caminho de produção faz isto — é banco descartável, criado
+    por esta suíte, e ter que escrever a manobra explicitamente é o que prova
+    que a trilha deixou de ser editável por acidente.
+
+    Devolve quantas linhas foram envelhecidas. Zero significa cenário mal
+    montado — a rotina não tem execução nenhuma para envelhecer — e o teste que
+    chamou isto passaria por engano, pelo caminho "nunca executou" em vez do
+    caminho "parou de rodar" que ele pretendia provar.
+    """
+    db_session.execute(
+        text("alter table execucao_rotina disable trigger trg_execucao_rotina_append_only")
+    )
+    db_session.execute(
+        text("alter table execucao_rotina disable trigger trg_execucao_rotina_carimbo")
+    )
+    afetados = db_session.execute(
+        text("""
+        update execucao_rotina
+           set registrada_em = registrada_em
+                             - make_interval(secs => cast(:segundos as double precision))
+         where rotina = :rotina
+        """),
+        {"rotina": rotina, "segundos": horas * 3600.0},
+    ).rowcount
+    db_session.execute(
+        text("alter table execucao_rotina enable trigger trg_execucao_rotina_carimbo")
+    )
+    db_session.execute(
+        text("alter table execucao_rotina enable trigger trg_execucao_rotina_append_only")
+    )
+    db_session.commit()
+
+    assert afetados > 0, (
+        f"rotina {rotina!r} não tem execução em execucao_rotina: não há o que envelhecer, "
+        "e o teste estaria provando o caminho 'nunca executou'."
+    )
+    return afetados
 
 
 def baixar_parcelas(db_session: Session, operacao_id: uuid.UUID, numeros: list[int]) -> None:

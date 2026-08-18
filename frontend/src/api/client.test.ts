@@ -64,16 +64,18 @@ describe('baseUrl aplicada ao client', () => {
     expect(baseUrl).not.toContain('localhost')
   })
 
-  it('em dev sem VITE_API_BASE_URL aponta para o backend local', async () => {
-    // Guarda o fluxo de `npm run dev` e o Playwright, que sobe o dev server
-    // sem VITE_API_BASE_URL (ver playwright.config.ts).
+  it('em dev sem VITE_API_BASE_URL tambem fica RELATIVO', async () => {
+    // O caminho relativo em dev é atendido pelo proxy do vite.config.ts. A
+    // versão anterior apontava absoluto para :8000 e passou a bater em CORS
+    // assim que o backend deixou de rodar em modo permissivo — este teste
+    // existe para o endereço não voltar a ter duas fontes de verdade.
     vi.resetModules()
     vi.stubEnv('DEV', true)
     vi.stubEnv('VITE_API_BASE_URL', undefined)
 
     const { client } = await import('./client')
 
-    expect(client.getConfig().baseUrl).toBe('http://localhost:8000')
+    expect(client.getConfig().baseUrl).toBe('')
   })
 
   it('override explícito vence o fallback de dev', async () => {

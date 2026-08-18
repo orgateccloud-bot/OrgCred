@@ -27,24 +27,36 @@ import logging
 import shutil
 import time
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Generator
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import rotinas
 from app.capital_engine import ativar_operacao
 from app.core.logging import configure_logging
+from app.core.security import get_current_user
+from app.db import get_db
+from app.main import app
+from app.models import Usuario
 from app.rotinas import (
+    LIMITE_ATRASO_HORAS,
     NOME_AGING,
     NOME_ATIPICIDADES,
     NOME_BACKUP,
     NOME_RESTORE_TEST,
+    RESULTADO_DISPENSADA,
+    RESULTADO_FALHA,
+    RESULTADO_SUCESSO,
+    ROTINAS_CONHECIDAS,
     TIMEOUT_BACKUP_S,
     TIMEOUT_RESTORE_TEST_S,
+    Resultado,
     Rotina,
     RotinaError,
     competencia,
@@ -58,9 +70,12 @@ from app.rotinas import (
     executar_rotinas,
     main,
     montar_plano,
+    registrar_execucao,
+    registrar_execucao_no_banco,
+    resultado_para_trilha,
     rodar_script,
 )
-from tests.conftest import confirmar_registro
+from tests.conftest import confirmar_registro, envelhecer_execucao_rotina, sqlstate_de
 from tests.test_logging import _estado_de_logging_preservado
 
 
@@ -81,6 +96,35 @@ def logging_isolado():
     """
     with _estado_de_logging_preservado():
         yield
+
+
+@pytest.fixture(autouse=True)
+def trilha_em_memoria(monkeypatch: pytest.MonkeyPatch) -> list[Resultado]:
+    """Desvia a escrituração da trilha (migration 025) para uma lista.
+
+    AUTOUSE porque `executar_rotinas` passou a gravar cada resultado em
+    `execucao_rotina`, e a maior parte deste arquivo prova DECISÕES DO EXECUTOR
+    com rotinas de mentira, sem Postgres nenhum. Sem o desvio, cada uma dessas
+    execuções tentaria abrir sessão contra o banco configurado — lento no
+    melhor caso, e um teste de decisão falhando por indisponibilidade de
+    infraestrutura no pior.
+
+    O desvio é sobre o ATRIBUTO DO MÓDULO, e é por isso que `executar_rotinas`
+    resolve o default no corpo em vez de na assinatura. Quem precisa da função
+    de verdade — `TestRegistrarExecucaoNoBanco` e os testes contra Postgres —
+    usa o nome importado no topo deste arquivo, que aponta para o objeto
+    original e não é alcançado por este `setattr`.
+
+    Devolve a lista para os testes que querem afirmar O QUE seria gravado.
+    """
+    gravadas: list[Resultado] = []
+
+    def gravar(resultado: Resultado) -> bool:
+        gravadas.append(resultado)
+        return True
+
+    monkeypatch.setattr(rotinas, "registrar_execucao_no_banco", gravar)
+    return gravadas
 
 
 def _linhas(buffer: io.StringIO) -> list[dict[str, Any]]:
@@ -990,3 +1034,569 @@ class TestAtipicidadesContraBanco:
                 db_session.execute(text("select count(*) from ocorrencia_atipicidade")).scalar_one()
                 == total
             )
+
+
+# ---------------------------------------------------------------------
+# Registro da execução na trilha (migration 025)
+# ---------------------------------------------------------------------
+# O QUE ESTA SEÇÃO PRECISA PROVAR, em ordem de gravidade:
+#
+# 1. QUE GRAVAR NÃO É PRÉ-REQUISITO DE RODAR. Se o banco estiver fora, o
+#    backup — que é `pg_dump` contra o servidor, e pode concluir sem que a
+#    aplicação consiga abrir sessão — tem que continuar acontecendo. A
+#    escrituração falha, a rotina não.
+# 2. QUE SUCESSO E FALHA CHEGAM À TRILHA, contra Postgres real. Uma falha que
+#    não é registrada devolve o sistema ao silêncio que a 025 veio acabar.
+# 3. QUE A TRILHA NÃO SE EDITA: UPDATE, DELETE e TRUNCATE recusados (OC023).
+# 4. QUE O CARIMBO É DO BANCO. É o campo de que a resposta "há quanto tempo"
+#    depende inteira; ditá-lo pela aplicação faria "em dia" ser auto-declarado.
+
+
+class TestResultadoParaTrilha:
+    def test_sucesso(self):
+        resultado = Resultado(NOME_AGING, True, 1.0, {"transicionadas": 3})
+        assert resultado_para_trilha(resultado) == RESULTADO_SUCESSO
+
+    def test_falha(self):
+        resultado = Resultado(NOME_BACKUP, False, 1.0, erro="boom")
+        assert resultado_para_trilha(resultado) == RESULTADO_FALHA
+
+    def test_executado_false_vira_dispensada(self):
+        """O restore-test em dia de folga não é sucesso — ver migration 025."""
+        resultado = Resultado(
+            NOME_RESTORE_TEST, True, 0.01, {"executado": False, "motivo": "competencia_ja_coberta"}
+        )
+        assert resultado_para_trilha(resultado) == RESULTADO_DISPENSADA
+
+    def test_executado_true_e_sucesso_normal(self):
+        resultado = Resultado(NOME_RESTORE_TEST, True, 300.0, {"executado": True})
+        assert resultado_para_trilha(resultado) == RESULTADO_SUCESSO
+
+
+@pytest.mark.usefixtures("logging_isolado")
+class TestExecutorRegistra:
+    def test_grava_uma_linha_por_rotina_do_plano(self, trilha_em_memoria):
+        configure_logging(level=logging.INFO, stream=io.StringIO())
+
+        executar_rotinas([_rotina_ok("aging", []), _rotina_quebrada("backup", [])])
+
+        assert [r.nome for r in trilha_em_memoria] == ["aging", "backup"]
+        assert [r.ok for r in trilha_em_memoria] == [True, False]
+
+    def test_falha_ao_gravar_nao_derruba_a_rotina(self):
+        """O caso do enunciado: banco fora, backup ainda tem que rodar.
+
+        A rotina rodou e concluiu; só a escrituração não foi. O `Resultado`
+        continua verde — porque o backup existe — e o código de saída do
+        processo não muda por causa da anotação.
+        """
+        configure_logging(level=logging.INFO, stream=io.StringIO())
+        registro: list[str] = []
+
+        resultados = executar_rotinas(
+            [_rotina_ok("backup", registro)], registrar=lambda _resultado: False
+        )
+
+        assert registro == ["backup"]
+        assert [r.ok for r in resultados] == [True]
+
+    def test_falha_ao_gravar_nao_e_silenciosa(self):
+        """Não gravar é uma notícia, e ela nomeia a consequência.
+
+        Sem esta linha o operador veria o painel dizer "backup atrasado" no dia
+        seguinte a um backup que existe, sem nada no log ligando as duas
+        coisas.
+        """
+        buffer = io.StringIO()
+        configure_logging(level=logging.INFO, stream=buffer)
+
+        executar_rotinas([_rotina_ok("backup", [])], registrar=lambda _resultado: False)
+
+        eventos = {linha["event"]: linha for linha in _linhas(buffer)}
+        assert "execucao_nao_registrada" in eventos
+        assert eventos["execucao_nao_registrada"]["rotina"] == "backup"
+        assert "ATRASADA" in eventos["execucao_nao_registrada"]["consequencia"]
+
+    def test_main_continua_saindo_zero_quando_so_o_registro_falha(self, monkeypatch, capsys):
+        """O código de saída responde sobre as ROTINAS, não sobre a anotação.
+
+        Sair 1 aqui mandaria o operador investigar, de madrugada, um backup que
+        deu certo.
+        """
+        monkeypatch.setattr(rotinas, "montar_plano", lambda *a, **k: [_rotina_ok("backup", [])])
+        monkeypatch.setattr(rotinas, "registrar_execucao_no_banco", lambda _resultado: False)
+
+        assert main([]) == 0
+
+
+@pytest.mark.usefixtures("logging_isolado")
+class TestRegistrarExecucaoNoBanco:
+    """Chama a função IMPORTADA, não `rotinas.registrar_execucao_no_banco`.
+
+    O nome importado no topo deste módulo aponta para a função original e não
+    é afetado pelo `monkeypatch` da fixture `trilha_em_memoria` — que é o que
+    permite testar aqui o caminho real enquanto o resto do arquivo roda sem
+    banco.
+    """
+
+    def test_banco_fora_devolve_false_sem_levantar(self):
+        """Sessão que nem abre: é o cenário "Postgres indisponível"."""
+        configure_logging(level=logging.INFO, stream=io.StringIO())
+
+        def fabrica_quebrada() -> Session:
+            raise OSError("connection refused")
+
+        ok = registrar_execucao_no_banco(
+            Resultado(NOME_BACKUP, True, 1.0, {"script": "backup.sh"}),
+            sessao_factory=fabrica_quebrada,
+        )
+
+        assert ok is False
+
+    def test_insert_recusado_devolve_false_e_fecha_a_sessao(self):
+        """Sessão abre e o INSERT explode — migration 025 não aplicada, por exemplo.
+
+        A sessão é fechada mesmo no caminho de erro: uma conexão vazada por
+        execução acumularia até o pool acabar, e as rotinas passariam a falhar
+        por causa do mecanismo que só deveria anotá-las.
+        """
+        configure_logging(level=logging.INFO, stream=io.StringIO())
+
+        class SessaoQueRecusa:
+            def __init__(self) -> None:
+                self.fechada = False
+
+            def execute(self, *_a: Any, **_k: Any) -> Any:
+                raise RuntimeError('relation "execucao_rotina" does not exist')
+
+            def close(self) -> None:
+                self.fechada = True
+
+        sessoes: list[SessaoQueRecusa] = []
+
+        def fabrica() -> Session:
+            sessao = SessaoQueRecusa()
+            sessoes.append(sessao)
+            return sessao  # type: ignore[return-value]
+
+        ok = registrar_execucao_no_banco(Resultado(NOME_AGING, True, 1.0), sessao_factory=fabrica)
+
+        assert ok is False
+        assert [s.fechada for s in sessoes] == [True]
+
+
+def _execucoes(db_session: Session, rotina: str) -> list[Any]:
+    return db_session.execute(
+        text("""
+        select rotina, resultado, duracao_s, detalhe, erro, registrada_em
+          from execucao_rotina where rotina = :r order by registrada_em
+        """),
+        {"r": rotina},
+    ).all()
+
+
+class TestTrilhaContraBanco:
+    def test_sucesso_grava_detalhe_e_nao_grava_erro(self, db_session):
+        registrar_execucao(
+            db_session,
+            Resultado(NOME_AGING, True, 1.25, {"transicionadas": 3, "limite_dias": 90}),
+        )
+
+        (linha,) = _execucoes(db_session, NOME_AGING)
+        assert linha.resultado == RESULTADO_SUCESSO
+        assert float(linha.duracao_s) == pytest.approx(1.25)
+        assert linha.detalhe == {"transicionadas": 3, "limite_dias": 90}
+        assert linha.erro is None
+
+    def test_falha_grava_a_mensagem(self, db_session):
+        registrar_execucao(
+            db_session,
+            Resultado(NOME_BACKUP, False, 12.5, erro="RotinaError: backup.sh saiu com código 2"),
+        )
+
+        (linha,) = _execucoes(db_session, NOME_BACKUP)
+        assert linha.resultado == RESULTADO_FALHA
+        assert "backup.sh saiu com código 2" in linha.erro
+
+    def test_falha_com_mensagem_vazia_ainda_entra_na_trilha(self, db_session):
+        """O CHECK exige texto em 'falha'; a falha não pode sumir por causa disso.
+
+        Uma exceção com `str()` vazio existe, e sem o fallback ela viraria
+        violação de constraint — a FALHA desapareceria da trilha justamente por
+        causa da forma da mensagem, no pior momento possível.
+        """
+        registrar_execucao(db_session, Resultado(NOME_BACKUP, False, 1.0, erro="   "))
+
+        (linha,) = _execucoes(db_session, NOME_BACKUP)
+        assert linha.resultado == RESULTADO_FALHA
+        assert linha.erro
+
+    def test_dispensada_grava_o_motivo(self, db_session):
+        registrar_execucao(
+            db_session,
+            Resultado(
+                NOME_RESTORE_TEST,
+                True,
+                0.002,
+                {"executado": False, "motivo": "competencia_ja_coberta", "competencia": "2027-03"},
+            ),
+        )
+
+        (linha,) = _execucoes(db_session, NOME_RESTORE_TEST)
+        assert linha.resultado == RESULTADO_DISPENSADA
+        assert linha.detalhe["motivo"] == "competencia_ja_coberta"
+
+    def test_detalhe_com_valor_nao_serializavel_nao_derruba_o_registro(self, db_session):
+        """Um Decimal no detalhe não pode custar a linha da trilha."""
+        registrar_execucao(
+            db_session, Resultado(NOME_ATIPICIDADES, True, 0.5, {"limiar": Decimal("10000.50")})
+        )
+
+        (linha,) = _execucoes(db_session, NOME_ATIPICIDADES)
+        assert linha.detalhe == {"limiar": "10000.50"}
+
+    def test_carimbo_e_do_banco_e_sobrescreve_o_que_o_insert_passar(self, db_session):
+        """Sem isto, "rotina em dia" seria auto-declaração.
+
+        Quem tivesse INSERT poderia gravar uma execução datada de agora sem
+        rotina nenhuma ter rodado — ou uma antiga com data de hoje, para apagar
+        um atraso do painel.
+        """
+        db_session.execute(
+            text("""
+            insert into execucao_rotina (rotina, resultado, duracao_s, registrada_em)
+            values (:r, 'sucesso', 1, timestamptz '2020-01-01 00:00:00+00')
+            """),
+            {"r": NOME_AGING},
+        )
+        db_session.commit()
+
+        (linha,) = _execucoes(db_session, NOME_AGING)
+        assert linha.registrada_em.year >= 2026
+
+    def test_update_e_recusado_com_oc023(self, db_session):
+        registrar_execucao(db_session, Resultado(NOME_AGING, True, 1.0))
+
+        with pytest.raises(Exception) as exc:
+            db_session.execute(
+                text("update execucao_rotina set resultado = 'sucesso' where rotina = :r"),
+                {"r": NOME_AGING},
+            )
+        assert sqlstate_de(exc.value) == "OC023"
+        db_session.rollback()
+
+    def test_delete_e_recusado_com_oc023(self, db_session):
+        registrar_execucao(db_session, Resultado(NOME_BACKUP, False, 1.0, erro="x"))
+
+        with pytest.raises(Exception) as exc:
+            db_session.execute(
+                text("delete from execucao_rotina where rotina = :r"), {"r": NOME_BACKUP}
+            )
+        assert sqlstate_de(exc.value) == "OC023"
+        db_session.rollback()
+
+    def test_truncate_e_recusado_com_oc023(self, db_session):
+        """TRUNCATE não visita linhas e atravessaria as guardas acima.
+
+        É o caminho pelo qual o histórico inteiro voltaria a não existir — com
+        a tela dizendo "nunca executou" e ninguém sabendo por quê.
+        """
+        registrar_execucao(db_session, Resultado(NOME_AGING, True, 1.0))
+
+        with pytest.raises(Exception) as exc:
+            db_session.execute(text("truncate table execucao_rotina"))
+        assert sqlstate_de(exc.value) == "OC023"
+        db_session.rollback()
+
+    def test_sucesso_com_erro_preenchido_e_recusado(self, db_session):
+        """O outro lado do CHECK: erro em execução bem-sucedida só pode ser lixo."""
+        with pytest.raises(Exception) as exc:
+            db_session.execute(
+                text("""
+                insert into execucao_rotina (rotina, resultado, duracao_s, erro)
+                values (:r, 'sucesso', 1, 'sobrou de uma retentativa')
+                """),
+                {"r": NOME_AGING},
+            )
+        assert sqlstate_de(exc.value) == "23514"
+        db_session.rollback()
+
+    def test_falha_sem_erro_e_recusada(self, db_session):
+        with pytest.raises(Exception) as exc:
+            db_session.execute(
+                text("""
+                insert into execucao_rotina (rotina, resultado, duracao_s)
+                values (:r, 'falha', 1)
+                """),
+                {"r": NOME_BACKUP},
+            )
+        assert sqlstate_de(exc.value) == "23514"
+        db_session.rollback()
+
+    def test_execucao_sobrevive_ao_fechamento_da_sessao(self, db_session, sessao_como_no_cron):
+        """Pelo caminho REAL do cron: sessão própria, aberta, commitada e fechada.
+
+        Sem o commit, o executor registraria a execução, o log diria que
+        gravou, e o `close()` jogaria a linha fora — o painel continuaria
+        mostrando a rotina como parada enquanto ela roda todo dia.
+        """
+        ok = registrar_execucao_no_banco(
+            Resultado(NOME_AGING, True, 2.0, {"transicionadas": 0}),
+            sessao_factory=sessao_como_no_cron,
+        )
+
+        assert ok is True
+        assert len(_execucoes(db_session, NOME_AGING)) == 1
+
+
+# ---------------------------------------------------------------------
+# Estado das rotinas: GET /api/auditoria/rotinas
+# ---------------------------------------------------------------------
+# O que estes testes cobram é O CÁLCULO DO ATRASO, não a listagem. A rotina que
+# nunca falhou e parou de rodar há nove dias não produz nenhuma execução
+# vermelha — só uma distância que cresce sozinha, e é ela que a leitura precisa
+# enxergar.
+
+
+@pytest.fixture()
+def client_rotinas(db_session: Session) -> Generator[TestClient, None, None]:
+    def _override_get_db() -> Generator[Session, None, None]:
+        yield db_session
+
+    operador = Usuario(
+        id=uuid.uuid4(), email="op@orgatec.com", nome="Operador", papel="operador", ativo=True
+    )
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_current_user] = lambda: operador
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+def _estado(client: TestClient) -> dict[str, Any]:
+    resposta = client.get("/api/auditoria/rotinas")
+    assert resposta.status_code == 200
+    return resposta.json()
+
+
+def _da(corpo: dict[str, Any], nome: str) -> dict[str, Any]:
+    return next(r for r in corpo["rotinas"] if r["rotina"] == nome)
+
+
+class TestEstadoDasRotinas:
+    def test_sem_autenticacao_retorna_401(self, db_session):
+        def _override_get_db() -> Generator[Session, None, None]:
+            yield db_session
+
+        app.dependency_overrides[get_db] = _override_get_db
+        try:
+            assert TestClient(app).get("/api/auditoria/rotinas").status_code == 401
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_trilha_vazia_marca_as_quatro_como_nunca_executadas(self, client_rotinas):
+        """Fail-closed: sem evidência, o sistema NÃO se declara saudável.
+
+        É o estado de um cron que nunca foi implantado — e o único default que
+        não deixa esse caso verde para sempre.
+        """
+        corpo = _estado(client_rotinas)
+
+        assert corpo["saudavel"] is False
+        assert sorted(r["rotina"] for r in corpo["rotinas"]) == sorted(ROTINAS_CONHECIDAS)
+        for nome in ROTINAS_CONHECIDAS:
+            estado = _da(corpo, nome)
+            assert estado["nunca_executou"] is True
+            assert estado["atrasada"] is True
+            assert estado["horas_desde_ultimo_sucesso"] is None
+
+    def test_as_quatro_recem_executadas_ficam_saudaveis(self, client_rotinas, db_session):
+        for nome in ROTINAS_CONHECIDAS:
+            registrar_execucao(db_session, Resultado(nome, True, 1.0, {"ok": True}))
+
+        corpo = _estado(client_rotinas)
+
+        assert corpo["saudavel"] is True
+        for nome in ROTINAS_CONHECIDAS:
+            estado = _da(corpo, nome)
+            assert estado["atrasada"] is False
+            assert estado["falhou"] is False
+            assert estado["horas_desde_ultimo_sucesso"] == pytest.approx(0, abs=0.1)
+            assert estado["limite_horas"] == LIMITE_ATRASO_HORAS[nome]
+
+    def test_diaria_a_trinta_horas_ainda_nao_e_atraso(self, client_rotinas, db_session):
+        """O limiar NÃO é 24h, e este teste é a razão.
+
+        Um cron diário que começa alguns minutos depois do de ontem já
+        ultrapassaria 24h. Um aviso que dispara por construção é um aviso que
+        as pessoas desligam — e a partir daí o atraso real fica indistinguível
+        do ruído.
+        """
+        registrar_execucao(db_session, Resultado(NOME_AGING, True, 1.0))
+        envelhecer_execucao_rotina(db_session, NOME_AGING, horas=30)
+
+        estado = _da(_estado(client_rotinas), NOME_AGING)
+
+        assert estado["horas_desde_ultimo_sucesso"] == pytest.approx(30, abs=0.1)
+        assert estado["atrasada"] is False
+
+    def test_diaria_parada_ha_nove_dias_e_atraso(self, client_rotinas, db_session):
+        """O caso perigoso do enunciado: nunca falhou, parou de rodar.
+
+        Não há execução vermelha em lugar nenhum — só a distância.
+        """
+        for nome in ROTINAS_CONHECIDAS:
+            registrar_execucao(db_session, Resultado(nome, True, 1.0))
+        envelhecer_execucao_rotina(db_session, NOME_AGING, horas=9 * 24)
+
+        corpo = _estado(client_rotinas)
+        estado = _da(corpo, NOME_AGING)
+
+        assert estado["falhou"] is False
+        assert estado["atrasada"] is True
+        assert estado["horas_desde_ultimo_sucesso"] == pytest.approx(216, abs=0.1)
+        assert corpo["saudavel"] is False
+
+    def test_ultima_execucao_falhada_aparece_com_a_mensagem(self, client_rotinas, db_session):
+        registrar_execucao(db_session, Resultado(NOME_BACKUP, True, 60.0))
+        registrar_execucao(
+            db_session, Resultado(NOME_BACKUP, False, 3.0, erro="RotinaError: disco cheio")
+        )
+
+        corpo = _estado(client_rotinas)
+        estado = _da(corpo, NOME_BACKUP)
+
+        assert estado["falhou"] is True
+        assert estado["resultado"] == RESULTADO_FALHA
+        assert "disco cheio" in estado["erro"]
+        # O relógio de atraso continua ancorado no ÚLTIMO SUCESSO, e não na
+        # última tentativa: uma rotina que falha todo dia tem tentativa recente
+        # e não fez o trabalho nenhuma vez.
+        assert estado["ultimo_sucesso"] is not None
+        assert corpo["saudavel"] is False
+
+    def test_falha_repetida_acaba_virando_atraso_tambem(self, client_rotinas, db_session):
+        """Falhar sem parar é, passado o limiar, a mesma coisa que não rodar."""
+        registrar_execucao(db_session, Resultado(NOME_BACKUP, True, 60.0))
+        envelhecer_execucao_rotina(db_session, NOME_BACKUP, horas=48)
+        registrar_execucao(
+            db_session, Resultado(NOME_BACKUP, False, 3.0, erro="RotinaError: disco cheio")
+        )
+
+        estado = _da(_estado(client_rotinas), NOME_BACKUP)
+
+        assert estado["falhou"] is True
+        assert estado["atrasada"] is True
+
+    def test_dispensada_nao_renova_o_relogio_do_restore_test(self, client_rotinas, db_session):
+        """A razão de 'dispensada' existir como resultado próprio.
+
+        O restore-test é dispensado em ~30 dos 31 dias do mês. Contadas como
+        sucesso, essas linhas diriam "restore-test em dia" todo santo dia sobre
+        um teste de restauração que não acontece há quase dois meses.
+        """
+        registrar_execucao(db_session, Resultado(NOME_RESTORE_TEST, True, 300.0))
+        envelhecer_execucao_rotina(db_session, NOME_RESTORE_TEST, horas=50 * 24)
+        registrar_execucao(
+            db_session,
+            Resultado(NOME_RESTORE_TEST, True, 0.01, {"executado": False, "motivo": "coberta"}),
+        )
+
+        estado = _da(_estado(client_rotinas), NOME_RESTORE_TEST)
+
+        assert estado["atrasada"] is True
+        assert estado["horas_desde_ultimo_sucesso"] == pytest.approx(50 * 24, abs=0.1)
+        # E o cron ESTEVE aqui hoje — é o que separa "rotina mensal em dia" de
+        # "serviço de cron morto", que sem este campo teriam a mesma aparência.
+        assert estado["ultima_tentativa"] > estado["ultima_execucao"]
+
+    def test_so_dispensadas_e_nunca_executou_com_o_cron_vivo(self, client_rotinas, db_session):
+        """O caso que o comentário do endpoint nomeia e nenhum teste cobria.
+
+        É REAL e é o pior arranjo possível de sinais: o marcador de competência
+        do restore-test vive no VOLUME de backups, e a trilha vive no BANCO.
+        Banco novo com volume antigo — restauração, recriação da base, troca de
+        instância — deixa o executor achando que a competência já está coberta
+        e devolvendo `executado: False` todo santo dia. A trilha enche de
+        'dispensada' e o teste de restauração NUNCA acontece.
+
+        Aqui o cron está vivo (há tentativa de hoje) e o trabalho jamais foi
+        feito. As duas coisas precisam ser ditas ao mesmo tempo, e é justamente
+        a combinação que o endpoint tem de acertar sem nenhuma linha
+        'sucesso' nem 'falha' para se apoiar: `ultima_tentativa` preenchida,
+        `ultima_execucao` vazia, `nunca_executou` verdadeiro e — o que importa
+        — ATRASADA.
+
+        Ler isto como "em dia" devolveria exatamente a cobertura de fachada que
+        a migration 025 existe para acabar, agora com registro no banco para
+        sustentá-la.
+        """
+        for nome in (NOME_AGING, NOME_ATIPICIDADES, NOME_BACKUP):
+            registrar_execucao(db_session, Resultado(nome, True, 1.0))
+        registrar_execucao(
+            db_session,
+            Resultado(
+                NOME_RESTORE_TEST,
+                True,
+                0.01,
+                {"executado": False, "motivo": "competencia_ja_coberta"},
+            ),
+        )
+
+        corpo = _estado(client_rotinas)
+        estado = _da(corpo, NOME_RESTORE_TEST)
+
+        assert estado["ultima_tentativa"] is not None  # o cron esteve aqui
+        assert estado["ultima_execucao"] is None  # e não fez o trabalho
+        assert estado["nunca_executou"] is True
+        assert estado["atrasada"] is True
+        assert estado["horas_desde_ultimo_sucesso"] is None
+        assert estado["resultado"] is None
+        assert estado["erro"] is None
+        assert estado["detalhe"] == {}
+        assert corpo["saudavel"] is False
+
+    def test_restore_test_a_quarenta_dias_ainda_nao_e_atraso(self, client_rotinas, db_session):
+        """O limiar mensal não é 31 dias, e este teste é a razão.
+
+        31 dispararia todo fim de mês por construção, na véspera de a rotina
+        rodar. 40 dias é a distância legítima de uma competência cuja primeira
+        execução escorregou para o dia 9 — cenário que o executor já tolera de
+        propósito (ver `deve_rodar_restore_test`).
+        """
+        for nome in ROTINAS_CONHECIDAS:
+            registrar_execucao(db_session, Resultado(nome, True, 1.0))
+        envelhecer_execucao_rotina(db_session, NOME_RESTORE_TEST, horas=40 * 24)
+
+        corpo = _estado(client_rotinas)
+
+        assert _da(corpo, NOME_RESTORE_TEST)["atrasada"] is False
+        assert corpo["saudavel"] is True
+
+    def test_inicio_e_derivado_da_duracao(self, client_rotinas, db_session):
+        """`iniciada_em` = registrada_em - duracao_s. Não é coluna — ver a 025."""
+        registrar_execucao(db_session, Resultado(NOME_BACKUP, True, 600.0))
+
+        estado = _da(_estado(client_rotinas), NOME_BACKUP)
+
+        inicio = datetime.fromisoformat(estado["iniciada_em"])
+        fim = datetime.fromisoformat(estado["ultima_execucao"])
+        assert (fim - inicio).total_seconds() == pytest.approx(600, abs=1)
+
+    def test_rotina_desconhecida_aparece_e_nao_derruba_a_saude(self, client_rotinas, db_session):
+        """A contrapartida de a coluna `rotina` não ter CHECK de domínio.
+
+        Um nome que o executor não conhece é ruído VISÍVEL — melhor do que uma
+        trilha que recusa o que deveria testemunhar. Sem limiar declarado ele
+        não é dado como atrasado: seria inventar uma periodicidade que ninguém
+        prometeu.
+        """
+        for nome in ROTINAS_CONHECIDAS:
+            registrar_execucao(db_session, Resultado(nome, True, 1.0))
+        registrar_execucao(db_session, Resultado("faxina_experimental", True, 1.0))
+
+        corpo = _estado(client_rotinas)
+        estado = _da(corpo, "faxina_experimental")
+
+        assert estado["limite_horas"] is None
+        assert estado["atrasada"] is False
+        assert corpo["saudavel"] is True

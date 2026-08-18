@@ -27,6 +27,8 @@ import {
   somarValorPrincipal,
 } from '@/lib/capital'
 import { formatarPercentual } from '@/lib/rotulos'
+import { BannerRotinas } from '@/components/rotinas/banner-rotinas'
+import { estadoRotinasQueryOptions } from '@/components/rotinas/estado-rotinas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -48,6 +50,12 @@ function DashboardPage() {
   })
   const operacoes = useQuery(getOperacoesApiOperacoesGetOptions())
   const auditoria = useQuery(getAuditoriaApiAuditoriaGetOptions())
+  // DE FORA do `carregando` e do `erro` de propósito. O estado das rotinas é um
+  // aviso SOBRE o painel, não um dado dele: segurar a tela esperando por ele
+  // atrasaria o que o operador veio ver, e deixar um erro seu apagar o
+  // dashboard inteiro trocaria "não sei se o backup rodou" por "não vejo o
+  // capital". Sem resposta, o banner simplesmente não aparece.
+  const rotinas = useQuery(estadoRotinasQueryOptions())
 
   const carregando = snapshot.isPending || operacoes.isPending || auditoria.isPending
   const erro = snapshot.error ?? operacoes.error ?? auditoria.error
@@ -103,6 +111,10 @@ function DashboardPage() {
           to="/auditoria"
         />
       )}
+      {/* Depois dos dois banners acima porque a ordem é a da gravidade: teto em
+          zero e cadeia quebrada dizem que os NÚMEROS desta tela não valem;
+          rotina parada diz que eles podem estar desatualizados. */}
+      <BannerRotinas estado={rotinas.data} />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
