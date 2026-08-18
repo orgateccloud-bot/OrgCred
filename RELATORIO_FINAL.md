@@ -1,6 +1,6 @@
 # OrgCred — Relatório de execução
 
-**Período: 12 a 16 de agosto de 2026.** Treze commits, ~12.700 linhas.
+**Período: 12 a 18 de agosto de 2026.** Dezenove commits, ~14.500 linhas.
 
 > Este arquivo perdeu a data do nome de propósito: ele é o relatório corrente e
 > era renomeado a cada dia de trabalho. O período coberto está na linha acima, e
@@ -160,11 +160,11 @@ campo `sha256` — a garantia de que o cliente não voltou a mandar hash pronto.
 
 | | Antes | Depois |
 |---|---|---|
-| Testes backend | 198 | **405** |
-| Cobertura | 92% | **93,2%** (piso de 85% ativo) |
+| Testes backend | 198 | **525** |
+| Cobertura | 92% | **93,7%** (piso de 85% ativo) |
 | Testes frontend | 50 | **148** |
 | E2E | 5 (todos quebrados) | **6, verdes** |
-| Migrations | 14 | **23** |
+| Migrations | 14 | **24** |
 | SQLSTATEs no banco | 18 | **21** |
 | Suíte local | 148s | **27s** |
 
@@ -223,6 +223,56 @@ lida pela API.
 Os dois têm a mesma forma: **a leitura mais conveniente parecia conclusiva e
 não era.** É a mesma armadilha do `200 text/html` que já havia enganado antes
 nesta mesma semana.
+
+---
+
+## 5-B. O que foi construído depois (17–18 de agosto)
+
+Duas ausências, não defeitos — atacadas para tirar dois domínios do amarelo.
+
+**Importação de extrato OFX.** O lastro bancário era estrutural, não
+probatório: o único produtor de `movimento_bancario` era um formulário que
+aceitava data, valor e documento arbitrários. O parser lê OFX 1.x e 2.x sem
+dependência nova, o import é idempotente por construção, e a proveniência grava
+o sha256 dos bytes recebidos — porque `origem='ofx'` sozinho seria uma palavra
+a mais na digitação, pior que o problema original por mentir com aparência de
+prova.
+
+O achado do caminho, com a premissa medida no Postgres: `'NaN'::numeric > 0` e
+`>= 999999` são os **dois verdadeiros**. Um `TRNAMT` com `NaN` atravessaria o
+`check (valor > 0)`, cobriria qualquer parcela na baixa e envenenaria toda soma
+da carteira.
+
+**Rotinas periódicas agendadas.** Um comando, uma agenda diária, e a decisão do
+que roda em cada dia no código sob teste. O restore-test não usa dia fixo — dia
+31 pula cinco meses do ano — e sim *"esta competência já teve seu teste?"*, com
+o marcador escrito só após o sucesso.
+
+### O agendamento rendeu três defeitos que nenhum teste pegaria
+
+Antecipei a agenda para observar uma execução real em vez de descobrir às
+06:00. Apareceram, em sequência: o `scripts/` nunca copiado para a imagem; o
+cliente do Postgres ausente; e a **versão errada** — cravei
+`postgresql-client-16` lendo o `postgres:16` do `docker-compose`, que é o banco
+**local**. Produção roda **18.4**, e `pg_dump` mais antigo recusa dumpar
+servidor mais novo. Corrigido tirando a versão do pacote: pinar significaria
+que a próxima atualização do Postgres gerenciado quebraria o backup num dia
+qualquer.
+
+O quarto, e o mais insidioso: **o serviço de cron não reconstrói no push**. A
+correção estava commitada e implantada na API enquanto o cron seguia executando
+a imagem anterior, falhando com a mesma mensagem. Isso desfaz em silêncio a
+garantia de "uma imagem só para os dois serviços".
+
+A verificação final, contra produção:
+
+```
+aging         transicionadas=0
+atipicidades  novas_ocorrencias=0
+backup        "Backup concluído: 28K" + rotação de 30 dias
+restore_test  "OK — backup restaurável e íntegro" · competência 2026-08
+falhas=[]     event="rotinas_concluidas"
+```
 
 ---
 
