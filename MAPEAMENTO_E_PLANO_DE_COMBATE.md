@@ -1,7 +1,8 @@
 # OrgCred — Mapeamento, scorecard e plano de entrada em produção
 
-> Revisado em **2026-08-16**, com **todos os defeitos de código do levantamento
-> fechados** e a infraestrutura arrumada até onde não depende de credencial.
+> Revisado em **2026-08-18**, com **todos os defeitos de código do levantamento
+> fechados**, a infraestrutura arrumada até onde não depende de credencial, e as
+> rotinas periódicas agendadas e verificadas em produção.
 > O levantamento base é de 2026-08-12: 53 agentes sobre 10 domínios, com rodada
 > adversarial — todo achado grave passou por um cético encarregado de refutá-lo,
 > e **32 sobreviveram**. Este documento marca quais deles foram fechados e
@@ -9,7 +10,7 @@
 
 ---
 
-## 0. Estado da infraestrutura (2026-08-16)
+## 0. Estado da infraestrutura (2026-08-18)
 
 Tudo abaixo foi **verificado**, não apenas configurado.
 
@@ -21,6 +22,7 @@ Tudo abaixo foi **verificado**, não apenas configurado.
 | Health check | `/health/ready` | log do Railway: `GET /health/ready 200 OK` |
 | Migrations | fase de pré-deploy | dois contêineres distintos no log: um roda `alembic` e **sai**, o outro sobe o uvicorn |
 | Logging estruturado | emite | `{"event": "app_startup", …}` em JSON |
+| Rotinas periódicas | **agendadas e verificadas** | execução real com `falhas=[]`: backup de 28K gerado, restaurado e validado |
 
 **Dois enganos que quase entraram no relatório**, e valem como método:
 
@@ -51,15 +53,15 @@ riscos residuais que exigem integração externa, não código.
 
 ---
 
-## 2. O que mudou em 2026-08-12/16
+## 2. O que mudou em 2026-08-12/18
 
 | | Antes | Agora |
 |---|---|---|
-| Testes backend | 198 | **405** |
-| Cobertura | 92% | **93,2%** (piso de 85% ativo na CI) |
+| Testes backend | 198 | **525** |
+| Cobertura | 92% | **93,7%** (piso de 85% ativo na CI) |
 | Testes frontend | 50 | **148** |
 | E2E | 5 (todos quebrados) | **6, verdes** |
-| Migrations | 14 | **23** |
+| Migrations | 14 | **24** |
 | SQLSTATEs no banco | 18 | **21** |
 | Suíte local | 148s | **27s** |
 
@@ -115,6 +117,36 @@ ANTECIPAR (produzindo trabalho a mais para o analista) e nunca atrasar
 vencimento, separada de propósito — lá o dinheiro voltou cedo demais, aqui não
 voltou.
 
+### Construído depois do levantamento
+
+Duas coisas que não eram defeito, e sim ausência — atacadas para tirar dois
+domínios do amarelo:
+
+**Importação de extrato OFX (migration 024).** O único produtor de
+`movimento_bancario` era um formulário que aceitava data, valor e documento
+arbitrários: o lastro era estrutural ("existe um registro apontado"), não
+probatório ("o dinheiro entrou"). O parser lê OFX 1.x (SGML) e 2.x (XML) sem
+dependência nova, o import é idempotente por construção (um `insert` com
+`unnest` + `on conflict`, não um laço de N) e a proveniência grava o **sha256
+dos bytes recebidos** — sem isso, `origem='ofx'` seria uma palavra a mais na
+digitação, pior que o lastro auto-declarado porque mentiria com aparência de
+prova.
+
+Um achado do caminho, com a premissa confirmada no próprio Postgres:
+`Decimal('NaN')` é literal válido, `numeric` aceita, e o Postgres ordena `NaN`
+como **maior que qualquer número** — `'NaN'::numeric > 0` e `>= 999999` são os
+dois verdadeiros. Um `TRNAMT` com `NaN` atravessaria o `check (valor > 0)`,
+cobriria **qualquer** parcela em `fn_baixar_parcela` e envenenaria toda soma da
+carteira. Recusado na leitura do arquivo.
+
+**Rotinas periódicas agendadas.** Régua de aging, varredura de atipicidade,
+backup e restore-test rodavam só por clique — a data em que uma inadimplência
+era declarada dependia de alguém lembrar. Agora um comando (`app/rotinas.py`),
+uma agenda diária, e o que roda em cada dia decidido em código coberto por
+teste. O restore-test não usa dia fixo (dia 31 pula cinco meses do ano): o
+critério é *"esta competência já teve seu teste?"*, e o marcador só é escrito
+após o sucesso.
+
 O que resta são **riscos residuais** (seção 6), que exigem integração ou decisão
 externa, e a fila de configuração (seção 4).
 
@@ -128,14 +160,14 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 |---|---|---|---|
 | **Capital e teto (Art. 5º)** | 🔴 | 🟢 | Três bordas fechadas (015), concorrência da versão vigente provada — mutação que remove o advisory lock reproduz a falha original 3 de 3 — e a hash-chain ancorada em chave monotônica (020), que também tornou impossível antedatar lançamento. |
 | **Operações e novação** | 🟡 | 🟢 | Máquina de estados no trigger, novação atômica com prova de não-dupla-contagem, e agora testes HTTP das transições e do gate de liquidação. |
-| **Cobrança** | 🔴 | 🟡 | O furo crítico da liquidação está fechado (017, OC022), `baixada` não contorna mais o lastro, a baixa tem autor. Não é verde porque o lastro continua **auto-declarado**: não há importação de extrato. |
+| **Cobrança** | 🔴 | 🟡 | O furo crítico da liquidação está fechado (017, OC022), `baixada` não contorna mais o lastro, a baixa tem autor, e a **importação de extrato OFX** (024) tirou o lastro de auto-declarado: o movimento passa a vir de arquivo do banco, com o sha256 dos bytes gravado. Não é verde porque **a tela ainda não tem o botão de importar** — o endpoint existe e nenhum componente o chama, que é a mesma forma do defeito que o gate OC019 teve. |
 | **Contratos e registro** | 🟡 | 🟢 | O registro não nasce mais confirmado (021), o corpo cita o protocolo confirmado, e a emissão concorrente já era tratada. Sem defeito aberto — o que impede usar é externo: registradora contratada, assinatura eletrônica e dados da ESC. |
 | **Fiscal (Lucro Presumido)** | 🔴 | 🟡 | Os quatro erros de conteúdo foram corrigidos e testados (018). Não é verde porque nenhum parâmetro real existe — a apuração é recusada por OC015, de propósito, até o contador informar. |
 | **Compliance PLD** | 🔴 | 🟢 | A evidência deixou de ser oca (bytes, hash no servidor, storage fail-closed, UI), a retenção conta do encerramento (022) e a detecção de atipicidade não depende mais de quando a varredura roda (023). Sem defeito aberto — o que falta é externo: parecer sobre o regime COAF, e agendar a varredura em vez de depender de clique. |
 | **Segurança e auditoria** | 🔴 | 🟢 | Guarda fail-closed ativa (o serviço roda em `production` agora), `/docs` e `/openapi.json` fora do ar, `/metrics` em 401, rate limiting ligado, auditoria paginada. O serviço duplicado foi **removido**. |
 | **Frontend** | 🔴 | 🟢 | `baseUrl` relativo provado no artefato (zero ocorrências de `localhost` no bundle), UI de identificação e de write-off, dicionário completo, retry preservando o corpo, feedback anunciado por `role="alert"`. 148 testes e 6 E2E. |
 | **Qualidade e CI** | 🟡 | 🟢 | Falha dura sem banco (exit 4), teste de sincronia das três fontes de schema, piso de cobertura, docker build com smoke test, e a suíte de concorrência dentro do pytest. |
-| **Infra e observabilidade** | 🔴 | 🟡 | `railway.json` versionado, health check em `/health/ready` provado no log, migrations em fase de pré-deploy separada, logging emitindo, deploys rastreáveis por commit. Não é verde por duas lacunas operacionais reais: **backup e restore-test não são agendados** (os scripts existem e ninguém os chama) e **não há alerta ativo** — a detecção de incidente depende de alguém abrir o painel. |
+| **Infra e observabilidade** | 🔴 | 🟡 | `railway.json` versionado, health check em `/health/ready` provado no log, migrations em pré-deploy separado, logging emitindo, deploys rastreáveis por commit, e as **quatro rotinas agendadas e verificadas em produção** (`falhas=[]`, backup restaurado e validado). Não é verde por uma lacuna que permanece: **não há alerta ativo** — a falha fica visível no painel, mas depende de alguém olhar. E o serviço de cron **não reconstrói sozinho no push** (ver docs/OPERACAO.md). |
 
 ---
 
@@ -154,19 +186,24 @@ mudanças de escopo, não correções.
 
 ### Seu (configuração e decisão)
 
-Feitos hoje, saíram da lista: cortar o acesso do serviço duplicado ao banco,
-conferir a JWT Secret, ligar o modo produção, versionar o `railway.json` com
-health check em `/health/ready` e separar as migrations do start.
+Já saíram da lista: cortar o acesso do serviço duplicado ao banco e removê-lo,
+conferir a JWT Secret, ligar o modo produção, versionar o `railway.json`,
+separar as migrations do start, e **agendar as quatro rotinas** — o serviço
+`orgcred-rotinas` está de pé, com execução real verificada.
 
 O que resta, em ordem:
 
 1. **Bucket e `service_role` key do Supabase Storage.** Sem eles, arquivar
    identificação é recusado com 503 — e sem identificação arquivada nenhuma
    operação ativa (OC019). É o próximo bloqueio do fluxo primário.
-2. **Agendar** backup, restore-test, régua de aging e varredura de atipicidade.
-   Os scripts e endpoints existem; ninguém os chama. Enquanto isso, a data em
-   que uma inadimplência é declarada depende de alguém lembrar de clicar.
-3. **Dados reais da ESC e capital social.** Irreversível na prática: o primeiro
+2. **Habilitar o autodeploy do `orgcred-rotinas`** (Settings → Source → Enable).
+   Hoje ele não reconstrói no push e pode executar código velho em silêncio —
+   foi o que manteve o backup quebrado por duas rodadas depois de a correção já
+   estar em produção.
+3. **Escolher um canal de alerta.** A falha de rotina fica visível no painel e
+   depende de alguém olhar. Sem canal — e-mail, Slack, o que for — não há como
+   avisar, e é o que mantém Infra em amarelo.
+4. **Dados reais da ESC e capital social.** Irreversível na prática: o primeiro
    contrato sela razão social e CNPJ num documento imutável (OC017), e a
    primeira apuração sela a base tributária (OC016). É o passo que finalmente
    destrava operar.
@@ -203,10 +240,15 @@ subir mal configurado.
 
 Continuam verdadeiros mesmo com todo o plano executado:
 
-- **O lastro bancário é auto-declarado.** Não existe importação de extrato: o
-  único produtor de `movimento_bancario` é um formulário manual. O invariante
-  entregue é estrutural ("existe um registro apontado"), não probatório ("o
-  dinheiro entrou").
+- **Os bytes do extrato não são arquivados — só o hash deles.** A importação
+  OFX (024) tirou o lastro de auto-declarado e grava o sha256 do arquivo
+  recebido, mas o OFX em si fica fora do sistema. Guardar os bytes (como já se
+  faz com a evidência de identificação, migration 019) fecharia o ciclo
+  probatório, e exige bucket próprio e política de retenção decidida.
+- **O formulário manual continua existindo** ao lado da importação, e é o
+  caminho que aceita data, valor e documento arbitrários. Ele é necessário
+  (nem todo crédito chega por OFX), mas quem auditar precisa saber distinguir:
+  a coluna de proveniência responde isso, e a tela precisa mostrá-la.
 - **O gate OC004 prova que alguém digitou um protocolo**, não que houve
   registro em entidade registradora.
 - **Conciliação errada é permanente** — não há estorno, e o remédio que a
