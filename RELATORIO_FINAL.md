@@ -1,6 +1,6 @@
 # OrgCred — Relatório de execução
 
-**Período: 12 a 18 de agosto de 2026.** Dezenove commits, ~14.500 linhas.
+**Período: 12 a 18 de agosto de 2026.** Vinte e três commits, ~16.000 linhas.
 
 > Este arquivo perdeu a data do nome de propósito: ele é o relatório corrente e
 > era renomeado a cada dia de trabalho. O período coberto está na linha acima, e
@@ -160,12 +160,12 @@ campo `sha256` — a garantia de que o cliente não voltou a mandar hash pronto.
 
 | | Antes | Depois |
 |---|---|---|
-| Testes backend | 198 | **525** |
-| Cobertura | 92% | **93,7%** (piso de 85% ativo) |
-| Testes frontend | 50 | **148** |
+| Testes backend | 198 | **570** |
+| Cobertura | 92% | **94,2%** (piso de 85% ativo) |
+| Testes frontend | 50 | **210** |
 | E2E | 5 (todos quebrados) | **6, verdes** |
-| Migrations | 14 | **24** |
-| SQLSTATEs no banco | 18 | **21** |
+| Migrations | 14 | **25** |
+| SQLSTATEs no banco | 18 | **22** |
 | Suíte local | 148s | **27s** |
 
 `ruff`, `ruff format`, `mypy` e `bandit` limpos. `alembic upgrade → downgrade →
@@ -273,6 +273,51 @@ backup        "Backup concluído: 28K" + rotação de 30 dias
 restore_test  "OK — backup restaurável e íntegro" · competência 2026-08
 falhas=[]     event="rotinas_concluidas"
 ```
+
+---
+
+## 5-C. Os dois amarelos, atacados pela lacuna certa
+
+Eu vinha descrevendo Fiscal e Infra como bloqueados em terceiros. A análise
+antes de atacar mostrou que os dois tinham trabalho real pendente — e que meu
+diagnóstico de Infra estava errado.
+
+**Fiscal: faltava memória de cálculo.** A apuração gravava tributos e o snapshot
+dos parâmetros, mas o contador recebia números prontos sem conseguir conferir a
+derivação. Numa linha que OC016 torna imutável, número sem derivação é número
+que ninguém pode contestar nem corrigir. A memória é derivada do snapshot da
+própria apuração — nada consulta parcela, movimento ou parâmetro vigente hoje —,
+o que a torna reproduzível anos depois.
+
+O detalhe que decide se ela serve para algo é o arredondamento: `0.125` vira
+`0,13` no Postgres e `0,12` com o padrão do Python. Sem `ROUND_HALF_UP`, toda
+apuração que caísse na metade acusaria divergência falsa de um centavo,
+arruinando o único indicador que precisa ser confiável.
+
+**Infra: eu estava dizendo a coisa errada.** Repeti várias vezes que faltava
+"um canal de alerta". A lacuna anterior a essa era mais fundo — **nenhuma
+execução de rotina era registrada**, então o sistema não sabia o próprio estado
+e não conseguia dizer que o último backup foi há nove dias. Sem isso, qualquer
+canal externo continuaria dependendo de alguém abrir o painel. Com a trilha
+`execucao_rotina` (025), o produto avisa sozinho; o canal virou a última camada,
+não o pré-requisito.
+
+O relógio do atraso corre desde o último **sucesso**, não desde a última
+tentativa: é o que pega a rotina que roda e falha em silêncio — o caso perigoso,
+porque não há falha para ver.
+
+### A regressão que o E2E pegou, e a origem fui eu
+
+Metade da suíte E2E quebrou com CORS. Causa: `api/client.ts` usava
+`import.meta.env.DEV ? 'http://localhost:8000' : ''`, escrito quando o
+`vite.config.ts` **ainda não tinha proxy** — premissa que ficou obsoleta no
+momento em que eu adicionei o proxy, dias antes. Duas fontes de verdade para o
+mesmo endereço, e a divergência só se manifestou quando um componente novo
+passou a usar aquele cliente.
+
+É a terceira vez na semana que o mesmo padrão aparece: **um comentário que
+descrevia a realidade deixou de descrevê-la, e ninguém releu o comentário ao
+mudar a realidade.**
 
 ---
 

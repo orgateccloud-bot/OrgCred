@@ -23,6 +23,7 @@ Tudo abaixo foi **verificado**, não apenas configurado.
 | Migrations | fase de pré-deploy | dois contêineres distintos no log: um roda `alembic` e **sai**, o outro sobe o uvicorn |
 | Logging estruturado | emite | `{"event": "app_startup", …}` em JSON |
 | Rotinas periódicas | **agendadas e verificadas** | execução real com `falhas=[]`: backup de 28K gerado, restaurado e validado |
+| Vigilância das rotinas | o sistema sabe o próprio estado | trilha `execucao_rotina` (025, OC023) e aviso na tela quando alguma atrasa |
 
 **Dois enganos que quase entraram no relatório**, e valem como método:
 
@@ -57,12 +58,12 @@ riscos residuais que exigem integração externa, não código.
 
 | | Antes | Agora |
 |---|---|---|
-| Testes backend | 198 | **525** |
-| Cobertura | 92% | **93,7%** (piso de 85% ativo na CI) |
-| Testes frontend | 50 | **172** |
+| Testes backend | 198 | **570** |
+| Cobertura | 92% | **94,2%** (piso de 85% ativo na CI) |
+| Testes frontend | 50 | **210** |
 | E2E | 5 (todos quebrados) | **6, verdes** |
-| Migrations | 14 | **24** |
-| SQLSTATEs no banco | 18 | **21** |
+| Migrations | 14 | **25** |
+| SQLSTATEs no banco | 18 | **22** |
 | Suíte local | 148s | **27s** |
 
 ### Fechado
@@ -119,7 +120,7 @@ voltou.
 
 ### Construído depois do levantamento
 
-Duas coisas que não eram defeito, e sim ausência — atacadas para tirar dois
+Quatro coisas que não eram defeito, e sim ausência — atacadas para tirar
 domínios do amarelo:
 
 **Importação de extrato OFX (migration 024) e a tela que a torna usável.** O único produtor de
@@ -147,6 +148,26 @@ teste. O restore-test não usa dia fixo (dia 31 pula cinco meses do ano): o
 critério é *"esta competência já teve seu teste?"*, e o marcador só é escrito
 após o sucesso.
 
+**Memória de cálculo da apuração fiscal** (sem migration — tudo já estava
+gravado). O contador recebia tributos apurados sem conseguir conferir a
+derivação, numa linha que OC016 torna imutável: número sem derivação é número
+que ninguém pode contestar nem corrigir. A memória é derivada do snapshot da
+própria apuração, então a de um trimestre de 2021 sai igual daqui a cinco anos.
+
+O detalhe que decide se a conferência serve para algo é o **arredondamento**:
+verifiquei no banco que `0.125` vira `0,13` no Postgres e `0,12` com o padrão do
+Python (`HALF_EVEN`). Sem `ROUND_HALF_UP`, toda apuração que caísse na metade
+acusaria divergência falsa de um centavo — arruinando justamente o indicador que
+precisa ser confiável.
+
+**Vigilância das rotinas (migration 025, OC023).** Nenhuma execução era
+registrada: o sistema não sabia o próprio estado e não conseguia dizer que o
+último backup foi há nove dias. Agora há trilha append-only e aviso na tela, com
+o relógio correndo desde o último **sucesso** — é o que pega a rotina que roda e
+falha em silêncio, o caso perigoso, porque não há falha para ver. Limiares de
+36h para as diárias (tolera uma execução perdida sem virar ruído) e 45 dias para
+o restore-test mensal.
+
 O que resta são **riscos residuais** (seção 6), que exigem integração ou decisão
 externa, e a fila de configuração (seção 4).
 
@@ -162,12 +183,12 @@ Verde exige implementado, testado **e** sem achado confirmado em aberto.
 | **Operações e novação** | 🟡 | 🟢 | Máquina de estados no trigger, novação atômica com prova de não-dupla-contagem, e agora testes HTTP das transições e do gate de liquidação. |
 | **Cobrança** | 🔴 | 🟢 | Furo da liquidação fechado (017, OC022), `baixada` não contorna mais o lastro, a baixa tem autor, o lastro deixou de ser auto-declarado (024: o movimento vem de arquivo do banco com o sha256 dos bytes gravado) e **a tela de importação existe**, com o relatório que permite conferir que nenhuma linha do extrato se perdeu e a proveniência visível na lista. |
 | **Contratos e registro** | 🟡 | 🟢 | O registro não nasce mais confirmado (021), o corpo cita o protocolo confirmado, e a emissão concorrente já era tratada. Sem defeito aberto — o que impede usar é externo: registradora contratada, assinatura eletrônica e dados da ESC. |
-| **Fiscal (Lucro Presumido)** | 🔴 | 🟡 | Os quatro erros de conteúdo foram corrigidos e testados (018), e a apuração guarda o snapshot dos parâmetros usados. Duas coisas o seguram, e só uma é sua: **nenhum parâmetro real existe** (a apuração recusa com OC015 até o contador informar — comportamento deliberado, não defeito), e **não há memória de cálculo** — o contador recebe tributos apurados sem conseguir conferir a derivação, numa linha que OC016 torna imutável. |
+| **Fiscal (Lucro Presumido)** | 🔴 | 🟡 | Os quatro erros de conteúdo foram corrigidos e testados (018), e a apuração agora tem **memória de cálculo** derivada do snapshot da própria linha imutável — o contador confere a derivação tributo a tributo, e divergência entre recalculado e gravado aparece na tela. Continua amarelo por uma razão só, e ela não é minha: **`parametro_fiscal` está vazia**. A apuração recusa com OC015 até o contador informar presunção, alíquotas e regime — recusar em vez de assumir é o comportamento projetado, não defeito. |
 | **Compliance PLD** | 🔴 | 🟢 | A evidência deixou de ser oca (bytes, hash no servidor, storage fail-closed, UI), a retenção conta do encerramento (022) e a detecção de atipicidade não depende mais de quando a varredura roda (023). Sem defeito aberto — o que falta é externo: parecer sobre o regime COAF, e agendar a varredura em vez de depender de clique. |
 | **Segurança e auditoria** | 🔴 | 🟢 | Guarda fail-closed ativa (o serviço roda em `production` agora), `/docs` e `/openapi.json` fora do ar, `/metrics` em 401, rate limiting ligado, auditoria paginada. O serviço duplicado foi **removido**. |
 | **Frontend** | 🔴 | 🟢 | `baseUrl` relativo provado no artefato (zero ocorrências de `localhost` no bundle), UI de identificação e de write-off, dicionário completo, retry preservando o corpo, feedback anunciado por `role="alert"`. 148 testes e 6 E2E. |
 | **Qualidade e CI** | 🟡 | 🟢 | Falha dura sem banco (exit 4), teste de sincronia das três fontes de schema, piso de cobertura, docker build com smoke test, e a suíte de concorrência dentro do pytest. |
-| **Infra e observabilidade** | 🔴 | 🟡 | `railway.json` versionado, health check em `/health/ready` provado no log, migrations em pré-deploy separado, logging emitindo, deploys rastreáveis por commit, e as quatro rotinas agendadas e verificadas em produção. O que o segura é mais fundo que "falta um canal de alerta": **nenhuma execução é registrada no banco**, então o sistema não sabe o próprio estado — não consegue dizer que o último backup foi há nove dias. Sem isso, qualquer alerta dependeria de alguém abrir o painel. E o serviço de cron **não reconstrói sozinho no push** (docs/OPERACAO.md). |
+| **Infra e observabilidade** | 🔴 | 🟢 | `railway.json` versionado, health check em `/health/ready` provado no log, migrations em pré-deploy separado, logging emitindo, deploys rastreáveis por commit, as quatro rotinas agendadas e **verificadas em produção**, e agora a trilha `execucao_rotina` (025): o sistema sabe o próprio estado e avisa na tela quando uma rotina atrasa. O relógio corre desde o último **sucesso** — é o que pega a rotina que roda e falha em silêncio. |
 
 ---
 
@@ -200,11 +221,10 @@ O que resta, em ordem:
    Hoje ele não reconstrói no push e pode executar código velho em silêncio —
    foi o que manteve o backup quebrado por duas rodadas depois de a correção já
    estar em produção.
-3. **Escolher um canal de alerta** — e-mail, Slack, o que for. Passou a ser
-   incremento, não pré-requisito: a lacuna anterior a essa é o sistema não
-   registrar as execuções, e essa é minha (em andamento). Sabendo o próprio
-   estado, ele mostra o atraso na tela; o canal serve para avisar quem não está
-   olhando.
+3. **Escolher um canal de alerta** — e-mail, Slack, o que for. Deixou de ser
+   pré-requisito: o sistema agora registra as execuções e mostra o atraso na
+   tela. O canal serve para avisar quem **não está olhando a tela**, e é a
+   última camada que falta.
 4. **Dados reais da ESC e capital social.** Irreversível na prática: o primeiro
    contrato sela razão social e CNPJ num documento imutável (OC017), e a
    primeira apuração sela a base tributária (OC016). É o passo que finalmente
