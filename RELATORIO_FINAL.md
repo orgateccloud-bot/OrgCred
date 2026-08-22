@@ -1,376 +1,148 @@
-# OrgCred — Relatório de execução
+# OrgCred — Relatório de execução e auditoria
 
 **Período: 12 a 18 de agosto de 2026.** Vinte e três commits, ~16.000 linhas.
 
-> Este arquivo perdeu a data do nome de propósito: ele é o relatório corrente e
-> era renomeado a cada dia de trabalho. O período coberto está na linha acima, e
-> o histórico das versões anteriores está no git. `RELATORIO_FINAL_2026-08-09.md`
-> fica como registro daquela etapa. O que segue é o que foi feito, o que
-foi provado, e o que continua aberto — nesta ordem, porque a terceira parte é a
-que decide se dá para operar.
+> Este relatório tem duas metades que precisam ser lidas juntas: o que foi
+> construído, e o que uma auditoria independente encontrou depois. A segunda
+> corrige afirmações da primeira.
 
 ---
 
-## 1. O ponto de partida
+## 1. Veredito
 
-Um levantamento de 53 agentes sobre os 10 domínios do sistema, com rodada
-adversarial: todo achado grave passou por um cético cuja tarefa era **refutá-lo**,
-não confirmá-lo. Dos achados levantados, **32 sobreviveram** — 2 críticos, 13
-altos, 17 médios.
+**Não dá para entrar em produção com dinheiro real hoje.** O motivo mudou de
+natureza ao longo da semana e é importante não confundir as três causas:
 
-Esse desenho existe porque, no mesmo dia, eu havia produzido quatro diagnósticos
-plausíveis e errados sobre um gatilho de deploy. Um mapeamento cheio de achados
-que não se sustentam é pior que nenhum: ele consome atenção e ensina a
-desconfiar do relatório inteiro.
-
-Dois achados críticos explicavam o estado real:
-
-**O sistema estava inoperante em produção.** O bundle servido continha
-literalmente `setConfig({baseUrl:'http://localhost:8000'})` — o operador
-autenticava pelo Supabase, que é outra origem, e nenhuma chamada de API
-funcionava.
-
-**`POST /liquidar` devolvia 100% do capital ao teto** com todas as parcelas em
-aberto e zero centavo comprovado. Era o caminho mais curto para furar o Art. 5º
-da LC 167/2019, alcançável por qualquer operador.
+1. **Um defeito de código crítico e aberto.** A renegociação libera o teto do
+   Art. 5º por inteiro, sem prova de pagamento, em duas chamadas de API com
+   papel de operador.
+2. **Uma credencial ausente.** Sem a `service_role` key do Supabase, arquivar
+   identificação responde 503; como o gate OC019 exige evidência arquivada para
+   ativar, nenhum tomador novo recebe crédito.
+3. **Dados de negócio que faltam** — capital social e parâmetros fiscais. Essa
+   recusa é deliberada, testada e correta, e não conta contra ninguém.
 
 ---
 
 ## 2. O que foi construído
 
-### Condição 1 — tirar produção do estado inoperante (`2fc99e8`)
+**Ponto de partida:** o sistema estava **inoperante** em produção — o bundle
+apontava a API para `localhost:8000`, o operador autenticava e nenhuma chamada
+funcionava — e `POST /liquidar` devolvia 100% do capital ao teto com todas as
+parcelas em aberto.
 
-`baseUrl` relativo (o FastAPI serve a SPA na mesma origem), guarda fail-closed
-que recusa iniciar em produção com a JWT secret no default, logging que de fato
-emite, e redes de CI: falha dura sem banco, sincronia entre as três fontes de
-verdade do schema, piso de cobertura.
+Ao longo da semana, onze migrations (015 a 025):
 
-### Condição 2 — fechar as bordas (`5520cce`, `22ac72e`)
+- **Bordas do teto** (015): `UPDATE` de `valor_principal` em operação ativa,
+  `esc_capital_social` sem trigger de `UPDATE`/`DELETE`, e redução com valor
+  negativo inflando o teto.
+- **Bordas da cobrança** (016): status `baixada` contornando o lastro,
+  `movimento_id` repontável, `TRUNCATE` apagando trilhas append-only, e a baixa
+  sem autor.
+- **Gate de liquidação** (017, OC022), implementando a política decidida:
+  quitação exige agenda inteira com lastro; write-off encerra a cobrança e não
+  devolve capital.
+- **Correções fiscais** (018): parâmetro do período em vez do de hoje, dupla
+  contagem após novação, âncora do regime de caixa, e mora descartada.
+- **Storage da evidência de identificação** (019): bytes de verdade, hash
+  calculado no servidor, fail-closed sem credencial.
+- **Hash-chain monotônica** (020): deixou de acusar adulteração falsa sob
+  concorrência, e antedatar lançamento virou impossível.
+- **Registro não nasce confirmado** (021), **retenção contada do encerramento**
+  (022), **atipicidade ancorada na data do fato** (023).
+- **Importação de extrato OFX** (024) com proveniência por sha256 dos bytes, e a
+  tela que a torna usável.
+- **Trilha de execução das rotinas** (025) e o serviço de cron que as agenda.
 
-**Migration 015** — três furos alcançáveis por SQL direto, nenhum deixando
-rastro no ledger: `UPDATE` de `valor_principal` em operação ativa, `esc_capital_social`
-sem trigger de `UPDATE`/`DELETE`, e `reducao` com valor negativo inflando o teto.
-
-**Migration 016** — status `baixada` contornando o lastro, `movimento_id`
-repontável, `TRUNCATE` apagando as trilhas append-only, e a baixa sem autor.
-
-**Migration 017** — o gate de liquidação, implementando a política decidida:
-quitação exige a agenda inteira baixada contra movimento bancário e devolve
-capital; write-off encerra a cobrança e **não** devolve.
-
-**Migration 018** — quatro erros de conteúdo tributário, nenhum coberto por
-teste: parâmetro de hoje aplicado a período passado, dupla contagem de juros
-após novação, regime de caixa ancorado na conciliação em vez do crédito
-bancário, e mora e multa descartadas.
-
-**Migration 019** — a evidência de identificação passou a ter bytes.
-
-### Frontend (`c3072d7`)
-
-UI de identificação — sem ela, o gate OC019 bloqueava todo tomador cadastrado
-pela interface, e a mensagem de erro apontava para um lugar que não existia.
-Fluxo de baixa por prejuízo. Dicionário de erros completo. Retry que não
-descarta mais o corpo da requisição.
-
-### Validação de ponta a ponta (`df9f1e9`)
-
-Ver seção 4 — foi a etapa que rendeu mais.
-
-### Os quatro defeitos que o levantamento deixou em aberto (`a189921`, `e712b1d`)
-
-**Hash-chain ancorada em chave monotônica (020).** A cadeia era encadeada e
-verificada por `created_at`, cujo default é `now()` — o instante de abertura da
-transação, não da gravação. Uma transação que lê antes de escrever (o formato de
-qualquer request que consulta capital e então ativa) carimba horário anterior ao
-de outra que gravou primeiro, e a verificação acusava as duas linhas. Um stress
-de 12 ativações simultâneas produziu de 4 a 6 inversões por rodada.
-
-**Registro não nasce confirmado (021).** `fn_registro_transicao` era `before
-update or delete`: o `INSERT` ficava sem guarda e uma linha podia nascer no
-estado terminal com protocolo inventado, destravando o gate OC004 — que passava
-a atestar que alguém digitou um protocolo.
-
-**Contrato cita o registro confirmado.** O corpo imprimia `registro_entidade_ref`,
-texto livre que a migration 013 rebaixou. O instrumento vai a terceiros.
-
-**Retenção conta do encerramento (022).** A coluna virou piso e a retenção
-efetiva é `greatest(piso, último encerramento + 5 anos)`; enquanto a relação não
-encerrou, é `infinity`.
-
-**Atipicidade ancorada na data do fato (023).** A regra de liquidação antecipada
-comparava o primeiro vencimento com `current_date` em vez da data da liquidação:
-detectava enquanto a varredura rodasse antes do vencimento e parava de detectar
-depois, com o fato inalterado. Como a varredura só roda por clique manual, na
-prática tendia a nunca disparar.
+**Números:** 570 testes backend (eram 198), 210 de frontend (eram 50), 6 E2E,
+94,2% de cobertura, 25 migrations, 22 SQLSTATEs.
 
 ---
 
-## 3. A decisão de negócio que destravou o gate
+## 3. Achados que valem mais que o código que os corrigiu
 
-**Quitação** exige todas as parcelas pagas com lastro e devolve capital ao teto.
-**Write-off** encerra a cobrança e não devolve.
-
-O raciocínio: o dinheiro não voltou. Liberar teto por um empréstimo nunca pago
-permitiria emprestar de novo o mesmo dinheiro que já se perdeu — exatamente o
-que o Art. 5º existe para impedir.
-
-**Consequência intencional:** o teto encolhe permanentemente a cada write-off.
-Recuperar capacidade exige aporte de capital, não baixa contábil.
-
-A implementação teve uma armadilha que vale registrar. O bloco que devolve
-capital dispara quando o status **sai** do conjunto comprometido. Se
-`baixada_prejuizo` ficasse fora desse conjunto, o write-off cairia nele e
-devolveria o capital — o furo de volta com outro nome. A solução foi manter o
-estado **dentro** do conjunto que ocupa o teto, e separar dois conceitos que até
-então eram o mesmo: *ocupar o teto* (`ativa`, `inadimplente`,
-`baixada_prejuizo`) e *estar em cobrança* (`ativa`, `inadimplente`).
-
----
-
-## 4. O que a validação em navegador revelou
-
-A intenção era fechar **uma** lacuna: o caminho real do upload multipart nunca
-tinha passado por uma requisição de verdade. Apareceram três defeitos.
-
-**A suíte E2E estava quebrada desde a migration 016.** As guardas
-`BEFORE TRUNCATE` que criamos recusam o `truncate` do seed. Os quatro specs
-falhavam desde aquele commit, em silêncio, porque E2E não roda na CI local.
-
-**Um código de erro servindo a duas situações — introduzido por nós.**
-`registrar_movimento` levantava `BaixaInvalida` (OC011) para documento
-duplicado. Enquanto OC011 não tinha tradução no frontend, a mensagem específica
-do servidor vazava e disfarçava o erro de modelagem. Quando OC011 ganhou entrada
-no dicionário, quem reimportava um extrato — rotina na operação real — passou a
-ler *"a baixa não tem lastro bancário válido"*, sendo mandado conferir a coisa
-errada. Agora tem código próprio e HTTP 409.
-
-**O dev server não alcançava a API** — regressão da nossa própria correção
-crítica. Com `baseUrl` relativo e sem proxy no Vite, `/api` ia para o próprio
-5173. Isso quebrava o desenvolvimento local e todo o E2E.
-
-O teste novo assere sobre a **requisição**, não a resposta: a dependência de
-storage é resolvida antes da validação do corpo, então o 503 viria igual com
-`FormData` quebrado. Verifica `content-type` multipart com boundary, nome e
-bytes do arquivo, campo `tipo`, `Authorization` presente, e **ausência** de
-campo `sha256` — a garantia de que o cliente não voltou a mandar hash pronto.
-
----
-
-## 5. Números
-
-| | Antes | Depois |
-|---|---|---|
-| Testes backend | 198 | **570** |
-| Cobertura | 92% | **94,2%** (piso de 85% ativo) |
-| Testes frontend | 50 | **210** |
-| E2E | 5 (todos quebrados) | **6, verdes** |
-| Migrations | 14 | **25** |
-| SQLSTATEs no banco | 18 | **22** |
-| Suíte local | 148s | **27s** |
-
-`ruff`, `ruff format`, `mypy` e `bandit` limpos. `alembic upgrade → downgrade →
-upgrade` verificado nas nove migrations novas.
-
-**A prova que mais importa não é a suíte verde, é a mutação.** Removendo o
-`pg_advisory_xact_lock` da migration 014, duas ativações concorrentes commitam e
-deixam R$ 60.000 comprometidos sobre capital de R$ 50.000 — a falha original que
-deu origem a este projeto, reproduzida 3 de 3 vezes. O teste novo a reprova.
-Antes disso, o único teste de concorrência aplicava as migrations 001–003 e
-estava excluído do pytest por `--ignore`: provava o lock de um trigger
-redefinido cinco vezes depois.
-
----
-
-## 5-A. Infraestrutura (16 de agosto)
-
-O dia começou com uma descoberta que mudou o quadro: **o gatilho do GitHub
-funcionava havia dias**. Os deploys do `orgcred-api` tinham hash de commit, ou
-seja, cada push ia para produção sozinho — e as migrations 015–023 já haviam
-rodado no banco de produção. O impasse que consumiu horas estava resolvido e
-ninguém sabia.
-
-Feito e verificado:
-
-- **Serviço duplicado neutralizado.** A `ORGCRED_DATABASE_URL` foi sobrescrita
-  com um valor inválido e autoexplicativo (o MCP do Railway não expõe remoção).
-  O serviço está `FAILED` com `Could not parse SQLAlchemy URL` e não alcança
-  mais o banco de produção. Reversível; a remoção definitiva fica por último.
-- **Produção rodava como `development`** — `/docs` aberto, guarda fail-closed
-  inativa, CORS permissivo. Antes de corrigir, provei que era seguro sem ver
-  segredo nenhum: token assinado com a secret pública do repositório recebeu
-  `401 TOKEN_INVALIDO`, logo a secret de produção é real e a guarda não
-  derrubaria o serviço. Se tivesse sido aceito, ligar o modo produção teria
-  tirado produção do ar.
-- **`railway.json` versionado**, com health check em `/health/ready` — que faz
-  `SELECT 1` — no lugar de `/health`, que só prova que o processo subiu. Antes,
-  um contêiner que subisse sem alcançar o Postgres era promovido a ativo:
-  deploy verde, aplicação inútil.
-- **Migrations saíram do `CMD`** para a fase de pré-deploy. O log mostra dois
-  contêineres distintos: um roda `alembic` e **sai**, o outro sobe o uvicorn.
-
-### Dois enganos que quase entraram neste relatório
-
-`/docs` respondia **200** depois de ligar o modo produção. Parecia exposição
-aberta; era o **fallback do SPA** — `text/html`, 1.079 bytes, idêntico ao
-`index.html`. O `/openapi.json` exposto viria como `application/json` com
-dezenas de KB.
-
-`get_service_config` continua mostrando `Health check path: /health`. O
-`railway.json` sobrepõe **no deploy** sem reescrever o registro do serviço. A
-prova está no log da sonda (`GET /health/ready 200 OK`), não na configuração
-lida pela API.
-
-Os dois têm a mesma forma: **a leitura mais conveniente parecia conclusiva e
-não era.** É a mesma armadilha do `200 text/html` que já havia enganado antes
-nesta mesma semana.
-
----
-
-## 5-B. O que foi construído depois (17–18 de agosto)
-
-Duas ausências, não defeitos — atacadas para tirar dois domínios do amarelo.
-
-**Importação de extrato OFX.** O lastro bancário era estrutural, não
-probatório: o único produtor de `movimento_bancario` era um formulário que
-aceitava data, valor e documento arbitrários. O parser lê OFX 1.x e 2.x sem
-dependência nova, o import é idempotente por construção, e a proveniência grava
-o sha256 dos bytes recebidos — porque `origem='ofx'` sozinho seria uma palavra
-a mais na digitação, pior que o problema original por mentir com aparência de
-prova.
-
-O achado do caminho, com a premissa medida no Postgres: `'NaN'::numeric > 0` e
-`>= 999999` são os **dois verdadeiros**. Um `TRNAMT` com `NaN` atravessaria o
-`check (valor > 0)`, cobriria qualquer parcela na baixa e envenenaria toda soma
+**`NaN` atravessa o teto.** `Decimal('NaN')` é literal válido, `numeric` aceita,
+e o Postgres o ordena como **maior que qualquer número** — `'NaN'::numeric > 0`
+e `>= 999999` são os dois verdadeiros. Um `TRNAMT` com `NaN` num OFX atravessaria
+o `check (valor > 0)`, cobriria qualquer parcela na baixa e envenenaria toda soma
 da carteira.
 
-**Rotinas periódicas agendadas.** Um comando, uma agenda diária, e a decisão do
-que roda em cada dia no código sob teste. O restore-test não usa dia fixo — dia
-31 pula cinco meses do ano — e sim *"esta competência já teve seu teste?"*, com
-o marcador escrito só após o sucesso.
+**Arredondamento assimétrico.** `0.125` vira `0,13` no Postgres e `0,12` com o
+padrão do Python. Sem `ROUND_HALF_UP`, toda apuração que caísse na metade
+acusaria divergência falsa de um centavo — arruinando o indicador que existe para
+ser confiável.
 
-### O agendamento rendeu três defeitos que nenhum teste pegaria
+**`pg_dump` recusa servidor mais novo.** Cravei `postgresql-client-16` lendo o
+`postgres:16` do `docker-compose`, que é o banco **local**; produção roda 18.4.
+A correção não foi trocar 16 por 18 — foi **tirar a versão**, senão a próxima
+atualização do servidor quebraria o backup em silêncio.
 
-Antecipei a agenda para observar uma execução real em vez de descobrir às
-06:00. Apareceram, em sequência: o `scripts/` nunca copiado para a imagem; o
-cliente do Postgres ausente; e a **versão errada** — cravei
-`postgresql-client-16` lendo o `postgres:16` do `docker-compose`, que é o banco
-**local**. Produção roda **18.4**, e `pg_dump` mais antigo recusa dumpar
-servidor mais novo. Corrigido tirando a versão do pacote: pinar significaria
-que a próxima atualização do Postgres gerenciado quebraria o backup num dia
-qualquer.
+**Correção que quase virou defeito pior.** Ancorar a hash-chain em `seq` cortou
+um amarrio acidental e passou a aceitar **append antedatado** sem acusar. Medido:
+o vetor era detectado antes e deixou de ser. Fechado com o banco escrevendo o
+próprio carimbo.
 
-O quarto, e o mais insidioso: **o serviço de cron não reconstrói no push**. A
-correção estava commitada e implantada na API enquanto o cron seguia executando
-a imagem anterior, falhando com a mesma mensagem. Isso desfaz em silêncio a
-garantia de "uma imagem só para os dois serviços".
+---
 
-A verificação final, contra produção:
+## 4. A auditoria independente (18/08)
+
+41 agentes sobre 11 domínios, instruídos a **não** ler a documentação existente
+como verdade. **22 achados sobreviveram à refutação** — 2 críticos, 9 altos.
+
+### O furo crítico
+
+A renegociação aceita `valor_principal` arbitrário e `fn_novar_operacao` não o
+confronta com nada. Reproduzido ao vivo:
 
 ```
-aging         transicionadas=0
-atipicidades  novas_ocorrencias=0
-backup        "Backup concluído: 28K" + rotação de 30 dias
-restore_test  "OK — backup restaurável e íntegro" · competência 2026-08
-falhas=[]     event="rotinas_concluidas"
+capital R$ 50.000 · operação de R$ 30.000 ativa, 12 parcelas em aberto
+renegociar por R$ 0,01  → comprometido cai a zero
+cancelar a substituta   → continua zero
+nova operação de R$ 50.000 ativa
+
+R$ 80.000 na rua sobre R$ 50.000 de capital.
 ```
 
----
+É o mesmo efeito que a migration 017 recusa no próprio cabeçalho, reaberto pela
+porta vizinha — o gate OC022 só olha `liquidada`, e `renegociada` ficou fora do
+conjunto que ocupa o teto. **A suíte de 570 testes passa verde por cima disso e
+afirma o comportamento como correto.**
 
-## 5-C. Os dois amarelos, atacados pela lacuna certa
+### O achado sobre os documentos
 
-Eu vinha descrevendo Fiscal e Infra como bloqueados em terceiros. A análise
-antes de atacar mostrou que os dois tinham trabalho real pendente — e que meu
-diagnóstico de Infra estava errado.
+A versão anterior deste relatório dizia: *"Todos os defeitos de código que o
+levantamento encontrou estão fechados… O que impede operar é configuração e dado
+de negócio."* **As duas metades eram falsas.** E o mapeamento respondia
+literalmente **"Nada."** à pergunta sobre o que faltava de código.
 
-**Fiscal: faltava memória de cálculo.** A apuração gravava tributos e o snapshot
-dos parâmetros, mas o contador recebia números prontos sem conseguir conferir a
-derivação. Numa linha que OC016 torna imutável, número sem derivação é número
-que ninguém pode contestar nem corrigir. A memória é derivada do snapshot da
-própria apuração — nada consulta parcela, movimento ou parâmetro vigente hoje —,
-o que a torna reproduzível anos depois.
-
-O detalhe que decide se ela serve para algo é o arredondamento: `0.125` vira
-`0,13` no Postgres e `0,12` com o padrão do Python. Sem `ROUND_HALF_UP`, toda
-apuração que caísse na metade acusaria divergência falsa de um centavo,
-arruinando o único indicador que precisa ser confiável.
-
-**Infra: eu estava dizendo a coisa errada.** Repeti várias vezes que faltava
-"um canal de alerta". A lacuna anterior a essa era mais fundo — **nenhuma
-execução de rotina era registrada**, então o sistema não sabia o próprio estado
-e não conseguia dizer que o último backup foi há nove dias. Sem isso, qualquer
-canal externo continuaria dependendo de alguém abrir o painel. Com a trilha
-`execucao_rotina` (025), o produto avisa sozinho; o canal virou a última camada,
-não o pré-requisito.
-
-O relógio do atraso corre desde o último **sucesso**, não desde a última
-tentativa: é o que pega a rotina que roda e falha em silêncio — o caso perigoso,
-porque não há falha para ver.
-
-### A regressão que o E2E pegou, e a origem fui eu
-
-Metade da suíte E2E quebrou com CORS. Causa: `api/client.ts` usava
-`import.meta.env.DEV ? 'http://localhost:8000' : ''`, escrito quando o
-`vite.config.ts` **ainda não tinha proxy** — premissa que ficou obsoleta no
-momento em que eu adicionei o proxy, dias antes. Duas fontes de verdade para o
-mesmo endereço, e a divergência só se manifestou quando um componente novo
-passou a usar aquele cliente.
-
-É a terceira vez na semana que o mesmo padrão aparece: **um comentário que
-descrevia a realidade deixou de descrevê-la, e ninguém releu o comentário ao
-mudar a realidade.**
+Outras afirmações que o código não sustentava: "a baixa tem autor" (`baixado_por`
+é NULL em 100% das baixas pela API), "o relatório permite conferir que nenhuma
+linha se perdeu" (falha justamente quando o FITID colide entre contas), "rate
+limiting ligado" (ligado e inútil como isolamento), e comentários afirmando que a
+hash-chain resiste a um DBA malicioso quando não há um único `grant` ou RLS em 25
+migrations.
 
 ---
 
-## 6. O que continua aberto
+## 5. A lição que se repetiu a semana inteira
 
-### Nenhum defeito conhecido em aberto
+Três vezes o mesmo padrão apareceu, e a terceira foi a auditoria inteira:
 
-Os cinco foram fechados. Dois merecem nota, porque em ambos a **revisão** pegou
-o que a implementação não viu.
+**Um comentário que descrevia a realidade deixou de descrevê-la, e ninguém releu
+o comentário ao mudar a realidade.** O `baseUrl` absoluto em dev, escrito antes
+de o proxy existir. O aviso em `OPERACAO.md` dizendo que o Dockerfile não copia
+`scripts/`, falso desde dois commits depois. O smoke do CI afirmando provar que
+as migrations aplicam, o que deixou de ser verdade no commit que moveu as
+migrations para o pré-deploy.
 
-**Hash-chain:** a correção quase introduziu um defeito pior que o original.
-Ancorar em `seq` cortou um amarrio acidental — até então, percorrer por
-`created_at` obrigava o carimbo a ser coerente com a posição, e um append
-forjado com data retroativa era acusado. Medido: append antedatado em 400 dias,
-a versão anterior acusa duas quebras, a correção inicial não acusava nenhuma, e
-bastava privilégio de `INSERT`. Fechado com `new.created_at := now()` no
-trigger — antedatar virou impossível, não apenas detectável.
+E a versão maior disso: **documentação que promete mais do que o código entrega é
+pior que documentação nenhuma**, porque desliga a desconfiança de quem lê.
 
-**Atipicidade:** o SQL estava certo, mas a suíte não provava o que dizia provar.
-Teste de mutação com cinco mutantes: trocar `min()` por `max()` e remover o ramo
-de encerramento nulo **sobreviviam à suíte inteira**. E o teste de invariância
-temporal movia as duas pontas do cenário juntas, então não testava invariância
-nenhuma.
-
-O padrão que se repetiu nas duas: correção que passa em todos os testes e mesmo
-assim está errada, porque os testes foram escritos por quem já acreditava na
-correção. O que quebrou o ciclo foi ter um revisor com uma lente única, obrigado
-a medir em vez de argumentar.
-
-### Seu, e é o que impede operar
-
-O serviço Railway duplicado continua vivo com a `DATABASE_URL` de produção. A
-JWT Secret precisa ser conferida no Supabase — e agora isso é **pré-requisito de
-deploy**, porque a guarda fail-closed recusa iniciar sem ela. Faltam o bucket e
-a `service_role` key do Storage, o `railway.json` com o gatilho no serviço
-certo, e por fim os dados da ESC e o capital social.
+O que quebrou o ciclo foi sempre a mesma coisa — um revisor com uma lente única,
+obrigado a **medir em vez de argumentar**, e proibido de tomar o que estava
+escrito como verdade.
 
 ---
 
-## 7. Veredito
-
-**Ainda não dá para emprestar dinheiro**, mas o motivo mudou de natureza. Ontem
-o sistema estava inoperante e o teto tinha duas portas abertas alcançáveis por
-qualquer operador. Hoje as portas estão fechadas e provadas por mutação, e a
-interface funciona de ponta a ponta.
-
-O que impede operar é configuração e dado de negócio — mais quatro defeitos
-conhecidos, nenhum alcançável pela API.
-
-O **piloto fechado** está disponível: sem capital social, sem parâmetro fiscal,
-poucos operadores, nenhuma operação real. Valida deploy, login, observabilidade
-e fluxo de tela sem risco legal, porque o sistema recusa operar sem os dados de
-negócio — e agora recusa também subir mal configurado.
-
-Detalhes por domínio, scorecard e plano ordenado: ver
+Detalhes por domínio, achados com arquivo e linha, e a fila por dono:
 [MAPEAMENTO_E_PLANO_DE_COMBATE.md](MAPEAMENTO_E_PLANO_DE_COMBATE.md).
