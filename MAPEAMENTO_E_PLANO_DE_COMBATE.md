@@ -4,6 +4,9 @@
 > com rodada adversarial: todo achado grave passou por um cético encarregado de
 > **refutá-lo**. **22 sobreviveram** — 2 críticos, 9 altos, 10 médios, 1 baixo.
 >
+> **Os dois críticos foram fechados** pela migration 026 (OC024) e verificados
+> por reprodução. Os nove altos seguem abertos.
+>
 > Os agentes foram instruídos a **não** ler a versão anterior deste documento
 > como verdade, e sim a olhar o código. Foi a decisão mais produtiva do
 > levantamento: a seção 4 existe por causa dela.
@@ -40,9 +43,18 @@ dele e afirma o comportamento como correto** — `test_capital_engine.py:972`
 renegocia 40.000 para 25.000 e assere `comprometido == 0` — e não existe um
 único teste do endpoint de renegociação.
 
-**Não é explorável em produção hoje**, porque o capital social é R$ 0,00 e não há
-operação nenhuma. Precisa estar fechado **antes** de o capital ser carregado —
-que é o último passo da fila de configuração.
+**FECHADO** pela migration 026 (OC024), em 2026-08-18. A regra: o comprometido
+não pode diminuir numa novação sem lastro — a substituta tem que cobrir o saldo
+devedor da original, calculado sobre `valor_amortizacao` e não sobre o valor
+cheio da parcela (usar o valor cheio creditaria juros pagos como devolução de
+principal, afrouxando o gate na direção do furo).
+
+Verificado por reprodução: a sequência acima é recusada e o comprometido segue
+em 30.000. Renegociação legítima preservada — alongar prazo, capitalizar juros e
+reduzir na medida do que foi pago continuam passando.
+
+**Quatro testes endossavam o furo**, não um. Todos reescritos para a nova
+realidade; nenhum apagado, porque apagar esconderia que o comportamento mudou.
 
 ---
 
@@ -61,8 +73,8 @@ Verde exige implementado **e** testado **e** sem achado confirmado em aberto.
 
 | Domínio | Nota | Por quê |
 |---|---|---|
-| **Capital e teto (Art. 5º)** | 🔴 | Saída livre pela novação, reproduzida. O resto é sólido: advisory lock provado sob concorrência, hash-chain em `seq` resistindo a inversão e a antedatação. |
-| **Operações e novação** | 🔴 | O mesmo furo pelo lado do ciclo de vida, mais uma falha alta independente: a substituta nasce em `registrada` — que não ocupa o teto — enquanto a original já saiu do comprometido **no mesmo comando**, sem prazo para ativá-la. |
+| **Capital e teto (Art. 5º)** | 🟢 | A saída pela novação foi **fechada e verificada** (026, OC024): reproduzi a sequência do furo e ela é recusada, com a mensagem dizendo o valor mínimo aceito. Somado ao advisory lock provado sob concorrência e à hash-chain resistindo a inversão e antedatação. |
+| **Operações e novação** | 🟢 | As duas portas do mesmo furo fechadas: o valor da substituta e a janela em que ela nascia sem ocupar o teto. Renegociação legítima preservada — alongar prazo, capitalizar juros e reduzir na medida do que foi amortizado com lastro continuam passando. |
 | **Cobrança** | 🔴 | Muito bem construído no banco: lastro em duas camadas, parser OFX puro com mais de 30 testes, proveniência com CHECK. Três altos, porém: `INSERT` em `parcela` sem guarda, `UPDATE` direto baixando sem cobertura de valor, e FITID colidindo entre contas descartando crédito real **com o relatório dizendo que nada faltou**. |
 | **Contratos e registro** | 🟡 | Hash calculado pelo banco (provado por INSERT com hash forjado — o banco recalculou), corpo determinístico, gate OC004 real. O registro segue forjável em dois comandos por `enviado_em` antedatado, e confirmar registro não grava autor. |
 | **Fiscal (Lucro Presumido)** | 🟡 | Núcleo sólido, as quatro correções da 018 são reais e testadas, a memória de cálculo confere. Todo excedente do crédito vira mora tributável — inclusive amortização de principal. E `parametro_fiscal` segue vazia, o que é recusa deliberada. |
