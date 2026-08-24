@@ -24,9 +24,11 @@ from app.core.exceptions import (
     LiquidacaoSemQuitacao,
     MunicipioNaoAutorizado,
     NovacaoForaDaTransacaoAtomica,
+    NovacaoSemLastro,
     OperacaoNaoEncontrada,
     ReducaoCapitalBloqueada,
     RegistroEntidadeAusente,
+    RegraNegocioViolada,
     TetoCapitalExcedido,
     TransicaoInvalida,
 )
@@ -956,12 +958,21 @@ class TestInadimplenteComprometeCapital:
 
 
 class TestNovacaoAtomica:
+    """A novacao depois da migration 026: criar a substituta NAO baixa a
+    original, e a troca acontece na ATIVACAO da substituta.
+
+    Ate a 026 a original saia do comprometido no ato da chamada e a substituta
+    nascia sem ocupar nada — entre os dois atos o teto ficava livre com o
+    dinheiro na rua. Agora a original continua no comprometido, no aging e em
+    cobranca ate a substituta passar pelos gates de ativacao, e a troca
+    (original -> renegociada, substituta -> ativa) acontece num commit so.
+    """
+
     def test_renegociar_direto_e_bloqueado(
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
     ) -> None:
-        """Sem a novacao atomica, a original sairia do comprometido e nada
-        impediria criar a substituta depois — capital contado duas vezes em
-        janelas diferentes."""
+        """Marcar 'renegociada' a mao tiraria a original do comprometido sem
+        nada entrar no lugar — o furo inteiro em um UPDATE."""
         op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
         ativar_operacao(db_session, op_id)
 
@@ -969,16 +980,26 @@ class TestNovacaoAtomica:
             transicionar_operacao(db_session, op_id, "renegociada")
         assert sqlstate_de(exc.value) == "OC008"
 
-    def test_novacao_baixa_original_e_cria_substituta(
+    def test_novacao_cria_substituta_sem_baixar_a_original(
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
     ) -> None:
+        """O teste que ENDOSSAVA o furo, reescrito para a nova realidade.
+
+        Ele afirmava `original == 'renegociada'` e `comprometido == 0` logo
+        apos a chamada de novacao — ou seja, afirmava que renegociar libera o
+        teto sem um centavo ter voltado. Era a assinatura do defeito escrita
+        como expectativa.
+
+        O que a 026 garante: a chamada cria o contrato substituto e mais nada.
+        Nenhum capital se move, porque nenhum dinheiro se moveu.
+        """
         op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
         ativar_operacao(db_session, op_id)
 
         nova = novar_operacao(
             db_session,
             op_id,
-            valor_principal=Decimal("25000"),
+            valor_principal=Decimal("40000"),
             taxa_juros_mensal=Decimal("2.5"),
             sistema_amortizacao="PRICE",
             numero_parcelas=24,
@@ -988,26 +1009,42 @@ class TestNovacaoAtomica:
         original = db_session.execute(
             text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
         ).scalar_one()
-        assert original == "renegociada"
+        assert original == "ativa", (
+            "a original saiu do comprometido no ato da novacao — e nada entrou no lugar, "
+            "porque a substituta nasce em 'registrada'."
+        )
         assert nova.status == "registrada"
         assert str(nova.substitui_operacao_id) == str(op_id)
 
-        # A substituta ainda NAO compromete: nasce em 'registrada'.
-        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+        # O teto nao se moveu: e a original que continua ocupando os 40.000.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("40000.00")
 
-    def test_novacao_registra_evento_de_saida_no_ledger(
+        # E ela continua em cobranca — sob o desenho antigo, 'renegociada' saia
+        # do aging e a substituta 'registrada' nunca entrava: ninguem cobrava.
+        assert (
+            db_session.execute(
+                text("select count(*) from v_aging_operacoes where operacao_id = :i"),
+                {"i": str(op_id)},
+            ).scalar_one()
+            == 1
+        )
+
+    def test_novacao_nao_grava_evento_no_ledger(
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
     ) -> None:
-        """A renegociacao move capital (libera a original), entao TEM que
-        aparecer no ledger — antes da 006 nao aparecia, e a serie temporal
-        do dashboard mentia."""
+        """A chamada de novacao nao move capital, entao nao tem o que gravar.
+
+        Antes da 026 ela gravava 'renegociacao' na hora — um evento de SAIDA
+        de capital para um ato em que nenhum real voltou, e a serie temporal
+        do dashboard mostrava capital livre que nao existia.
+        """
         op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
         ativar_operacao(db_session, op_id)
 
         novar_operacao(
             db_session,
             op_id,
-            valor_principal=Decimal("10000"),
+            valor_principal=Decimal("30000"),
             taxa_juros_mensal=Decimal("2.0"),
             sistema_amortizacao="SAC",
             numero_parcelas=12,
@@ -1015,29 +1052,77 @@ class TestNovacaoAtomica:
 
         eventos = (
             db_session.execute(
-                text(
-                    "select evento_tipo from capital_ledger where operacao_id = :i"
-                    " order by created_at"
-                ),
+                text("select evento_tipo from capital_ledger where operacao_id = :i order by seq"),
                 {"i": str(op_id)},
             )
             .scalars()
             .all()
         )
-        assert eventos == ["ativacao_operacao", "renegociacao"]
+        assert eventos == ["ativacao_operacao"]
+
+    def test_ativar_a_substituta_faz_a_troca_num_commit_so(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A troca: a original sai e a substituta entra no MESMO commit.
+
+        Os dois eventos do ledger contam os dois lados, na ordem em que a
+        troca aconteceu. A ordenacao e por `seq` (migration 020) e nao por
+        `created_at`: dentro de uma transacao `now()` e o mesmo instante para
+        as duas linhas, e ordenar por ele deixaria a prova ao acaso do uuid.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("30000"),
+            taxa_juros_mensal=Decimal("2.0"),
+            sistema_amortizacao="SAC",
+            numero_parcelas=18,
+            registro_entidade_ref="REG-NOVA",
+        )
+        confirmar_registro(db_session, nova.id)
+        ativar_operacao(db_session, nova.id)
+
+        assert (
+            db_session.execute(
+                text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
+            ).scalar_one()
+            == "renegociada"
+        )
+
+        eventos = db_session.execute(
+            text("select evento_tipo, operacao_id from capital_ledger order by seq")
+        ).all()
+        assert [(e.evento_tipo, str(e.operacao_id)) for e in eventos] == [
+            ("ativacao_operacao", str(op_id)),
+            ("renegociacao", str(op_id)),
+            ("ativacao_operacao", str(nova.id)),
+        ]
+
+        # Um titulo trocado por outro do mesmo valor nao muda o teto.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("30000.00")
 
     def test_sem_dupla_contagem_ao_ativar_a_substituta(
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
     ) -> None:
-        """O teste central da novacao: 40.000 originais + 25.000 substitutos
-        NAO podem somar 65.000 de comprometido."""
+        """O teste central da novacao: 40.000 originais trocados por 40.000
+        substitutos NAO podem somar 80.000 de comprometido.
+
+        O risco e o inverso do furo da 026 e nasce do proprio conserto: se a
+        original nao saisse do comprometido DENTRO do gate de ativacao, a
+        substituta seria somada por cima dela e uma troca pelo mesmo valor
+        morreria no teto (OC001) — recusa espuria no caminho feliz mais comum
+        da renegociacao.
+        """
         op_id = _criar_operacao(db_session, tomador_autorizado, 40000)
         ativar_operacao(db_session, op_id)
 
         nova = novar_operacao(
             db_session,
             op_id,
-            valor_principal=Decimal("25000"),
+            valor_principal=Decimal("40000"),
             taxa_juros_mensal=Decimal("2.5"),
             sistema_amortizacao="PRICE",
             numero_parcelas=24,
@@ -1047,7 +1132,7 @@ class TestNovacaoAtomica:
         confirmar_registro(db_session, nova.id)
         ativar_operacao(db_session, nova.id)
 
-        assert consultar_capital_snapshot(db_session).comprometido == Decimal("25000.00")
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("40000.00")
 
     def test_novacao_de_operacao_nao_renegociavel_e_recusada(
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
@@ -1059,7 +1144,7 @@ class TestNovacaoAtomica:
             novar_operacao(
                 db_session,
                 op_id,
-                valor_principal=Decimal("1000"),
+                valor_principal=Decimal("5000"),
                 taxa_juros_mensal=Decimal("1.0"),
                 sistema_amortizacao="PRICE",
                 numero_parcelas=6,
@@ -1068,7 +1153,9 @@ class TestNovacaoAtomica:
     def test_novacao_de_inadimplente_e_permitida(
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
     ) -> None:
-        """Renegociar um inadimplente e o caso de uso mais comum de novacao."""
+        """Renegociar um inadimplente e o caso de uso mais comum de novacao —
+        e o que mais precisa do gate, porque e onde a tentacao de 'zerar a
+        divida no papel' aparece."""
         op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
         ativar_operacao(db_session, op_id)
         transicionar_operacao(db_session, op_id, "inadimplente")
@@ -1083,8 +1170,581 @@ class TestNovacaoAtomica:
         )
 
         assert nova.status == "registrada"
-        # A original saiu do comprometido; a substituta ainda nao entrou.
+        # A original continua inadimplente e continua ocupando o teto: nada
+        # foi pago, entao nada foi liberado.
+        assert (
+            db_session.execute(
+                text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
+            ).scalar_one()
+            == "inadimplente"
+        )
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("20000.00")
+
+
+# ---------------------------------------------------------------------------
+# O furo da novacao sem lastro — migration 026
+#
+# `fn_novar_operacao` (migrations/006:224) aceitava `p_valor_principal`
+# arbitrario e nao o confrontava com NADA: nem com o principal da original,
+# nem com o que foi efetivamente amortizado contra movimento bancario.
+# Renegociar R$ 30.000 por R$ 0,01, com as doze parcelas em aberto e zero
+# centavo comprovado, era um `update ... set status='renegociada'` que caia no
+# bloco de SAIDA do trigger do teto e devolvia os R$ 30.000 inteiros ao capital
+# disponivel.
+#
+# E EXATAMENTE O EFEITO QUE A 017 RECUSA NO PROPRIO CABECALHO — "liberar teto
+# por um emprestimo que nunca foi pago permitiria emprestar de novo o mesmo
+# dinheiro que ja se perdeu". A 017 fechou a porta da frente (`liquidar` deixou
+# de devolver capital sem a agenda baixada, OC022) e deixou esta aberta: aquele
+# gate olha `new.status = 'liquidada'`, e 'renegociada' ficou fora do conjunto
+# que ocupa o teto. Mesma perda, mesma devolucao indevida, outro verbo.
+#
+# Os testes abaixo NAO sao furos diferentes: sao a mesma falha medida em dois
+# pontos — no comprometido (o instrumento) e no dinheiro na rua (o fato) — e
+# pelas duas portas que a 026 fecha, o VALOR e a JANELA.
+# ---------------------------------------------------------------------------
+
+
+def _principal_na_rua(db_session: Session) -> Decimal:
+    """Principal que SAIU do caixa e ainda nao voltou, medido pela agenda.
+
+    Nao pergunta o status da operacao — e justamente o status que o furo
+    manipula. Pergunta pela parcela em aberto, que so existe porque a operacao
+    foi ATIVADA (a agenda nasce na ativacao, migration 007) e so deixa de estar
+    aberta contra movimento bancario (`fn_baixar_parcela`, migration 009). Uma
+    operacao com parcela aberta e dinheiro na rua, esteja ela 'ativa',
+    'inadimplente' ou carimbada de 'renegociada' por uma substituta de um
+    centavo que ninguem chegou a ativar.
+
+    NOTA DE USO, para quem for reaproveitar: a agenda da original NAO e apagada
+    quando a novacao se consuma (a 007 a torna imutavel, e ela e a prova
+    documental do que foi acordado), entao depois de uma troca CONCLUIDA esta
+    funcao conta a original e a substituta juntas. Ela serve para medir o furo
+    — cenarios em que a troca NAO se consumou —, nao para auditar o caminho
+    feliz.
+    """
+    return Decimal(
+        db_session.execute(
+            text(
+                """
+                select coalesce(sum(o.valor_principal), 0)
+                from operacao_credito o
+                where exists (
+                    select 1 from parcela p
+                    where p.operacao_id = o.id and p.status = 'aberta'
+                )
+                """
+            )
+        ).scalar_one()
+    )
+
+
+class TestNovacaoSemLastroNaoLiberaTeto:
+    """A regra: O COMPROMETIDO NAO PODE DIMINUIR NUMA NOVACAO SEM LASTRO.
+
+    Decorre da politica de liquidacao ja adotada (DECISOES_PENDENTES.md secao
+    6): write-off nao devolve capital porque o dinheiro nao voltou. A novacao e
+    a mesma pergunta com outra roupa — se o principal nao foi amortizado contra
+    movimento bancario, o montante continua consumido pela operacao e a
+    substituta tem que cobrir o saldo devedor da original. Reducao so e
+    legitima na medida do que foi efetivamente pago; capitalizar juros
+    (substituta MAIOR) segue livre, porque o teto e conferido na ativacao dela.
+    """
+
+    def test_novacao_por_valor_irrisorio_e_recusada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Renegociar 30.000 por 0,01 com as doze parcelas em aberto.
+
+        Zero centavo comprovado no extrato. Antes da 026 o comprometido caia de
+        30.000 para 0 — o banco declarava livre um capital que continuava na
+        rua.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("30000.00")
+
+        # Nenhuma parcela baixada: nada foi amortizado contra movimento bancario.
+        abertas = db_session.execute(
+            text("select count(*) from parcela where operacao_id = :i and status = 'aberta'"),
+            {"i": str(op_id)},
+        ).scalar_one()
+        assert abertas == 12
+
+        with pytest.raises(NovacaoSemLastro) as exc:
+            novar_operacao(
+                db_session,
+                op_id,
+                valor_principal=Decimal("0.01"),
+                taxa_juros_mensal=Decimal("2.5"),
+                sistema_amortizacao="PRICE",
+                numero_parcelas=12,
+                registro_entidade_ref="REG-NOVA",
+            )
+        assert sqlstate_de(exc.value) == "OC024"
+        # A mensagem tem que carregar as saidas — um 422 que so diz "nao pode"
+        # deixa o operador sem proximo passo.
+        assert "baixada_prejuizo" in str(exc.value)
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("30000.00")
+        assert (
+            db_session.execute(
+                text("select count(*) from operacao_credito where substitui_operacao_id = :i"),
+                {"i": str(op_id)},
+            ).scalar_one()
+            == 0
+        ), "a substituta subfaturada foi criada mesmo assim — um contrato que ja nasce impossivel."
+
+    def test_novacao_irrisoria_nao_poe_80_mil_na_rua_sobre_50_mil_de_capital(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A sequencia inteira, toda ela pelo caminho real — ativar, renegociar
+        por valor irrisorio, cancelar a substituta, ativar uma nova operacao
+        pelo capital inteiro. Sem SQL direto e sem ma-fe aparente.
+
+        Sobre R$ 50.000 de capital social o sistema aceitava R$ 80.000 na rua:
+        os 30.000 originais, que ninguem pagou e cuja agenda continua inteira em
+        aberto, mais 50.000 novos. E a violacao direta do Art. 5o da LC
+        167/2019 — emprestar alem do capital proprio — que o teto existe para
+        impedir.
+
+        O teste tolera QUALQUER mecanismo de correcao: envolve a novacao e a
+        ativacao em `except` e assere sobre o ESTADO final. Recusar a novacao
+        subfaturada satisfaz a lei; aceita-la mantendo o comprometido de pe
+        tambem. O que nenhum dos dois pode e terminar com o capital declarado
+        livre para emprestar de novo o dinheiro que continua na rua.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+        assert _principal_na_rua(db_session) == Decimal("30000.00")
+
+        nova = None
+        try:
+            nova = novar_operacao(
+                db_session,
+                op_id,
+                valor_principal=Decimal("0.01"),
+                taxa_juros_mensal=Decimal("2.5"),
+                sistema_amortizacao="PRICE",
+                numero_parcelas=12,
+                registro_entidade_ref="REG-NOVA",
+            )
+        except RegraNegocioViolada:
+            pass
+
+        if nova is not None:
+            # A substituta some antes de ser ativada; o teto que a original
+            # liberou nao volta com ela.
+            transicionar_operacao(db_session, nova.id, "cancelada")
+
+        outra = _criar_operacao(db_session, tomador_autorizado, 50000)
+        try:
+            ativar_operacao(db_session, outra)
+        except TetoCapitalExcedido:
+            # O teto recusando a segunda operacao e o desfecho correto.
+            pass
+
+        capital = consultar_capital_snapshot(db_session)
+        assert _principal_na_rua(db_session) <= Decimal("50000.00")
+        assert capital.comprometido <= Decimal("50000.00")
+        assert capital.disponivel >= Decimal("0")
+
+    def test_cancelar_a_substituta_nao_libera_o_teto(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A JANELA, isolada do valor: a substituta cobre o saldo devedor
+        inteiro e mesmo assim e cancelada antes de ativar.
+
+        Era o segundo lado do mesmo furo — a substituta nascia em 'registrada',
+        que nao ocupa o teto, enquanto a original saia do comprometido no MESMO
+        comando, sem prazo para ativar a substituta. Bastava novar pelo valor
+        cheio e cancelar para liberar 30.000 com o dinheiro na rua. Corrigir so
+        o valor deixaria esta porta aberta.
+
+        Com o desenho da 026, cancelar a substituta e INOFENSIVO e nao precisou
+        de regra nova: a original nunca chegou a sair.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("30000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=24,
+            registro_entidade_ref="REG-NOVA",
+        )
+        transicionar_operacao(db_session, nova.id, "cancelada")
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("30000.00")
+        assert (
+            db_session.execute(
+                text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
+            ).scalar_one()
+            == "ativa"
+        )
+        # E a divida velha continua exigivel — ninguem parou de cobrar.
+        assert (
+            db_session.execute(
+                text("select count(*) from v_aging_operacoes where operacao_id = :i"),
+                {"i": str(op_id)},
+            ).scalar_one()
+            == 1
+        )
+
+    def test_substituta_encolhida_depois_de_criada_e_recusada_na_ativacao(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Por que o gate de valor e conferido DUAS vezes.
+
+        A 015 congela os campos economicos de quem OCUPA o teto — e uma
+        substituta pendente esta em 'registrada', que nao ocupa. Novar pelo
+        valor cheio e depois `update ... set valor_principal = 0.01` na
+        substituta reabriria o furo inteiro por uma linha de SQL, se a
+        conferencia so existisse no momento da novacao.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("30000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=24,
+            registro_entidade_ref="REG-NOVA",
+        )
+        confirmar_registro(db_session, nova.id)
+
+        db_session.execute(
+            text("update operacao_credito set valor_principal = 0.01 where id = :i"),
+            {"i": str(nova.id)},
+        )
+        db_session.commit()
+
+        with pytest.raises(NovacaoSemLastro) as exc:
+            ativar_operacao(db_session, nova.id)
+        assert sqlstate_de(exc.value) == "OC024"
+
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("30000.00")
+        assert (
+            db_session.execute(
+                text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
+            ).scalar_one()
+            == "ativa"
+        )
+
+    def test_substituta_orfa_nao_pode_ser_ativada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A original saiu do comprometido por outro caminho: nao ha lugar a
+        ceder, e ativar a substituta seria credito NOVO com nome de novacao.
+
+        Aqui a original e quitada com lastro entre a novacao e a ativacao —
+        caminho perfeitamente legitimo, que devolve os 30.000 ao teto. A
+        substituta, se ativada em cima disso, somaria 30.000 por fora da conta
+        que o teto faz.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("30000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=24,
+            registro_entidade_ref="REG-NOVA",
+        )
+        confirmar_registro(db_session, nova.id)
+
+        assert quitar_operacao(db_session, op_id) == 12
+        transicionar_operacao(db_session, op_id, "liquidada")
         assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+
+        with pytest.raises(NovacaoSemLastro) as exc:
+            ativar_operacao(db_session, nova.id)
+        assert sqlstate_de(exc.value) == "OC024"
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("0")
+
+    def test_substituta_de_original_baixada_como_prejuizo_e_recusada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O OUTRO subcaso da orfa, e o unico em que a original recusada AINDA
+        OCUPA o teto — por isso ele existe separado do teste acima.
+
+        'baixada_prejuizo' esta no conjunto do comprometido desde a 017: e
+        disso que depende a regra de que write-off nao devolve capital. Aqui a
+        recusa nao e por falta de lugar a ceder, e pelo contrario — a perda ja
+        foi reconhecida, os 20.000 seguem consumindo o teto e nao voltam, e
+        ativar a substituta ressuscitaria como titulo novo uma divida morta,
+        somando o mesmo dinheiro duas vezes (20.000 de prejuizo + 20.000 de
+        substituta = 40.000 sobre 20.000 que sairam do caixa uma vez so).
+
+        A MENSAGEM E PARTE DO INVARIANTE: um 422 que dissesse a este operador
+        que a original 'ja nao ocupa o teto' estaria mentindo sobre o motivo da
+        recusa e o mandaria procurar o erro no lugar errado.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 20000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("20000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=24,
+            registro_entidade_ref="REG-NOVA",
+        )
+        confirmar_registro(db_session, nova.id)
+
+        transicionar_operacao(db_session, op_id, "baixada_prejuizo")
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("20000.00")
+
+        with pytest.raises(NovacaoSemLastro) as exc:
+            ativar_operacao(db_session, nova.id)
+        assert sqlstate_de(exc.value) == "OC024"
+        assert "baixada como prejuízo" in str(exc.value)
+        assert "já não ocupa o teto" not in str(exc.value)
+
+        # O prejuizo continua consumindo o teto, e nada entrou em cima dele.
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("20000.00")
+        assert (
+            db_session.execute(
+                text("select status from operacao_credito where id = :i"), {"i": str(nova.id)}
+            ).scalar_one()
+            == "registrada"
+        )
+
+    def test_segunda_substituta_pendente_e_recusada(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Duas substitutas pendentes sobre a mesma original seriam duas trocas
+        pelo mesmo lugar: ativada a primeira, a segunda viraria dinheiro novo.
+
+        OC003 e nao OC024: aqui nao falta lastro, falta resolver um conflito de
+        estado — e ele se resolve cancelando a pendente, coisa que a 026 tornou
+        inofensiva.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+
+        primeira = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("30000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=24,
+            registro_entidade_ref="REG-NOVA",
+        )
+
+        with pytest.raises(TransicaoInvalida) as exc:
+            novar_operacao(
+                db_session,
+                op_id,
+                valor_principal=Decimal("30000"),
+                taxa_juros_mensal=Decimal("2.0"),
+                sistema_amortizacao="SAC",
+                numero_parcelas=18,
+                registro_entidade_ref="REG-NOVA-2",
+            )
+        assert sqlstate_de(exc.value) == "OC003"
+
+        # Cancelada a pendente, renegociar de novo volta a ser possivel.
+        transicionar_operacao(db_session, primeira.id, "cancelada")
+        segunda = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("30000"),
+            taxa_juros_mensal=Decimal("2.0"),
+            sistema_amortizacao="SAC",
+            numero_parcelas=18,
+            registro_entidade_ref="REG-NOVA-2",
+        )
+        assert segunda.status == "registrada"
+
+
+def _amortizado_com_lastro(db_session: Session, operacao_id: uuid.UUID) -> Decimal:
+    """Principal ja devolvido: soma de `valor_amortizacao` das parcelas pagas
+    COM movimento bancario — a mesma conta de `fn_saldo_devedor_com_lastro`.
+
+    Lida do banco em vez de escrita a mao no teste porque a decomposicao
+    PRICE/SAC e do gerador de agenda (007): um numero fixo aqui provaria a
+    aritmetica do teste, nao a do sistema. E e justamente essa decomposicao que
+    o gate depende — usar `valor_total` creditaria juros como principal.
+    """
+    return Decimal(
+        db_session.execute(
+            text(
+                "select coalesce(sum(valor_amortizacao), 0) from parcela "
+                "where operacao_id = :i and status = 'paga' and movimento_id is not null"
+            ),
+            {"i": str(operacao_id)},
+        ).scalar_one()
+    )
+
+
+class TestRenegociacaoLegitimaContinuaFuncionando:
+    """O caminho feliz, que importa tanto quanto o gate.
+
+    Renegociar e operacao LEGITIMA e frequente — e o instrumento normal para
+    tratar um tomador em dificuldade. Um gate que so soubesse dizer "nao"
+    empurraria a ESC para a unica alternativa que sobra, que e a inadimplencia
+    seguida de write-off: pior para o tomador, pior para o capital e pior para
+    o balanco. Os quatro casos abaixo sao os que precisam continuar passando.
+    """
+
+    def test_alongar_prazo_pelo_mesmo_valor(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """O caso mais comum: mesma divida, mais parcelas, prestacao menor.
+        Nao move um centavo de principal e nao pode ser recusado."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("30000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=36,
+            registro_entidade_ref="REG-NOVA",
+        )
+        confirmar_registro(db_session, nova.id)
+        ativar_operacao(db_session, nova.id)
+
+        assert nova.numero_parcelas == 36
+        assert (
+            len(
+                db_session.execute(
+                    text("select id from parcela where operacao_id = :i"), {"i": str(nova.id)}
+                ).all()
+            )
+            == 36
+        )
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("30000.00")
+
+    def test_mudar_a_taxa_pelo_mesmo_valor(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Reduzir juros e concessao sobre RECEITA FUTURA, nao sobre principal:
+        o dinheiro na rua e o mesmo, e o teto nao tem por que se mover."""
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("30000"),
+            taxa_juros_mensal=Decimal("0.8"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=12,
+            registro_entidade_ref="REG-NOVA",
+        )
+        confirmar_registro(db_session, nova.id)
+        ativar_operacao(db_session, nova.id)
+
+        assert nova.taxa_juros_mensal == Decimal("0.80")
+        assert consultar_capital_snapshot(db_session).comprometido == Decimal("30000.00")
+
+    def test_capitalizar_juros_substituta_maior(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """Incorporar juros vencidos ao principal: a substituta e MAIOR que a
+        original, e isso continua livre.
+
+        O gate da 026 e um PISO, nao um teto — quem cuida do lado de cima e o
+        gate do Art. 5o, conferido na ativacao da substituta como em qualquer
+        outra: os 34.000 cabem nos 50.000 de capital porque a original saiu do
+        comprometido no mesmo commit.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=Decimal("34000"),
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=24,
+            registro_entidade_ref="REG-NOVA",
+        )
+        confirmar_registro(db_session, nova.id)
+        ativar_operacao(db_session, nova.id)
+
+        capital = consultar_capital_snapshot(db_session)
+        assert capital.comprometido == Decimal("34000.00")
+        assert capital.disponivel == Decimal("16000.00")
+
+    def test_reducao_na_medida_exata_do_que_foi_amortizado(
+        self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
+    ) -> None:
+        """A substituta PODE ser menor — na medida do principal efetivamente
+        devolvido, e nem um centavo alem.
+
+        Tres das doze parcelas baixadas contra movimento bancario. O piso e o
+        principal amortizado, medido por `valor_amortizacao`: usar o valor
+        cheio da parcela creditaria os juros como se fossem devolucao de
+        principal e deixaria a substituta descer mais do que o tomador pagou —
+        que e o furo, em versao proporcional.
+        """
+        op_id = _criar_operacao(db_session, tomador_autorizado, 30000)
+        ativar_operacao(db_session, op_id)
+        baixar_parcelas(db_session, op_id, [1, 2, 3])
+
+        amortizado = _amortizado_com_lastro(db_session, op_id)
+        saldo_devedor = Decimal("30000.00") - amortizado
+        pago_com_juros = Decimal(
+            db_session.execute(
+                text(
+                    "select coalesce(sum(valor_total), 0) from parcela "
+                    "where operacao_id = :i and status = 'paga'"
+                ),
+                {"i": str(op_id)},
+            ).scalar_one()
+        )
+        # O cenario so prova algo se as duas medidas divergirem: e a diferenca
+        # entre elas que o gate tem que respeitar.
+        assert Decimal("0") < amortizado < pago_com_juros
+
+        # Um centavo abaixo do saldo devedor ainda e recusado.
+        with pytest.raises(NovacaoSemLastro) as exc:
+            novar_operacao(
+                db_session,
+                op_id,
+                valor_principal=saldo_devedor - Decimal("0.01"),
+                taxa_juros_mensal=Decimal("2.5"),
+                sistema_amortizacao="PRICE",
+                numero_parcelas=12,
+                registro_entidade_ref="REG-NOVA",
+            )
+        assert sqlstate_de(exc.value) == "OC024"
+
+        # No saldo devedor exato, passa — e a troca devolve ao teto exatamente
+        # o que foi pago, nem mais nem menos.
+        nova = novar_operacao(
+            db_session,
+            op_id,
+            valor_principal=saldo_devedor,
+            taxa_juros_mensal=Decimal("2.5"),
+            sistema_amortizacao="PRICE",
+            numero_parcelas=12,
+            registro_entidade_ref="REG-NOVA",
+        )
+        confirmar_registro(db_session, nova.id)
+        ativar_operacao(db_session, nova.id)
+
+        capital = consultar_capital_snapshot(db_session)
+        assert capital.comprometido == saldo_devedor
+        assert capital.disponivel == Decimal("50000.00") - saldo_devedor
 
 
 # ---------------------------------------------------------------------------
@@ -1378,21 +2038,26 @@ class TestOperacaoComprometidaEhImutavel:
         self, db_session: Session, tomador_autorizado: uuid.UUID, capital_constituido: None
     ) -> None:
         """Caminho feliz que fecha o argumento: o congelamento nao impede
-        renegociar, so obriga a fazer pela porta que baixa a original e cria a
-        substituta sob o mesmo lock, na mesma transacao."""
+        renegociar, so obriga a fazer pela porta que amarra a substituta a
+        original sob o mesmo lock, na mesma transacao.
+
+        A substituta e MAIOR que a original (capitalizacao de juros): desde a
+        migration 026 ela nao pode ser menor que o saldo devedor com lastro, e
+        aqui nada foi amortizado. O ponto do teste continua sendo o mesmo — o
+        valor economico da operacao muda por novacao, nunca por UPDATE."""
         op_id = _criar_operacao(db_session, tomador_autorizado, 30_000)
         ativar_operacao(db_session, op_id)
 
         nova = novar_operacao(
             db_session,
             op_id,
-            valor_principal=Decimal("12000"),
+            valor_principal=Decimal("32000"),
             taxa_juros_mensal=Decimal("1.5"),
             sistema_amortizacao="PRICE",
             numero_parcelas=18,
         )
 
-        assert nova.valor_principal == Decimal("12000.00")
+        assert nova.valor_principal == Decimal("32000.00")
         assert str(nova.substitui_operacao_id) == str(op_id)
 
 

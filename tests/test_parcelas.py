@@ -182,14 +182,19 @@ def test_novacao_gera_agenda_propria_para_a_substituta(
     db_session, tomador_autorizado, capital_constituido
 ):
     """A substituta é outra operação, com outras condições: ativá-la emite
-    a agenda dela, e a da original permanece intacta como histórico."""
+    a agenda dela, e a da original permanece intacta como histórico.
+
+    O valor é o mesmo da original de propósito: desde a migration 026 a
+    substituta não pode ser menor que o saldo devedor com lastro, e aqui
+    nenhuma parcela foi baixada. O que muda é o prazo (12 -> 8), que é o que
+    este teste quer provar — agenda própria, com outro número de linhas."""
     op_id = _criar(db_session, tomador_autorizado, "12000", parcelas=12)
     ativar_operacao(db_session, op_id)
 
     nova = novar_operacao(
         db_session,
         op_id,
-        valor_principal=Decimal("8000"),
+        valor_principal=Decimal("12000"),
         taxa_juros_mensal=Decimal("1.5"),
         sistema_amortizacao="SAC",
         numero_parcelas=8,
@@ -204,7 +209,7 @@ def test_novacao_gera_agenda_propria_para_a_substituta(
     assert len(_agenda(db_session, op_id)) == 12  # original preservada
     agenda_nova = _agenda(db_session, nova.id)
     assert len(agenda_nova) == 8
-    assert sum(p.valor_amortizacao for p in agenda_nova) == Decimal("8000.00")
+    assert sum(p.valor_amortizacao for p in agenda_nova) == Decimal("12000.00")
 
 
 # ---------------------------------------------------------------------

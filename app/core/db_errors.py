@@ -27,6 +27,7 @@ from app.core.exceptions import (
     MovimentoImutavel,
     MunicipioNaoAutorizado,
     NovacaoForaDaTransacaoAtomica,
+    NovacaoSemLastro,
     OcorrenciaImutavel,
     ParcelaImutavel,
     ReducaoCapitalBloqueada,
@@ -52,12 +53,25 @@ from app.core.exceptions import (
 # criaria uma mensagem de UI para um caminho que a UI não tem. Se algum dia um
 # endpoint os alcançar, entram aqui junto.
 #
+# OC023 (migration 025) é mais um buraco de propósito: a trilha de execução
+# das rotinas é append-only e nenhum endpoint a edita — o SQLSTATE só sai por
+# SQL direto.
+#
 # OC022 (migration 017) é o contraexemplo que justifica o critério acima: ele
 # NASCE alcançável pela UI — `POST /operacoes/{id}/liquidar` é o caminho de
 # frente para pedi-lo — e sem tradução o operador que tentasse liquidar uma
 # operação com parcelas em aberto receberia 500 no lugar da única instrução
 # que resolve o caso ("baixe as parcelas contra o extrato, ou assuma o
 # prejuízo pela baixa como prejuízo").
+#
+# OC024 (migration 026) entra pelo mesmo motivo, e por DUAS portas de frente:
+# `POST /operacoes/{id}/renegociar` recusa a substituta que não cobre o saldo
+# devedor da original, e `POST /operacoes/{id}/ativar` recusa a substituta que
+# ficou menor depois de criada ou cuja original já saiu do comprometido. Sem
+# tradução, a recusa mais importante do ciclo de renegociação chegaria como
+# 500 — e o operador ficaria sem as três saídas que a mensagem carrega
+# (aumentar a substituta, baixar parcelas antes de renegociar, ou encerrar
+# pela baixa como prejuízo).
 PGCODE_MAP: Dict[str, Type[Exception]] = {
     "OC001": TetoCapitalExcedido,
     "OC002": MunicipioNaoAutorizado,
@@ -78,6 +92,7 @@ PGCODE_MAP: Dict[str, Type[Exception]] = {
     "OC018": RegistroTransicaoInvalida,
     "OC019": IdentificacaoAusente,
     "OC022": LiquidacaoSemQuitacao,
+    "OC024": NovacaoSemLastro,
 }
 
 

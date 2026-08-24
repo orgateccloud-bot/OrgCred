@@ -25,12 +25,19 @@ import {
 } from '@/components/ui/select'
 
 /**
- * Renegociação por novação atômica.
+ * Renegociação por novação.
  *
- * Não existe "só marcar como renegociada": o banco recusa (OC008). A baixa
- * da original e a criação da substituta acontecem na mesma transação, sob o
- * mesmo advisory lock do teto — do contrário haveria uma janela em que as
- * duas contam capital ao mesmo tempo, furando o Art. 5º.
+ * Não existe "só marcar como renegociada": o banco recusa (OC008). Desde a
+ * migration 026 quem escreve esse status é o gate de ativação da substituta,
+ * e a troca (original sai do comprometido, substituta entra) acontece num
+ * commit só, sob o advisory lock do teto — do contrário haveria uma janela em
+ * que as duas contam capital ao mesmo tempo, furando o Art. 5º.
+ *
+ * O QUE ESTA CHAMADA NÃO FAZ, e a cópia da tela precisa dizer: a original NÃO
+ * é baixada aqui. Ela continua ativa, ocupando o teto e em cobrança, até a
+ * substituta ser ativada. E o valor da substituta não pode ficar abaixo do
+ * saldo devedor da original — a recusa é OC024, com a mensagem própria em
+ * api/errors.ts.
  *
  * Por isso este diálogo pede as condições da nova operação, em vez de ser
  * só uma confirmação como as demais transições.
@@ -71,9 +78,9 @@ export function NovarOperacaoDialog({
           onSucesso()
           setOpen(false)
           mutation.reset()
-          toast.success('Operação renegociada', {
+          toast.success('Substituta criada', {
             description:
-              'A original foi baixada e a substituta nasceu como registrada — ative-a quando houver capital.',
+              'A original continua ativa e em cobrança até a substituta ser ativada — é na ativação que a troca acontece.',
           })
         },
       },
@@ -99,9 +106,11 @@ export function NovarOperacaoDialog({
         <DialogHeader>
           <DialogTitle>Renegociar operação</DialogTitle>
           <DialogDescription>
-            A operação atual de {formatarMoeda(valorOriginal)} será baixada e uma{' '}
-            <strong>nova operação</strong> criada no lugar, na mesma transação. A substituta nasce
-            como <strong>registrada</strong> e só compromete capital quando for ativada.
+            Uma <strong>nova operação</strong> será criada para tomar o lugar da atual, de{' '}
+            {formatarMoeda(valorOriginal)}. A substituta nasce como <strong>registrada</strong>: a
+            troca só acontece quando ela for ativada, e até lá a operação atual continua ativa,
+            ocupando capital e em cobrança. O novo valor não pode ficar abaixo do saldo devedor —
+            renegociar não é pagar.
           </DialogDescription>
         </DialogHeader>
 

@@ -448,3 +448,156 @@ class TestEncerramentoDeOperacao:
             resposta = authed_client.post(f"/api/operacoes/{op_id}/{rota}")
             assert resposta.status_code == 409, rota
             assert resposta.json()["codigo"] == "OC003", rota
+
+
+class TestRenegociacaoPelaAPI:
+    """POST /renegociar — o furo da novação sem lastro, pela porta HTTP.
+
+    Até a migration 026 esta chamada aceitava qualquer `valor_principal` e
+    baixava a original no ato: renegociar R$ 30.000 por R$ 0,01, com as doze
+    parcelas em aberto, devolvia os R$ 30.000 inteiros ao teto e deixava o
+    dinheiro na rua. Duas chamadas de endpoint punham R$ 80.000 sobre
+    R$ 50.000 de capital próprio.
+    """
+
+    def _operacao_ativa(
+        self, authed_client: TestClient, db_session: Session, tomador_id: uuid.UUID, valor: int
+    ) -> uuid.UUID:
+        op_id = db_session.execute(
+            text(
+                """
+                insert into operacao_credito
+                    (tomador_id, tipo, valor_principal, taxa_juros_mensal,
+                     sistema_amortizacao, numero_parcelas, status, registro_entidade_ref)
+                values (:t, 'emprestimo', :v, 2.5, 'PRICE', 12, 'registrada', 'REG-NOV')
+                returning id
+                """
+            ),
+            {"t": str(tomador_id), "v": valor},
+        ).scalar_one()
+        db_session.commit()
+        confirmar_registro(db_session, op_id)
+        assert authed_client.post(f"/api/operacoes/{op_id}/ativar").status_code == 200
+        return op_id  # type: ignore[no-any-return]
+
+    def _corpo(self, valor: str, parcelas: int = 12, taxa: str = "2.5") -> dict:
+        return {
+            "valor_principal": valor,
+            "taxa_juros_mensal": taxa,
+            "sistema_amortizacao": "PRICE",
+            "numero_parcelas": parcelas,
+            "registro_entidade_ref": "REG-NOVA",
+        }
+
+    def test_renegociar_por_valor_irrisorio_retorna_422_com_oc024(
+        self,
+        authed_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """O furo, pela porta por onde qualquer operador o alcançava."""
+        op_id = self._operacao_ativa(authed_client, db_session, tomador_autorizado, 30_000)
+
+        response = authed_client.post(
+            f"/api/operacoes/{op_id}/renegociar", json=self._corpo("0.01")
+        )
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["codigo"] == "OC024"
+        # A mensagem tem que apontar as saídas — aumentar a substituta, baixar
+        # parcelas antes de renegociar, ou assumir o prejuízo. Um 422 que só
+        # diz "não pode" deixa o operador sem próximo passo.
+        assert "baixada_prejuizo" in body["detail"]
+
+        # Nada se moveu: nem o teto, nem o status da original.
+        assert Decimal(
+            authed_client.get("/api/capital/snapshot").json()["comprometido"]
+        ) == Decimal("30000.00")
+        assert (
+            db_session.execute(
+                text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
+            ).scalar_one()
+            == "ativa"
+        )
+
+    def test_renegociar_nao_libera_teto_ate_a_substituta_ativar(
+        self,
+        authed_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """A JANELA, pela API: a substituta cobre o saldo devedor inteiro e
+        ainda assim o teto não se move enquanto ela não é ativada.
+
+        É o segundo lado do mesmo furo. Antes da 026 bastava renegociar pelo
+        valor cheio e cancelar a substituta — que nascia em 'registrada', sem
+        ocupar teto — para liberar os R$ 30.000 com o dinheiro na rua.
+        """
+        op_id = self._operacao_ativa(authed_client, db_session, tomador_autorizado, 30_000)
+
+        response = authed_client.post(
+            f"/api/operacoes/{op_id}/renegociar", json=self._corpo("30000", parcelas=24)
+        )
+
+        assert response.status_code == 200
+        corpo = response.json()
+        assert corpo["operacao_original_id"] == str(op_id)
+        assert corpo["status_substituta"] == "registrada"
+        substituta_id = corpo["operacao_substituta_id"]
+
+        assert Decimal(
+            authed_client.get("/api/capital/snapshot").json()["comprometido"]
+        ) == Decimal("30000.00")
+
+        # Cancelar a substituta é inofensivo: a original nunca chegou a sair.
+        assert authed_client.post(f"/api/operacoes/{substituta_id}/cancelar").status_code == 200
+        capital = authed_client.get("/api/capital/snapshot").json()
+        assert Decimal(capital["comprometido"]) == Decimal("30000.00")
+        assert Decimal(capital["disponivel"]) == Decimal("20000.00")
+
+    def test_ativar_a_substituta_faz_a_troca_e_o_teto_nao_dobra(
+        self,
+        authed_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Caminho feliz completo pela API: renegociar alongando o prazo e
+        ativar a substituta. A troca acontece na ativação — 30.000 trocados por
+        30.000 não podem virar 60.000 de comprometido."""
+        op_id = self._operacao_ativa(authed_client, db_session, tomador_autorizado, 30_000)
+
+        substituta_id = authed_client.post(
+            f"/api/operacoes/{op_id}/renegociar", json=self._corpo("30000", parcelas=36)
+        ).json()["operacao_substituta_id"]
+        confirmar_registro(db_session, uuid.UUID(substituta_id))
+
+        resposta = authed_client.post(f"/api/operacoes/{substituta_id}/ativar")
+
+        assert resposta.status_code == 200
+        assert resposta.json()["status"] == "ativa"
+        assert (
+            db_session.execute(
+                text("select status from operacao_credito where id = :i"), {"i": str(op_id)}
+            ).scalar_one()
+            == "renegociada"
+        )
+        capital = authed_client.get("/api/capital/snapshot").json()
+        assert Decimal(capital["comprometido"]) == Decimal("30000.00")
+        assert Decimal(capital["disponivel"]) == Decimal("20000.00")
+
+    def test_renegociar_exige_papel_operador(self, client_sem_papel_operador: TestClient) -> None:
+        response = client_sem_papel_operador.post(
+            f"/api/operacoes/{uuid.uuid4()}/renegociar", json=self._corpo("1000")
+        )
+        assert response.status_code == 403
+        assert response.json()["codigo"] == "PERMISSAO_NEGADA"
+
+    def test_renegociar_sem_autenticacao_retorna_401(self, client: TestClient) -> None:
+        response = client.post(
+            f"/api/operacoes/{uuid.uuid4()}/renegociar", json=self._corpo("1000")
+        )
+        assert response.status_code == 401

@@ -511,60 +511,104 @@ class TestAtivacaoContraLiquidacao:
 
 
 class TestAtivacaoContraNovacao:
-    """Novação tira a original do comprometido e cria a substituta — atômico.
+    """A TROCA da novação contra uma ativação comum, pelo mesmo capital.
 
-    Mesmo formato da corrida contra liquidação, com o risco a mais que a
-    novação carrega: ela cria uma segunda operação. Se a substituta nascesse
-    comprometendo capital, a original e ela contariam juntas na janela entre
-    as duas escritas. Por isso a substituta nasce em 'registrada', e este
-    teste afirma isso sobre o estado final.
+    Desde a migration 026 a chamada de novação não move capital nenhum: ela
+    só cria a substituta amarrada à original, que continua no comprometido.
+    O capital se move na ATIVAÇÃO da substituta, e é ali que a corrida existe
+    — num único commit a original sai do comprometido e a substituta entra,
+    sob o mesmo `pg_advisory_xact_lock` das demais ativações.
+
+    O risco a mais que a troca carrega, e a razão de esta corrida existir: ela
+    LIBERA capital no meio do caminho. Se a liberação da original ficasse
+    visível a uma ativação concorrente antes de a substituta ocupar o lugar,
+    as duas passariam sobre o mesmo dinheiro — que é o furo da 026 em versão
+    concorrente.
     """
 
-    def test_novacao_simultanea_nao_conta_capital_duas_vezes(self, engine_conc: Engine) -> None:
+    def test_troca_da_novacao_simultanea_nao_conta_capital_duas_vezes(
+        self, engine_conc: Engine
+    ) -> None:
+        """Capital 50.000; original ativa de 30.000; substituta de 40.000
+        (juros capitalizados) esperando ativação; pretendente de 20.000.
+
+        Serializadas em qualquer ordem, as duas NÃO cabem, e por contas
+        diferentes — o que torna a corrida uma prova e não uma coincidência:
+
+          troca primeiro ..... comprometido 40.000, sobram 10.000; a
+                               pretendente de 20.000 morre no teto;
+          pretendente primeiro comprometido 50.000; a troca libera os 30.000
+                               da original e ainda assim os 40.000 da
+                               substituta não cabem nos 30.000 que sobraram.
+
+        Passassem as duas, seriam 60.000 comprometidos sobre 50.000 de capital
+        próprio: a violação do Art. 5º da LC 167/2019 que o lock impede.
+        """
         with sessionmaker(bind=engine_conc)() as sessao:
             _constituir_capital(sessao, 50_000)
             original = _operacao_ativa(sessao, _tomador_apto(sessao, "Alvo F ME"), 30_000)
-            pretendente = _operacao_registrada(sessao, _tomador_apto(sessao, "Alvo G ME"), 40_000)
-
-        def novar(session: Session) -> None:
-            session.execute(
-                text("select fn_novar_operacao(:i, 30000, 2.5, 'PRICE', 12, 'REG-NOVACAO')"),
+            substituta = sessao.execute(
+                text("select fn_novar_operacao(:i, 40000, 2.5, 'PRICE', 24, 'REG-NOVACAO')"),
                 {"i": str(original)},
-            )
+            ).scalar_one()
+            sessao.commit()
+            # A substituta é um título novo: precisa do próprio registro
+            # confirmado (OC004, migration 013) para chegar ao teto.
+            confirmar_registro(sessao, substituta)
+            pretendente = _operacao_registrada(sessao, _tomador_apto(sessao, "Alvo G ME"), 20_000)
+
+        # Criar a substituta não moveu nada: é a original que ocupa o teto.
+        assert _status(engine_conc, original) == "ativa"
+        assert _capital_e_comprometido(engine_conc)[1] == Decimal("30000.00")
 
         desfechos = _correr_em_paralelo(
-            engine_conc, {"ativacao": _ativar(pretendente), "novacao": novar}
+            engine_conc, {"ativacao": _ativar(pretendente), "troca": _ativar(substituta)}
         )
 
-        assert (
-            desfechos["novacao"].commitou
-        ), f"a novação atômica não pode ser recusada aqui; veio {desfechos['novacao'].sqlstate}."
-        assert _status(engine_conc, original) == "renegociada"
+        commitaram = [d.nome for d in desfechos.values() if d.commitou]
+        assert len(commitaram) == 1, (
+            "as duas transações passaram sobre o mesmo capital — a troca da novação liberou "
+            f"a original para uma ativação concorrente ver antes de a substituta ocupar o lugar ({desfechos})."
+        )
 
-        with engine_conc.connect() as conn:
-            substituta = conn.execute(
-                text(
-                    "select status, valor_principal from operacao_credito "
-                    "where substitui_operacao_id = :i"
-                ),
-                {"i": str(original)},
-            ).one()
-        assert substituta.status == "registrada", (
-            "a substituta nasceu comprometendo capital — é a dupla contagem que a novação "
-            f"atômica existe para impedir (status={substituta.status})."
+        recusada = next(d for d in desfechos.values() if not d.commitou)
+        assert recusada.sqlstate == "OC001", (
+            "a perdedora tinha que morrer no teto (OC001), que é a conta do Art. 5º; "
+            f"veio {recusada.sqlstate}."
         )
 
         _, comprometido = _invariante_do_teto(engine_conc)
-        if desfechos["ativacao"].commitou:
-            assert comprometido == Decimal(
-                "40000.00"
-            ), "a substituta de 30.000 está contando junto com a ativação de 40.000."
+        if desfechos["troca"].commitou:
+            # A troca aconteceu inteira: a original saiu e a substituta entrou.
+            assert _status(engine_conc, original) == "renegociada"
+            assert _status(engine_conc, substituta) == "ativa"
+            assert _status(engine_conc, pretendente) == "registrada"
+            assert comprometido == Decimal("40000.00")
         else:
-            assert desfechos["ativacao"].sqlstate == "OC001", (
-                "a ativação correu antes da novação commitar, então tinha que morrer no teto "
-                f"(OC001); veio {desfechos['ativacao'].sqlstate}."
-            )
-            assert comprometido == Decimal("0")
+            # A troca foi recusada: ela é ATÔMICA, então a original não pode
+            # ter ficado meio baixada. Metade de uma troca seria capital
+            # liberado sem nada no lugar — o furo da 026 por um caminho novo.
+            assert (
+                _status(engine_conc, original) == "ativa"
+            ), "a original saiu do comprometido numa troca que não se completou."
+            assert _status(engine_conc, substituta) == "registrada"
+            assert _status(engine_conc, pretendente) == "ativa"
+            assert comprometido == Decimal("50000.00")
+
+        # O ledger não pode guardar a metade de uma troca: 'renegociacao' e o
+        # 'ativacao_operacao' da substituta andam juntos ou não andam.
+        with engine_conc.connect() as conn:
+            renegociacoes = conn.execute(
+                text("select count(*) from capital_ledger where evento_tipo = 'renegociacao'")
+            ).scalar_one()
+            ativacoes_substituta = conn.execute(
+                text(
+                    "select count(*) from capital_ledger "
+                    "where evento_tipo = 'ativacao_operacao' and operacao_id = :i"
+                ),
+                {"i": str(substituta)},
+            ).scalar_one()
+        assert renegociacoes == ativacoes_substituta == (1 if desfechos["troca"].commitou else 0)
 
 
 if __name__ == "__main__":

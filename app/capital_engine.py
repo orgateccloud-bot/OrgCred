@@ -16,6 +16,8 @@ silenciosamente se a mensagem do trigger mudar. Códigos:
   OC005 redução de capital abaixo do comprometido
   OC008 renegociação/substituta fora da novação atômica
   OC022 liquidação sem quitação comprovada (migration 017)
+  OC024 novação sem lastro: substituta menor que o saldo devedor da
+        original, ou substituta órfã (migration 026)
 
 Capital COMPROMETIDO = operações em 'ativa', 'inadimplente' OU
 'baixada_prejuizo'. Inadimplente entra porque o dinheiro não voltou: o título
@@ -542,9 +544,26 @@ def novar_operacao(
     dupla contagem que fura o Art. 5º. O banco decide, como no resto do
     motor.
 
-    A substituta nasce em 'registrada': ainda não compromete capital, e a
-    ativação dela segue passando pelos gates normais (teto, município,
-    registro na entidade registradora).
+    A SUBSTITUTA NASCE EM 'registrada' E A ORIGINAL NÃO É BAIXADA AGORA —
+    é a mudança que a migration 026 trouxe, e quem lê o retorno desta função
+    precisa saber: a original continua em 'ativa'/'inadimplente', continua
+    ocupando o teto e continua na régua de cobrança até a substituta ser
+    ATIVADA. A marca 'renegociada' passou a ser efeito da ativação, escrita
+    pelo trigger dentro do mesmo commit em que a substituta entra no
+    comprometido.
+
+    Antes da 026 a original saía do comprometido AQUI, no ato da chamada, e a
+    substituta nascia sem ocupar nada: entre os dois atos o teto ficava livre
+    com o dinheiro na rua, e cancelar a substituta tornava a liberação
+    definitiva. Somado ao fato de `fn_novar_operacao` aceitar qualquer valor,
+    renegociar R$ 30.000 por R$ 0,01 punha R$ 80.000 na rua sobre R$ 50.000 de
+    capital próprio.
+
+    O VALOR DA SUBSTITUTA É CONFERIDO CONTRA O SALDO DEVEDOR da original — o
+    principal menos o que foi amortizado contra movimento bancário — e a
+    recusa é OC024. Reduzir é legítimo na medida exata do que foi pago;
+    capitalizar juros (substituta maior) continua livre, e o teto é conferido
+    na ativação dela como em qualquer outra ativação.
     """
     db.execute(
         text("select set_config('app.user_id', :usuario_id, true)"),

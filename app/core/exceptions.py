@@ -234,6 +234,48 @@ class LiquidacaoSemQuitacao(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC022", http_status=422)
 
 
+class NovacaoSemLastro(RegraNegocioViolada):
+    """OC024: novação que reduziria o comprometido sem o dinheiro ter voltado.
+
+    Renegociar não é pagar. A substituta tem que cobrir o SALDO DEVEDOR da
+    original — o principal menos o que foi amortizado contra movimento
+    bancário (`parcela.valor_amortizacao` das parcelas pagas com
+    `movimento_id`). Sem o gate da migration 026, `fn_novar_operacao` aceitava
+    qualquer valor: renegociar R$ 30.000 por R$ 0,01, com as doze parcelas em
+    aberto, devolvia os R$ 30.000 inteiros ao teto e permitia pôr R$ 80.000 na
+    rua sobre R$ 50.000 de capital próprio.
+
+    TRÊS RECUSAS SOB O MESMO CÓDIGO, pelo precedente do OC022 (que tem duas):
+    substituta menor que o saldo devedor na novação; substituta menor que o
+    saldo devedor na ativação (entre uma coisa e outra o valor de uma operação
+    'registrada' ainda pode mudar — a 015 só congela quem ocupa o teto); e
+    substituta órfã, cuja original não está mais em condição de ser trocada.
+    As três são a mesma frase: esta troca reduziria o comprometido sem prova
+    de pagamento.
+
+    A ÓRFÃ TEM DOIS SUBCASOS, e a mensagem do banco os separa porque a
+    instrução ao operador difere. Original liquidada, cancelada ou já trocada
+    por outra substituta: saiu do comprometido, não há lugar a ceder e a
+    substituta somaria por fora da conta do teto. Original BAIXADA COMO
+    PREJUÍZO: ela CONTINUA no comprometido — 'baixada_prejuizo' está no
+    conjunto que ocupa o teto desde a migration 017, e é disso que depende a
+    regra de que write-off não devolve capital. Ali o problema é o inverso de
+    um lugar vazio: a perda já foi reconhecida, o valor segue consumindo o
+    teto e não volta, e ressuscitar a dívida como título novo somaria o mesmo
+    dinheiro duas vezes. Dizer a esse operador que a original "já não ocupa o
+    teto" o mandaria procurar o erro no lugar errado.
+
+    422 e não 409, como OC001 e OC022: não é conflito de estado — o caminho
+    'renegociar' existe e continua disponível assim que a substituta cobrir o
+    saldo devedor, ou assim que parcelas forem baixadas contra o extrato. A
+    saída para encerrar sem pagamento é outra e a mensagem a cita: a baixa
+    como prejuízo, que não devolve capital.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC024", http_status=422)
+
+
 class OperacaoNaoEncontrada(Exception):
     """Operação não existe."""
 

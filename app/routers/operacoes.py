@@ -92,7 +92,16 @@ def post_ativar_operacao(
       - 403: Usuário sem permissão (não é operador)
       - 404: Operação não existe
       - 409: Transição de estado inválida
-      - 422: Regra de negócio violada (teto, município, registro, capital) —
+      - 422: Regra de negócio violada (teto, município, registro, capital,
+        e — desde a migration 026, quando a operação é a SUBSTITUTA de uma
+        novação — OC024: a substituta ficou menor que o saldo devedor da
+        original, ou a original não está mais em condição de ser trocada —
+        já saiu do comprometido (liquidada, ou trocada por outra substituta),
+        ou foi baixada como prejuízo, caso em que ela continua ocupando o
+        teto e o que se recusa é ressuscitar como título novo uma dívida cuja
+        perda já foi reconhecida. Ativar uma substituta não é emprestar
+        dinheiro novo: é trocar o título que já ocupa o teto por outro, e a
+        troca acontece dentro deste endpoint) —
         RegraNegocioViolada não é capturada aqui de propósito: propaga para
         o exception_handler global (app/main.py), que produz o mesmo
         formato {"detail": "...", "codigo": "..."} usado por todo o resto
@@ -527,16 +536,34 @@ def post_renegociar_operacao(
     user: Usuario = Depends(get_operador_user),
 ) -> NovacaoOut:
     """
-    Renegocia por novação atômica: baixa a original e cria a substituta na
-    mesma transação, sob o mesmo advisory lock do teto.
+    Renegocia por novação: cria a operação SUBSTITUTA amarrada à original,
+    sob o advisory lock do teto.
 
-    Não existe endpoint para "só marcar como renegociada": fazer a baixa sem
-    amarrar a substituta deixa a original fora do comprometido e nada
-    impediria criar a substituta depois, contando o capital duas vezes em
-    janelas diferentes (o banco recusa com OC008).
+    Não existe endpoint para "só marcar como renegociada": desde a migration
+    026 quem escreve esse status é o gate de ativação da substituta, e um
+    UPDATE direto é recusado com OC008. Marcar à mão tiraria a original do
+    comprometido sem nada entrar no lugar.
 
-    A substituta nasce em 'registrada' — ainda não compromete capital, e
-    ativá-la passa pelos gates normais.
+    O QUE ESTA CHAMADA **NÃO** FAZ, e é a mudança da 026 que a UI precisa
+    dizer ao operador: a original NÃO é baixada aqui. Ela continua
+    'ativa'/'inadimplente', continua ocupando o teto e continua em cobrança
+    até a substituta ser ATIVADA — a troca (original -> renegociada,
+    substituta -> ativa) acontece num commit só, dentro do gate de ativação.
+    É a leitura do Art. 5º §3º da LC 167/2019: enquanto o novo título não
+    está registrado e ativo, a novação não se consumou e a dívida antiga
+    permanece exigível. Cancelar a substituta pendente é, por isso,
+    inofensivo — a original nunca chegou a sair.
+
+    422 com código OC024 quando o `valor_principal` da substituta é menor que
+    o SALDO DEVEDOR da original (principal menos o que foi amortizado contra
+    movimento bancário). Renegociar não é pagar: até a 026 esta chamada
+    aceitava qualquer valor, e uma substituta de R$ 0,01 devolvia ao teto os
+    R$ 30.000 de uma operação com as doze parcelas em aberto. Reduzir continua
+    possível na medida exata do que foi pago, e capitalizar juros (substituta
+    MAIOR) segue livre.
+
+    409 com código OC003 quando já existe outra substituta pendente sobre a
+    mesma original: ative-a ou cancele-a antes de renegociar de novo.
     """
     nova = novar_operacao(
         db,

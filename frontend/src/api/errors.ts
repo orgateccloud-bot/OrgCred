@@ -88,6 +88,13 @@ const MENSAGENS_POR_CODIGO: Record<string, string> = {
   // sem caminho nenhum para encerrar.
   OC022:
     'A operação só pode ser liquidada com todas as parcelas baixadas — liquidar é quitar, e devolve o capital ao teto. Baixe as parcelas em aberto contra o extrato bancário; se o valor não será recebido, encerre pela baixa por prejuízo, que encerra a cobrança e não devolve capital.',
+  // Renegociar não é pagar (migration 026). A substituta precisa cobrir o
+  // saldo devedor da original: reduzir sem lastro devolveria ao teto do
+  // Art. 5º um capital que continua na rua. Como no OC022, a mensagem cita
+  // as saídas — sem elas o operador de uma dívida impagável fica sem
+  // caminho e a tentação é justamente subfaturar a novação.
+  OC024:
+    'A operação substituta não pode valer menos que o saldo devedor da original — renegociar não é pagar, e reduzir o valor sem lastro liberaria capital que continua na rua. Aumente o valor da substituta até o saldo devedor, ou baixe as parcelas pagas contra o extrato antes de renegociar; se o valor não será recebido, encerre pela baixa por prejuízo, que encerra a cobrança e não devolve capital.',
   OC429: 'Muitas requisições em pouco tempo. Aguarde cerca de um minuto e tente novamente.',
 }
 

@@ -62,6 +62,7 @@ MIGRATIONS = [
     "023_atipicidade_ancorada",
     "024_proveniencia_do_extrato",
     "025_registro_de_execucao",
+    "026_gate_de_novacao",
 ]
 
 

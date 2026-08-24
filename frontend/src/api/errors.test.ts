@@ -180,6 +180,10 @@ describe('mensagemDeErro', () => {
       'OC022',
       'A operação só pode ser liquidada com todas as parcelas baixadas — liquidar é quitar, e devolve o capital ao teto. Baixe as parcelas em aberto contra o extrato bancário; se o valor não será recebido, encerre pela baixa por prejuízo, que encerra a cobrança e não devolve capital.',
     ],
+    [
+      'OC024',
+      'A operação substituta não pode valer menos que o saldo devedor da original — renegociar não é pagar, e reduzir o valor sem lastro liberaria capital que continua na rua. Aumente o valor da substituta até o saldo devedor, ou baixe as parcelas pagas contra o extrato antes de renegociar; se o valor não será recebido, encerre pela baixa por prejuízo, que encerra a cobrança e não devolve capital.',
+    ],
     ['OC429', 'Muitas requisições em pouco tempo. Aguarde cerca de um minuto e tente novamente.'],
   ])('mapeia %s pela chave exata do código', (codigo, mensagemEsperada) => {
     const erro = new ApiError('mensagem técnica original', codigo, 422)
@@ -209,6 +213,7 @@ describe('mensagemDeErro', () => {
     'OC018',
     'OC019',
     'OC022',
+    'OC024',
   ])('%s tem tradução própria, e não o texto cru do backend', (codigo) => {
     const tecnico = `ERROR: trigger recusou a operação (SQLSTATE ${codigo})`
     const traduzida = mensagemDeErro(new ApiError(tecnico, codigo, 422))
@@ -221,6 +226,15 @@ describe('mensagemDeErro', () => {
   it('OC022 cita a saída alternativa (baixa por prejuízo)', () => {
     const mensagem = mensagemDeErro(new ApiError('...', 'OC022', 422))
     expect(mensagem).toContain('parcelas')
+    expect(mensagem.toLowerCase()).toContain('prejuízo')
+  })
+
+  // OC024 é o gate de novação: sem citar as saídas, o operador que precisa
+  // renegociar uma dívida impagável fica sem caminho — e o caminho errado
+  // (subfaturar a substituta) é exatamente o que o gate recusa.
+  it('OC024 cita as saídas (saldo devedor e baixa por prejuízo)', () => {
+    const mensagem = mensagemDeErro(new ApiError('...', 'OC024', 422))
+    expect(mensagem).toContain('saldo devedor')
     expect(mensagem.toLowerCase()).toContain('prejuízo')
   })
 
