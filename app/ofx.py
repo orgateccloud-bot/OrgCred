@@ -73,12 +73,22 @@ class TransacaoOfx(NamedTuple):
     """Uma linha de extrato, como escrita no arquivo.
 
     `fitid` é o identificador que o banco dá à transação — é ele que vai para
-    `movimento_bancario.documento` (UNIQUE desde a migration 009) e é por isso
-    que reimportar o mesmo extrato é idempotente por construção.
+    `movimento_bancario.documento` e é por isso que reimportar o mesmo extrato
+    é idempotente por construção.
 
     `conta` é o par BANKID/ACCTID do statement a que a transação pertence, ou
     None quando o arquivo não o declara (acontece em OFX de cartão, que só tem
     ACCTID, e em exportações capadas).
+
+    OS DOIS JUNTOS SÃO A IDENTIDADE DA LINHA, e é por isso que `conta` viaja em
+    cada transação e não só no cabeçalho do extrato. O FITID é único DENTRO da
+    conta pela especificação OFX, nunca no universo — banco brasileiro emite
+    sequência curta ('1', '000123'), e duas instituições colidem com facilidade
+    banal. Até a migration 027 `movimento_bancario.documento` era UNIQUE global
+    e o crédito do segundo banco era descartado, na importação, como "já
+    registrado": a linha existia na tabela, mas era a do OUTRO banco, com outro
+    valor e outra data. Desde a 027 a chave do banco é (documento,
+    conta_origem) e a deduplicação de `importar_extrato_ofx` é pelo par.
     """
 
     fitid: str

@@ -29,6 +29,7 @@ from app.core.exceptions import (
     NovacaoForaDaTransacaoAtomica,
     NovacaoSemLastro,
     OcorrenciaImutavel,
+    ParcelaForaDaEmissao,
     ParcelaImutavel,
     ReducaoCapitalBloqueada,
     RegistroEntidadeAusente,
@@ -72,6 +73,16 @@ from app.core.exceptions import (
 # 500 — e o operador ficaria sem as três saídas que a mensagem carrega
 # (aumentar a substituta, baixar parcelas antes de renegociar, ou encerrar
 # pela baixa como prejuízo).
+#
+# OC025 (migration 027) é o caso limítrofe do critério, e entra — com a razão
+# escrita para que a exceção não vire precedente frouxo. Nenhum endpoint insere
+# parcela: a agenda é escrita só por `fn_gerar_parcelas`, de dentro do trigger
+# de ativação, o que à primeira vista o colocaria ao lado de OC020/OC021 como
+# buraco deliberado. A diferença é que a guarda dele fica no caminho de um
+# endpoint que EXISTE — `POST /operacoes/{id}/ativar` insere a agenda inteira
+# por baixo, e uma parcela recusada ali (agenda já emitida, número acima do
+# contratado) sobe pela mesma pilha. Sem tradução, o operador que ativasse uma
+# operação em estado inesperado receberia 500 no ato mais importante do ciclo.
 PGCODE_MAP: Dict[str, Type[Exception]] = {
     "OC001": TetoCapitalExcedido,
     "OC002": MunicipioNaoAutorizado,
@@ -93,6 +104,7 @@ PGCODE_MAP: Dict[str, Type[Exception]] = {
     "OC019": IdentificacaoAusente,
     "OC022": LiquidacaoSemQuitacao,
     "OC024": NovacaoSemLastro,
+    "OC025": ParcelaForaDaEmissao,
 }
 
 

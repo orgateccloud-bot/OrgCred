@@ -43,7 +43,7 @@ separadamente.
 
 from datetime import date
 from decimal import Decimal
-from typing import Dict, NamedTuple, Optional, Sequence
+from typing import Dict, NamedTuple, Optional, Sequence, Tuple
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -283,6 +283,13 @@ def registrar_movimento_bancario(
     sobe como IntegrityError e é traduzida aqui para uma mensagem que diz o
     que de fato aconteceu, em vez de vazar o nome da constraint.
 
+    A CHAVE PASSOU A SER (documento, conta_origem) NA MIGRATION 027, e para
+    este caminho NADA MUDA: o lançamento digitado tem `conta_origem` nula por
+    decisão da 024 (manual não pode ter proveniência de arquivo), e a chave é
+    `NULLS NOT DISTINCT` — todas as linhas sem conta declarada dividem um único
+    espaço de nomes, exatamente como antes. Dois lançamentos manuais com o
+    mesmo `documento` continuam sendo recusados aqui, com 409.
+
     `origem` DEIXOU DE SER PARÂMETRO na migration 024, e a fixação em 'manual'
     é o ponto: esta função é o caminho da digitação, e não coleta arquivo
     nenhum. Desde a 024, `origem = 'ofx'` exige `arquivo_sha256` — deixar o
@@ -362,10 +369,11 @@ def importar_extrato_ofx(
     1) REIMPORTAR É ROTINA, NÃO ERRO. O extrato do mês seguinte contém os dias
        do anterior; o operador reimporta o mesmo arquivo por dúvida; o banco
        reemite com mais uma linha. Nos três casos o certo é criar o que falta e
-       PULAR o resto. Daí `on conflict (documento) do nothing` em vez do
-       `IntegrityError` de `registrar_movimento_bancario`: a duplicidade de um
-       lançamento digitado é engano de quem digitou e merece 409; a de um
-       arquivo é o funcionamento normal e merece um número no relatório.
+       PULAR o resto. Daí `on conflict (documento, conta_origem) do nothing`
+       — o par desde a 027, ver o item 4 — em vez do `IntegrityError` de
+       `registrar_movimento_bancario`: a duplicidade de um lançamento digitado
+       é engano de quem digitou e merece 409; a de um arquivo é o
+       funcionamento normal e merece um número no relatório.
 
     2) SÓ CRÉDITO ENTRA. `movimento_bancario` tem check `valor > 0` (009) e
        débito não baixa parcela — importar despesa da ESC nesta tabela criaria
@@ -387,16 +395,41 @@ def importar_extrato_ofx(
     `ja_registrados`. Os dois viram "não criado", mas significam coisas
     diferentes — o segundo é reimportação normal, o primeiro é um FITID
     duplicado pelo BANCO, anomalia do arquivo que o operador deve enxergar.
+
+    4) A IDENTIDADE DE UMA LINHA DE EXTRATO É (FITID, CONTA), NUNCA O FITID
+       SOZINHO — corrigido na migration 027, e o motivo de ser a decisão mais
+       importante desta função. A especificação OFX define o FITID como único
+       DENTRO da conta, e banco brasileiro emite sequência curta ('1', '000123',
+       o número do documento): duas contas colidem com facilidade banal. Com a
+       chave global da 009, uma ESC que recebe em dois bancos importava o
+       extrato do segundo e via o crédito ser contado como `ja_registrados` —
+       a aritmética do relatório FECHAVA, a tela afirmava que nada faltou, e um
+       recebimento real ficava fora do lastro enquanto a parcela do tomador que
+       pagou seguia no aging como atrasada.
+
+       A correção é a mesma dos dois lados, e precisa ser: a chave do banco
+       virou (documento, conta_origem) e a deduplicação DENTRO do arquivo passou
+       a ser por (fitid, conta) também. Consertar só o banco deixaria o furo de
+       pé para o caso do OFX com dois statements — dois bancos no mesmo arquivo,
+       que o leitor já associa corretamente a contas distintas (ver `ler_ofx`) —
+       e a segunda linha seria descartada aqui, em Python, como
+       `repetidos_no_arquivo`.
     """
     lidas = len(transacoes)
     creditos = [t for t in transacoes if t.valor > 0]
     debitos_ignorados = lidas - len(creditos)
 
-    # Primeira ocorrência vence: se o mesmo FITID aparece duas vezes com dados
+    # Primeira ocorrência vence: se a mesma linha aparece duas vezes com dados
     # divergentes, a de cima é a que o banco emitiu primeiro no arquivo.
-    unicas: Dict[str, TransacaoOfx] = {}
+    #
+    # A chave é o PAR (fitid, conta). `conta` é None quando o arquivo não a
+    # declara, e nesse caso todas as linhas sem conta caem no mesmo espaço de
+    # nomes — a mesma leitura conservadora que a chave `NULLS NOT DISTINCT` do
+    # banco faz: sem conta declarada, não há como saber se dois FITIDs iguais
+    # são a mesma linha ou duas, e inventar a distinção seria pior que mantê-la.
+    unicas: Dict[Tuple[str, Optional[str]], TransacaoOfx] = {}
     for transacao in creditos:
-        unicas.setdefault(transacao.fitid, transacao)
+        unicas.setdefault((transacao.fitid, transacao.conta), transacao)
     repetidos_no_arquivo = len(creditos) - len(unicas)
 
     datas = [t.data_movimento for t in transacoes] if transacoes else []
@@ -437,7 +470,7 @@ def importar_extrato_ofx(
                      cast(:descricoes as text[]),
                      cast(:contas as text[])
                    ) as t(data, valor, documento, descricao, conta)
-             on conflict (documento) do nothing
+             on conflict (documento, conta_origem) do nothing
              returning id
             """),
             {

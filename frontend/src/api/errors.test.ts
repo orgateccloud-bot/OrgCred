@@ -184,6 +184,10 @@ describe('mensagemDeErro', () => {
       'OC024',
       'A operação substituta não pode valer menos que o saldo devedor da original — renegociar não é pagar, e reduzir o valor sem lastro liberaria capital que continua na rua. Aumente o valor da substituta até o saldo devedor, ou baixe as parcelas pagas contra o extrato antes de renegociar; se o valor não será recebido, encerre pela baixa por prejuízo, que encerra a cobrança e não devolve capital.',
     ],
+    [
+      'OC025',
+      'A agenda de parcelas é emitida pelo banco na ativação da operação e não recebe parcelas avulsas — ela é a prova do que foi contratado. Para mudar as condições de uma operação ativa, renegocie: a operação substituta nasce com agenda própria.',
+    ],
     ['OC429', 'Muitas requisições em pouco tempo. Aguarde cerca de um minuto e tente novamente.'],
   ])('mapeia %s pela chave exata do código', (codigo, mensagemEsperada) => {
     const erro = new ApiError('mensagem técnica original', codigo, 422)
@@ -214,6 +218,7 @@ describe('mensagemDeErro', () => {
     'OC019',
     'OC022',
     'OC024',
+    'OC025',
   ])('%s tem tradução própria, e não o texto cru do backend', (codigo) => {
     const tecnico = `ERROR: trigger recusou a operação (SQLSTATE ${codigo})`
     const traduzida = mensagemDeErro(new ApiError(tecnico, codigo, 422))
@@ -236,6 +241,19 @@ describe('mensagemDeErro', () => {
     const mensagem = mensagemDeErro(new ApiError('...', 'OC024', 422))
     expect(mensagem).toContain('saldo devedor')
     expect(mensagem.toLowerCase()).toContain('prejuízo')
+  })
+
+  // OC025 é o único código cuja mensagem NÃO pode se parecer com a de OC009.
+  // Os dois falam de parcela, mas mandam fazer coisas opostas: OC009 manda
+  // registrar o pagamento pela baixa, e quem esbarra no OC025 estava tentando
+  // acrescentar uma parcela — a saída dele é renegociar. Uma mensagem que
+  // repetisse a instrução da baixa mandaria o operador conferir o extrato
+  // atrás de um problema que não está lá.
+  it('OC025 manda renegociar, e não fazer a baixa (não é a mensagem de OC009)', () => {
+    const mensagem = mensagemDeErro(new ApiError('...', 'OC025', 422))
+    expect(mensagem).not.toBe(mensagemDeErro(new ApiError('...', 'OC009', 422)))
+    expect(mensagem.toLowerCase()).toContain('renegocie')
+    expect(mensagem.toLowerCase()).not.toContain('movimento bancário')
   })
 
   it('cai para a mensagem original quando o código é desconhecido', () => {

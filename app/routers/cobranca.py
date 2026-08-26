@@ -245,8 +245,11 @@ def post_movimento(
 ) -> MovimentoOut:
     """Registra uma linha de extrato.
 
-    `documento` é único: reimportar o mesmo extrato não duplica crédito nem
-    permite baixar duas parcelas com o mesmo dinheiro.
+    `documento` é único DENTRO DA CONTA desde a migration 027, e o lançamento
+    digitado não tem conta (a 024 proíbe proveniência em manual): na prática,
+    para este caminho, ele continua sendo único entre todos os manuais. É o que
+    mantém a garantia de sempre — reimportar o mesmo extrato à mão não duplica
+    crédito nem permite baixar duas parcelas com o mesmo dinheiro.
     """
     movimento_id = registrar_movimento_bancario(
         db,
@@ -472,5 +475,15 @@ def post_baixar_parcela(
     aberto. O banco recusa com OC011.
 
     A baixa é terminal — não há estorno definido (ver migration 009).
+
+    O AUTOR VAI JUNTO, e este parâmetro foi por muito tempo o furo mais
+    embaraçoso do módulo: a coluna `parcela.baixado_por` existe desde a
+    migration 016, `fn_baixar_parcela` lê `app.user_id` e grava, o serviço
+    `baixar_parcela` aceita `usuario_id` — e este endpoint, o ÚNICO caminho de
+    baixa da aplicação, não passava o valor. Resultado: `baixado_por` era NULL
+    em 100% das baixas feitas pela API, e o único ato irreversível do ciclo (o
+    que a 016 diz, no próprio cabeçalho, ser o único sem nome de gente)
+    continuava sem responsável. O mecanismo inteiro estava construído e
+    desligado por uma linha que faltava.
     """
-    baixar_parcela(db, parcela_id, body.movimento_id)
+    baixar_parcela(db, parcela_id, body.movimento_id, usuario_id=str(user.id))

@@ -79,13 +79,11 @@ test.describe('Identificação do tomador', () => {
     )
 
     await page.getByRole('button', { name: /arquivar documento/i }).click()
-    await page
-      .getByLabel(/arquivo/i)
-      .setInputFiles({
-        name: 'contrato-social.pdf',
-        mimeType: 'application/pdf',
-        buffer: Buffer.from('%PDF-1.4 conteudo de teste e2e'),
-      })
+    await page.getByLabel(/arquivo/i).setInputFiles({
+      name: 'contrato-social.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4 conteudo de teste e2e'),
+    })
     await page.getByRole('button', { name: /^arquivar$/i }).click()
 
     const req = await requisicao

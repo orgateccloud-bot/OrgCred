@@ -4,8 +4,13 @@
 > com rodada adversarial: todo achado grave passou por um cético encarregado de
 > **refutá-lo**. **22 sobreviveram** — 2 críticos, 9 altos, 10 médios, 1 baixo.
 >
-> **Os dois críticos foram fechados** pela migration 026 (OC024) e verificados
-> por reprodução. Os nove altos seguem abertos.
+> **Os dois críticos foram fechados** pela migration 026 (OC024) e **cinco dos
+> nove altos** pelas migrations 026 e 027 (OC025) mais uma linha no router —
+> todos verificados por reprodução, e cada um também pela **contraprova**: os
+> mesmos comandos rodados contra o schema anterior, onde passam. Uma guarda que
+> nunca se viu deixar passar não foi verificada, foi assumida.
+>
+> Os altos que seguem abertos estão na seção 5, com dono.
 >
 > Os agentes foram instruídos a **não** ler a versão anterior deste documento
 > como verdade, e sim a olhar o código. Foi a decisão mais produtiva do
@@ -61,9 +66,10 @@ realidade; nenhum apagado, porque apagar esconderia que o comportamento mudou.
 ## 1. Retrato em uma frase
 
 O sistema tem invariantes legais genuinamente bem construídos no banco e uma
-rede de testes acima da média — e, ao mesmo tempo, **um furo crítico aberto no
-invariante central**, três altos em cobrança, e uma documentação que afirmava
-estar tudo fechado.
+rede de testes acima da média; o furo crítico do invariante central e os três
+altos de cobrança **foram fechados e reproduzidos nos dois sentidos**, e o que
+resta para produção é configuração, dado de negócio e um alto de segurança —
+não mais um defeito no que a lei exige.
 
 ---
 
@@ -75,14 +81,14 @@ Verde exige implementado **e** testado **e** sem achado confirmado em aberto.
 |---|---|---|
 | **Capital e teto (Art. 5º)** | 🟢 | A saída pela novação foi **fechada e verificada** (026, OC024): reproduzi a sequência do furo e ela é recusada, com a mensagem dizendo o valor mínimo aceito. Somado ao advisory lock provado sob concorrência e à hash-chain resistindo a inversão e antedatação. |
 | **Operações e novação** | 🟢 | As duas portas do mesmo furo fechadas: o valor da substituta e a janela em que ela nascia sem ocupar o teto. Renegociação legítima preservada — alongar prazo, capitalizar juros e reduzir na medida do que foi amortizado com lastro continuam passando. |
-| **Cobrança** | 🔴 | Muito bem construído no banco: lastro em duas camadas, parser OFX puro com mais de 30 testes, proveniência com CHECK. Três altos, porém: `INSERT` em `parcela` sem guarda, `UPDATE` direto baixando sem cobertura de valor, e FITID colidindo entre contas descartando crédito real **com o relatório dizendo que nada faltou**. |
+| **Cobrança** | 🟢 | Os três altos **fechados pela 027 e reproduzidos nos dois sentidos**: a chave do extrato virou `(documento, conta_origem)` com `NULLS NOT DISTINCT` (crédito do segundo banco entra; manual repetido segue recusado), o `INSERT` em `parcela` ganhou guarda (OC025) — com o `TRUNCATE` fechado junto, porque esvaziar a agenda reabria a janela em dois comandos —, e a cobertura de valor saiu de dentro de `fn_baixar_parcela` para o trigger (OC011), alcançável por qualquer porta. Sobre o que já era bom: lastro em duas camadas, parser OFX puro com mais de 30 testes, proveniência com CHECK. |
 | **Contratos e registro** | 🟡 | Hash calculado pelo banco (provado por INSERT com hash forjado — o banco recalculou), corpo determinístico, gate OC004 real. O registro segue forjável em dois comandos por `enviado_em` antedatado, e confirmar registro não grava autor. |
 | **Fiscal (Lucro Presumido)** | 🟡 | Núcleo sólido, as quatro correções da 018 são reais e testadas, a memória de cálculo confere. Todo excedente do crédito vira mora tributável — inclusive amortização de principal. E `parametro_fiscal` segue vazia, o que é recusa deliberada. |
 | **Compliance PLD** | 🟡 | O domínio mais bem construído do levantamento: três invariantes em trigger, retenção ancorada no encerramento. Mas **produção não tem storage configurado** — arquivar responde 503, e o gate OC019 trava todo tomador novo. |
 | **Segurança e auditoria** | 🔴 | Perímetro genuinamente fechado: as 50 rotas sob `/api` exigem autenticação, enumeradas com o app em modo produção. Derrubado pelo rate limit — um balde **único global** atrás do proxy do Railway, onde um anônimo nega serviço a todos os operadores. |
 | **Rotinas e observabilidade** | 🔴 | Engenharia de operação de primeira linha, e testada de verdade. Mas o serviço de cron está **sete commits atrás**, o banner de vigilância mente há dias, e não há alerta ativo. |
 | **Frontend** | 🟡 | Cobre quase todo o backend; `baseUrl` relativo nos dois modos com teste de regressão; dicionário de erro por código. A tela exibe o **piso** de retenção sob o rótulo "Guarda até" — exatamente o número que a migration 022 declarou não valer. |
-| **Qualidade e CI** | 🟡 | 570 testes passando, com peças excelentes: a guarda da suíte-fantasma, o teste de catálogo que pega ramo de escrita sem advisory lock. Mas o smoke do CI **deixou de provar** que as migrations aplicam — e continua afirmando que prova. |
+| **Qualidade e CI** | 🟡 | 611 testes de backend e 216 de frontend passando, com peças excelentes: a guarda da suíte-fantasma, o teste de catálogo que pega ramo de escrita sem advisory lock. Mas o smoke do CI **deixou de provar** que as migrations aplicam — e continua afirmando que prova. Um `skipif` que conferia `shutil.which("bash") is not None` foi corrigido para **executar** a sonda: no Windows o `bash.exe` do WSL está no PATH mesmo sem distribuição instalada, e cinco testes ficavam vermelhos por motivo que não era defeito — o mesmo erro de guarda conferir presença onde o invariante é usabilidade. |
 | **Infra e deploy** | 🔴 | Boa onde foi construída depois de um incidente, frágil onde nunca doeu. Backup sem cópia fora do provedor: dump e banco moram no mesmo projeto Railway. |
 
 ---
@@ -98,16 +104,26 @@ Verde exige implementado **e** testado **e** sem achado confirmado em aberto.
 
 ### Altos
 
-| Achado | Onde |
-|---|---|
-| Janela ilimitada entre a baixa da original e a ativação da substituta | [006:262](migrations/006_novacao_e_inadimplencia.sql:262) |
-| A autoria da baixa nunca é gravada pelo único caminho de produção | [cobranca.py:476](app/routers/cobranca.py:476) |
-| `INSERT` em `parcela` sem guarda nenhuma — a agenda emitida aceita apêndice | [007:75](migrations/007_agenda_de_parcelas.sql:75) |
-| `UPDATE` direto baixa parcela sem cobertura de valor | [016:204](migrations/016_bordas_da_cobranca.sql:204) |
-| FITID colidindo entre contas descarta crédito real e o relatório fecha mesmo assim | [009:39](migrations/009_baixa_de_recebimento.sql:39) |
-| Produção sem storage: arquivar responde 503 e OC019 trava todo tomador novo | [config.py:91](app/core/config.py:91) |
-| Rate limit é um balde único global atrás do proxy | [main.py:196](app/main.py:196) |
-| O cron não reconstrói no push — a trilha 025 pode não existir em produção | [OPERACAO.md](docs/OPERACAO.md) |
+| Achado | Onde | Situação |
+|---|---|---|
+| Janela ilimitada entre a baixa da original e a ativação da substituta | [006:262](migrations/006_novacao_e_inadimplencia.sql:262) | ✅ 026 |
+| A autoria da baixa nunca é gravada pelo único caminho de produção | [cobranca.py:476](app/routers/cobranca.py:476) | ✅ router |
+| `INSERT` em `parcela` sem guarda nenhuma — a agenda emitida aceita apêndice | [007:75](migrations/007_agenda_de_parcelas.sql:75) | ✅ 027 (OC025) |
+| `UPDATE` direto baixa parcela sem cobertura de valor | [016:204](migrations/016_bordas_da_cobranca.sql:204) | ✅ 027 (OC011) |
+| FITID colidindo entre contas descarta crédito real e o relatório fecha mesmo assim | [009:39](migrations/009_baixa_de_recebimento.sql:39) | ✅ 027 |
+| Produção sem storage: arquivar responde 503 e OC019 trava todo tomador novo | [config.py:91](app/core/config.py:91) | 🔴 aberto |
+| Rate limit é um balde único global atrás do proxy | [main.py:196](app/main.py:196) | 🔴 aberto |
+| O cron não reconstrói no push — a trilha 025 pode não existir em produção | [OPERACAO.md](docs/OPERACAO.md) | 🔴 aberto |
+
+**Como os cinco foram verificados**, porque a forma importa mais que o número:
+cada ataque foi rodado contra Postgres real com dado gravado pelos caminhos
+reais — capital, tomador com evidência, registro confirmado, ativação emitindo a
+agenda pelo trigger, baixa por `fn_baixar_parcela` — e depois **repetido contra o
+schema anterior**, onde os quatro passam: apêndice aceito (13 parcelas num
+contrato de 12), parcela de R$ 1.134,72 quitada contra R$ 0,01, `truncate
+parcela` apagando a agenda inteira, e o crédito do segundo banco recusado por
+`movimento_documento_unico`. Um teste que só se vê passar não distingue a guarda
+que funciona da guarda que nunca foi alcançada.
 
 Os dez médios cobrem: confirmar registro sem autor, excedente do crédito virando
 mora tributável, a tela mostrando o piso de retenção, `.env.example` prescrevendo
@@ -131,12 +147,19 @@ Outras afirmações que o código não sustenta:
 
 - **"Capital e teto 🟢"** — cada metade da justificativa era verdadeira
   isoladamente; o conjunto, não.
-- **"a baixa tem autor"** — `parcela.baixado_por` é NULL em **100%** das baixas
-  feitas pela API. Verificado pelo endpoint HTTP, que devolveu 204 com a coluna
-  vazia.
+- **"a baixa tem autor"** — era NULL em **100%** das baixas feitas pela API.
+  Verificado pelo endpoint HTTP, que devolveu 204 com a coluna vazia. **Hoje é
+  verdade**: o router passa `usuario_id`, e o teste que prova isso passa pelo
+  HTTP e compara a coluna com o id do usuário autenticado. O detalhe que
+  explica como isso durou tanto: o teste da função de serviço já existia e
+  passava verde o tempo todo — ele provava que a função grava quem recebe, nunca
+  que alguém entrega.
 - **"o relatório permite conferir que nenhuma linha do extrato se perdeu"** —
-  falha exatamente no caso em que mais importa: com FITID colidindo entre contas,
-  a aritmética fecha **enquanto a linha se perde**.
+  falhava exatamente no caso em que mais importa: com FITID colidindo entre
+  contas, a aritmética fechava **enquanto a linha se perdia**. **Hoje é
+  verdade**, e o conserto teve de ser dos dois lados: a chave do banco e a
+  deduplicação dentro do arquivo. Só o banco deixaria de pé o OFX com dois
+  statements, cuja segunda linha morreria em Python como `repetidos_no_arquivo`.
 - **"deploys rastreáveis por commit"** e **"rotinas verificadas em produção"** —
   o serviço de cron está sete commits atrás, e a tabela que a mesma linha celebra
   pode nem existir lá.
@@ -157,15 +180,26 @@ disparar", quando não existe alerta algum no repositório.
 
 ### Meu (código), nesta ordem
 
-1. **Gate de valor na novação.** Fecha o crítico. É o único item que precisa
-   estar pronto **antes** de o capital social ser carregado.
-2. **Três furos de cobrança:** chave FITID composta com a conta, guarda de
-   `INSERT` em `parcela`, e cobertura de valor no trigger — não só dentro de
-   `fn_baixar_parcela`.
-3. **`baixado_por`** — uma linha: o endpoint não passa `usuario_id`.
-4. **Rate limit por cliente**, não um balde global.
+1. ~~**Gate de valor na novação.**~~ **Feito** (026, OC024). Era o único item
+   que precisava estar pronto **antes** de o capital social ser carregado.
+2. ~~**Três furos de cobrança.**~~ **Feito** (027): chave `(documento,
+   conta_origem)` com `NULLS NOT DISTINCT`, guarda de `INSERT` em `parcela`
+   (OC025) com o `TRUNCATE` fechado junto, e cobertura de valor no trigger
+   (OC011).
+3. ~~**`baixado_por`.**~~ **Feito** — uma linha no router, e um teste que passa
+   pelo HTTP para provar que alguém a executa.
+4. **Rate limit por cliente**, não um balde global. É o único alto de código que
+   resta.
 5. **Corrigir a documentação**, inclusive os docstrings que descrevem intenção
    como implementação.
+
+**Dado a conferir antes de subir a 027**, e que ela deliberadamente não corrige
+sozinha: baixas já gravadas contra movimento insuficiente. Só entram por SQL
+direto (`fn_baixar_parcela` sempre recusou), a guarda nova é BEFORE ROW e não
+revisita o que já está gravado, e reverter baixa é justamente o que este sistema
+não faz. A consulta está no docstring do `upgrade()` da revisão 0027; havendo
+linhas, a escolha entre reconciliar e encerrar por prejuízo é de negócio, não de
+migration.
 
 ### Seu (configuração e decisão)
 
@@ -188,15 +222,17 @@ IOF, parâmetros do contador.
 
 ## 6. Veredito
 
-**Não dá para entrar em produção com dinheiro real hoje** — e o motivo mudou de
-natureza desde o documento anterior: não é falta de dado de negócio, é **um furo
-de código no invariante central**.
+**Ainda não dá para entrar em produção com dinheiro real** — mas o motivo mudou
+de natureza outra vez, e agora para melhor: **não há mais defeito de código no
+que a lei exige**. O que impede é credencial e dado de negócio.
 
-O sistema está impedido por três razões distintas, e não confundi-las é o que
+O sistema está impedido por duas razões distintas, e não confundi-las é o que
 torna a fila acionável:
 
-1. **Defeito de código crítico e aberto** — a novação. Mais três altos em
-   cobrança e um em segurança.
+1. ~~**Defeito de código crítico**~~ — **fechado**. A novação (026) e os três
+   altos de cobrança (027) foram reproduzidos nos dois sentidos. Resta um alto
+   de segurança, o rate limit global, que degrada disponibilidade sob abuso e
+   não fura invariante legal nenhum.
 2. **Credencial ausente** — sem a `service_role` key, arquivar identificação
    responde 503; como OC019 exige evidência para ativar, nenhum tomador novo
    recebe crédito. É fail-closed correto **pelo motivo errado**: recusa por

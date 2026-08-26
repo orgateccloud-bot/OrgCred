@@ -1,6 +1,6 @@
 # OrgCred — Relatório de execução e auditoria
 
-**Período: 12 a 18 de agosto de 2026.** Vinte e três commits, ~16.000 linhas.
+**Período: 12 a 26 de agosto de 2026.** Trinta e quatro commits, ~16.000 linhas.
 
 > Este relatório tem duas metades que precisam ser lidas juntas: o que foi
 > construído, e o que uma auditoria independente encontrou depois. A segunda
@@ -10,12 +10,15 @@
 
 ## 1. Veredito
 
-**Não dá para entrar em produção com dinheiro real hoje.** O motivo mudou de
-natureza ao longo da semana e é importante não confundir as três causas:
+**Ainda não dá para entrar em produção com dinheiro real** — mas o que impede
+deixou de ser código. Não confundir as causas é o que torna a fila acionável:
 
-1. **Um defeito de código crítico e aberto.** A renegociação libera o teto do
-   Art. 5º por inteiro, sem prova de pagamento, em duas chamadas de API com
-   papel de operador.
+1. ~~**Um defeito de código crítico e aberto.**~~ **Fechado.** A renegociação
+   que liberava o teto do Art. 5º sem prova de pagamento foi barrada pela
+   migration 026 (OC024), e os três altos de cobrança pela 027 (OC025/OC011).
+   Todos reproduzidos **nos dois sentidos**: o ataque recusado no schema novo e
+   aceito no antigo. Resta um alto de código, o rate limit global, que degrada
+   disponibilidade sob abuso e não fura invariante legal nenhum.
 2. **Uma credencial ausente.** Sem a `service_role` key do Supabase, arquivar
    identificação responde 503; como o gate OC019 exige evidência arquivada para
    ativar, nenhum tomador novo recebe crédito.
@@ -31,7 +34,7 @@ apontava a API para `localhost:8000`, o operador autenticava e nenhuma chamada
 funcionava — e `POST /liquidar` devolvia 100% do capital ao teto com todas as
 parcelas em aberto.
 
-Ao longo da semana, onze migrations (015 a 025):
+Ao longo da semana, treze migrations (015 a 027):
 
 - **Bordas do teto** (015): `UPDATE` de `valor_principal` em operação ativa,
   `esc_capital_social` sem trigger de `UPDATE`/`DELETE`, e redução com valor
@@ -53,9 +56,17 @@ Ao longo da semana, onze migrations (015 a 025):
 - **Importação de extrato OFX** (024) com proveniência por sha256 dos bytes, e a
   tela que a torna usável.
 - **Trilha de execução das rotinas** (025) e o serviço de cron que as agenda.
+- **Gate de novação** (026, OC024): a substituta tem que cobrir o saldo devedor
+  da original, calculado sobre `valor_amortizacao` com lastro bancário — e a
+  original só sai do comprometido quando a substituta é **ativada**, nunca
+  antes.
+- **Bordas da cobrança, segunda volta** (027): o FITID passa a ser único **por
+  conta**, o `INSERT` em `parcela` ganha guarda (OC025) com o `TRUNCATE` fechado
+  junto, e a cobertura de valor da baixa sai de dentro de `fn_baixar_parcela`
+  para o trigger (OC011), alcançável por qualquer porta.
 
-**Números:** 570 testes backend (eram 198), 210 de frontend (eram 50), 6 E2E,
-94,2% de cobertura, 25 migrations, 22 SQLSTATEs.
+**Números:** 611 testes backend (eram 198), 216 de frontend (eram 50), 6 E2E,
+93% de cobertura, 27 migrations, 24 SQLSTATEs.
 
 ---
 
@@ -81,6 +92,28 @@ atualização do servidor quebraria o backup em silêncio.
 um amarrio acidental e passou a aceitar **append antedatado** sem acusar. Medido:
 o vetor era detectado antes e deixou de ser. Fechado com o banco escrevendo o
 próprio carimbo.
+
+**E de novo, na 027: `NULLS NOT DISTINCT` é a diferença entre consertar e
+trocar de furo.** A chave do extrato precisava deixar de ser `unique
+(documento)` e passar a `(documento, conta_origem)`. Escrita como UNIQUE comum,
+essa troca teria reaberto o problema pelo outro lado: `conta_origem` é NULL em
+todo lançamento **digitado** (a 024 proíbe proveniência de arquivo no manual),
+NULL nunca é igual a NULL em SQL, e dois lançamentos manuais com o mesmo
+documento passariam a ser aceitos — trocando um crédito real descartado por um
+crédito **duplicado**, que baixa uma segunda parcela. Com a cláusula, tudo que
+não declara conta divide um único espaço de nomes, exatamente como antes; só se
+separa o que o arquivo declara separado. Verificado nos três casos: mesma conta
+recusa, contas diferentes aceita, dois manuais recusa.
+
+**E uma guarda que conferia a coisa errada, fora do SQL.** O `skipif` dos testes
+de shell perguntava `shutil.which("bash") is not None`. No Windows o
+`C:\Windows\System32\bash.exe` do WSL está no PATH **mesmo sem distribuição
+instalada**: o arquivo existe, o skip não acontece, e cinco testes ficam
+vermelhos com `execvpe(/bin/bash) failed` — erro do sistema operacional, não do
+código sob teste. É o mesmo erro que este projeto persegue nos triggers (conferir
+**presença** onde o invariante é **usabilidade**), e o custo aqui é de
+diagnóstico: uma suíte que fica vermelha por motivo errado é uma suíte que se
+aprende a ignorar. A sonda passou a executar `bash -c 'exit 0'`.
 
 ---
 
@@ -121,6 +154,30 @@ linha se perdeu" (falha justamente quando o FITID colide entre contas), "rate
 limiting ligado" (ligado e inútil como isolamento), e comentários afirmando que a
 hash-chain resiste a um DBA malicioso quando não há um único `grant` ou RLS em 25
 migrations.
+
+### O que dessas frases virou verdade — e o que não virou
+
+**Virou:** "a baixa tem autor" (o router passa `usuario_id`, provado por um teste
+que atravessa o HTTP e compara a coluna com o id do usuário autenticado) e "o
+relatório permite conferir que nenhuma linha se perdeu" (chave por conta no banco
+**e** deduplicação por `(fitid, conta)` no parser — consertar só um dos lados
+deixaria o furo de pé para o OFX com dois statements).
+
+**Não virou, e continua escrito aqui para não voltar a ser esquecido:** o rate
+limit segue um balde único global, e **não há isolamento de privilégio no
+banco**. A aplicação é dona das tabelas, então toda guarda de trigger — inclusive
+as duas que a 027 acrescentou — some com um `alter table ... disable trigger`
+para quem tem SQL direto. O que elas fecham é o resto: o script de correção
+copiado de outro ambiente, a aplicação comprometida, e o caminho de dois comandos
+que reabria a guarda de `INSERT` sem tocar em trigger nenhum. A defesa
+complementar é de infraestrutura, não de SQL, e ainda não existe.
+
+**Sobre o critério de "fechado":** cada uma das cinco correções foi rodada contra
+Postgres com dado gravado pelos caminhos reais — e depois **repetida contra o
+schema anterior**, onde os ataques passam. Um teste que só se vê passar não
+distingue a guarda que funciona da guarda que nunca foi alcançada; foi
+exatamente assim que `baixado_por` ficou NULL em produção por semanas, com um
+teste verde provando que a função grava quem recebe — nunca que alguém entrega.
 
 ---
 
