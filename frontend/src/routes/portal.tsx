@@ -41,18 +41,24 @@ function PortalLayout() {
 
   return (
     <div className="min-h-svh bg-background">
-      <header className="flex h-14 items-center gap-3 border-b border-border px-4 sm:px-6">
-        <Building2 className="size-5 text-primary" aria-hidden />
-        <span className="font-semibold">Portal do tomador</span>
-        <div className="ml-auto flex items-center gap-2">
-          <ThemeToggle />
-          <Button variant="ghost" size="sm" onClick={sair}>
-            <LogOut className="size-4" aria-hidden />
-            <span className="hidden sm:inline">Sair</span>
-          </Button>
+      {/* Fixo no topo e com as safe areas do aparelho (notch, barra de
+          gesto): o portal é usado como app instalado (ver manifest), onde a
+          página desenha por baixo da moldura do sistema. As env() valem 0 em
+          navegador de mesa — não custam nada onde não existem. */}
+      <header className="sticky top-0 z-10 border-b border-border bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
+        <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
+          <Building2 className="size-5 text-primary" aria-hidden />
+          <span className="font-semibold">Portal do tomador</span>
+          <div className="ml-auto flex items-center gap-2">
+            <ThemeToggle />
+            <Button variant="ghost" size="sm" onClick={sair}>
+              <LogOut className="size-4" aria-hidden />
+              <span className="hidden sm:inline">Sair</span>
+            </Button>
+          </div>
         </div>
       </header>
-      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-4xl px-4 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:px-6">
         <Outlet />
       </main>
     </div>

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { papelDoLogin } from '@/auth/papel'
 import { supabase, supabaseConfigurado } from '@/auth/supabaseClient'
 import { useAppStore } from '@/stores/useAppStore'
 
@@ -41,7 +42,10 @@ function LoginPage() {
     }
 
     setUsuario({ id: data.user.id, email: data.user.email ?? email })
-    navigate({ to: '/' })
+    // O papel decide a casa: tomador vai direto ao portal, sem passar pelo
+    // redirect do guard de `_authenticated` (que já faria o desvio, mas só
+    // depois de montar o painel e pagar mais um roundtrip de /api/me).
+    navigate({ to: (await papelDoLogin()) === 'tomador' ? '/portal' : '/' })
   }
 
   async function handleEsqueciSenha() {

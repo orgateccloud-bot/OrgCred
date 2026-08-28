@@ -28,6 +28,12 @@ interface AppState {
 
 function aplicarTema(tema: Tema) {
   document.documentElement.classList.toggle('dark', tema === 'dark')
+  // A moldura do navegador (e do app instalado, ver manifest.webmanifest)
+  // acompanha o tema. Os valores espelham o --background de index.css — não
+  // dá para ler o token daqui, o CSS pode nem ter carregado ainda.
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', tema === 'dark' ? '#04060b' : '#f6f8fb')
 }
 
 export const useAppStore = create<AppState>()(

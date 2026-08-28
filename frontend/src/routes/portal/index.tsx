@@ -8,6 +8,7 @@ import {
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { rotuloTipo } from '@/lib/rotulos'
+import { ProgressoParcelas } from '@/components/portal/progresso-parcelas'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -66,7 +67,10 @@ function PortalHome() {
                 <Link
                   to="/portal/operacoes/$id"
                   params={{ id: op.id }}
-                  className="flex items-center gap-3 rounded-lg border border-border p-4 transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  // active: o celular não tem hover — sem feedback de toque o
+                  // cartão parece morto no exato aparelho para o qual o portal
+                  // existe.
+                  className="flex items-center gap-3 rounded-lg border border-border p-4 transition-colors hover:bg-muted active:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -77,6 +81,9 @@ function PortalHome() {
                       {formatarMoeda(op.valor_principal)} · {op.numero_parcelas}x ·{' '}
                       {op.parcelas_pagas}/{op.numero_parcelas} pagas
                     </p>
+                    <div className="mt-2 max-w-56">
+                      <ProgressoParcelas pagas={op.parcelas_pagas} total={op.numero_parcelas} />
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-muted-foreground">Em aberto</p>
