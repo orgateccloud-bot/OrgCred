@@ -20,6 +20,7 @@ from app.core.exceptions import (
     BaixaForaDeCobranca,
     BaixaInvalida,
     ContratoImutavel,
+    ConviteImutavel,
     DocumentoEmRetencao,
     EventoOperacaoImutavel,
     IdentificacaoAusente,
@@ -107,6 +108,7 @@ PGCODE_MAP: Dict[str, Type[Exception]] = {
     "OC024": NovacaoSemLastro,
     "OC025": ParcelaForaDaEmissao,
     "OC026": BaixaForaDeCobranca,
+    "OC027": ConviteImutavel,
 }
 
 

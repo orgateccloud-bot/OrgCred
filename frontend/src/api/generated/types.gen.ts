@@ -56,6 +56,28 @@ export type AgendaOut = {
 }
 
 /**
+ * AgendaPortalOut
+ */
+export type AgendaPortalOut = {
+  /**
+   * Operacao Id
+   */
+  operacao_id: string
+  /**
+   * Sistema Amortizacao
+   */
+  sistema_amortizacao: string
+  /**
+   * Total Geral
+   */
+  total_geral: string
+  /**
+   * Parcelas
+   */
+  parcelas: Array<ParcelaPortalOut>
+}
+
+/**
  * AgingItemOut
  */
 export type AgingItemOut = {
@@ -419,6 +441,35 @@ export type ContratoDetalheOut = {
    * Corpo
    */
   corpo: string
+}
+
+/**
+ * ContratoPortalOut
+ *
+ * A prova de que o contrato que o tomador tem em mãos é o que a ESC emitiu.
+ *
+ * Expõe o SHA-256 e a versão para o tomador CONFERIR a via dele, não o corpo:
+ * ele já tem uma via do documento (é o que a imutabilidade do contrato, OC017,
+ * existe para preservar), e reservir o corpo pelo portal só multiplicaria
+ * cópias sem acrescentar prova.
+ */
+export type ContratoPortalOut = {
+  /**
+   * Operacao Id
+   */
+  operacao_id: string
+  /**
+   * Versao
+   */
+  versao: number
+  /**
+   * Sha256
+   */
+  sha256: string
+  /**
+   * Emitido Em
+   */
+  emitido_em: string
 }
 
 /**
@@ -1232,6 +1283,52 @@ export type OperacaoListItemOut = {
 }
 
 /**
+ * OperacaoPortalOut
+ */
+export type OperacaoPortalOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Tipo
+   */
+  tipo: string
+  /**
+   * Valor Principal
+   */
+  valor_principal: string
+  /**
+   * Taxa Juros Mensal
+   */
+  taxa_juros_mensal: string
+  /**
+   * Sistema Amortizacao
+   */
+  sistema_amortizacao: string
+  /**
+   * Numero Parcelas
+   */
+  numero_parcelas: number
+  /**
+   * Status
+   */
+  status: string
+  /**
+   * Created At
+   */
+  created_at: string
+  /**
+   * Parcelas Pagas
+   */
+  parcelas_pagas: number
+  /**
+   * Saldo Em Aberto
+   */
+  saldo_em_aberto: string
+}
+
+/**
  * OperacaoStatusOut
  */
 export type OperacaoStatusOut = {
@@ -1398,6 +1495,32 @@ export type ParcelaOut = {
 }
 
 /**
+ * ParcelaPortalOut
+ */
+export type ParcelaPortalOut = {
+  /**
+   * Numero
+   */
+  numero: number
+  /**
+   * Vencimento
+   */
+  vencimento: string
+  /**
+   * Valor Total
+   */
+  valor_total: string
+  /**
+   * Status
+   */
+  status: string
+  /**
+   * Pago Em
+   */
+  pago_em: string | null
+}
+
+/**
  * PendenciaIdentificacaoOut
  */
 export type PendenciaIdentificacaoOut = {
@@ -1451,6 +1574,43 @@ export type PendenciaRegistroOut = {
    * Tem Contrato
    */
   tem_contrato: boolean
+}
+
+/**
+ * PerfilTomadorOut
+ *
+ * Quem o tomador é, do ponto de vista dele. Não expõe nada da ESC nem de
+ * outro tomador — só a própria ficha e uma contagem das próprias operações.
+ */
+export type PerfilTomadorOut = {
+  /**
+   * Tomador Id
+   */
+  tomador_id: string
+  /**
+   * Razao Social
+   */
+  razao_social: string
+  /**
+   * Cnpj
+   */
+  cnpj: string
+  /**
+   * Municipio
+   */
+  municipio: string
+  /**
+   * Uf
+   */
+  uf: string
+  /**
+   * Operacoes Ativas
+   */
+  operacoes_ativas: number
+  /**
+   * Operacoes Total
+   */
+  operacoes_total: number
 }
 
 /**
@@ -3204,6 +3364,108 @@ export type GetMeApiMeGetResponses = {
 }
 
 export type GetMeApiMeGetResponse = GetMeApiMeGetResponses[keyof GetMeApiMeGetResponses]
+
+export type GetPerfilApiPortalPerfilGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/portal/perfil'
+}
+
+export type GetPerfilApiPortalPerfilGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PerfilTomadorOut
+}
+
+export type GetPerfilApiPortalPerfilGetResponse =
+  GetPerfilApiPortalPerfilGetResponses[keyof GetPerfilApiPortalPerfilGetResponses]
+
+export type GetOperacoesApiPortalOperacoesGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/portal/operacoes'
+}
+
+export type GetOperacoesApiPortalOperacoesGetResponses = {
+  /**
+   * Response Get Operacoes Api Portal Operacoes Get
+   *
+   * Successful Response
+   */
+  200: Array<OperacaoPortalOut>
+}
+
+export type GetOperacoesApiPortalOperacoesGetResponse =
+  GetOperacoesApiPortalOperacoesGetResponses[keyof GetOperacoesApiPortalOperacoesGetResponses]
+
+export type GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData = {
+  body?: never
+  path: {
+    /**
+     * Operacao Id
+     */
+    operacao_id: string
+  }
+  query?: never
+  url: '/api/portal/operacoes/{operacao_id}/parcelas'
+}
+
+export type GetParcelasApiPortalOperacoesOperacaoIdParcelasGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetParcelasApiPortalOperacoesOperacaoIdParcelasGetError =
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetErrors[keyof GetParcelasApiPortalOperacoesOperacaoIdParcelasGetErrors]
+
+export type GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: AgendaPortalOut
+}
+
+export type GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponse =
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponses[keyof GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponses]
+
+export type GetContratoApiPortalOperacoesOperacaoIdContratoGetData = {
+  body?: never
+  path: {
+    /**
+     * Operacao Id
+     */
+    operacao_id: string
+  }
+  query?: never
+  url: '/api/portal/operacoes/{operacao_id}/contrato'
+}
+
+export type GetContratoApiPortalOperacoesOperacaoIdContratoGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetContratoApiPortalOperacoesOperacaoIdContratoGetError =
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetErrors[keyof GetContratoApiPortalOperacoesOperacaoIdContratoGetErrors]
+
+export type GetContratoApiPortalOperacoesOperacaoIdContratoGetResponses = {
+  /**
+   * Response Get Contrato Api Portal Operacoes  Operacao Id  Contrato Get
+   *
+   * Successful Response
+   */
+  200: ContratoPortalOut | null
+}
+
+export type GetContratoApiPortalOperacoesOperacaoIdContratoGetResponse =
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetResponses[keyof GetContratoApiPortalOperacoesOperacaoIdContratoGetResponses]
 
 export type HealthCheckHealthGetData = {
   body?: never

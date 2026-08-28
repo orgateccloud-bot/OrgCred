@@ -9,9 +9,11 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PortalRouteImport } from './routes/portal'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DefinirSenhaRouteImport } from './routes/definir-senha'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as PortalIndexRouteImport } from './routes/portal/index'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedFiscalRouteImport } from './routes/_authenticated/fiscal'
 import { Route as AuthenticatedComplianceRouteImport } from './routes/_authenticated/compliance'
@@ -20,10 +22,16 @@ import { Route as AuthenticatedCapitalRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
 import { Route as AuthenticatedTomadoresIndexRouteImport } from './routes/_authenticated/tomadores/index'
 import { Route as AuthenticatedOperacoesIndexRouteImport } from './routes/_authenticated/operacoes/index'
+import { Route as PortalOperacoesIdRouteImport } from './routes/portal/operacoes.$id'
 import { Route as AuthenticatedTomadoresIdRouteImport } from './routes/_authenticated/tomadores/$id'
 import { Route as AuthenticatedOperacoesNovaRouteImport } from './routes/_authenticated/operacoes/nova'
 import { Route as AuthenticatedOperacoesIdRouteImport } from './routes/_authenticated/operacoes/$id'
 
+const PortalRoute = PortalRouteImport.update({
+  id: '/portal',
+  path: '/portal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -37,6 +45,11 @@ const DefinirSenhaRoute = DefinirSenhaRouteImport.update({
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
+} as any)
+const PortalIndexRoute = PortalIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PortalRoute,
 } as any)
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
@@ -80,6 +93,11 @@ const AuthenticatedOperacoesIndexRoute =
     path: '/operacoes/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const PortalOperacoesIdRoute = PortalOperacoesIdRouteImport.update({
+  id: '/operacoes/$id',
+  path: '/operacoes/$id',
+  getParentRoute: () => PortalRoute,
+} as any)
 const AuthenticatedTomadoresIdRoute =
   AuthenticatedTomadoresIdRouteImport.update({
     id: '/tomadores/$id',
@@ -103,14 +121,17 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
+  '/portal': typeof PortalRouteWithChildren
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/capital': typeof AuthenticatedCapitalRoute
   '/cobranca': typeof AuthenticatedCobrancaRoute
   '/compliance': typeof AuthenticatedComplianceRoute
   '/fiscal': typeof AuthenticatedFiscalRoute
+  '/portal/': typeof PortalIndexRoute
   '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
   '/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
   '/tomadores/$id': typeof AuthenticatedTomadoresIdRoute
+  '/portal/operacoes/$id': typeof PortalOperacoesIdRoute
   '/operacoes/': typeof AuthenticatedOperacoesIndexRoute
   '/tomadores/': typeof AuthenticatedTomadoresIndexRoute
 }
@@ -123,9 +144,11 @@ export interface FileRoutesByTo {
   '/compliance': typeof AuthenticatedComplianceRoute
   '/fiscal': typeof AuthenticatedFiscalRoute
   '/': typeof AuthenticatedIndexRoute
+  '/portal': typeof PortalIndexRoute
   '/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
   '/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
   '/tomadores/$id': typeof AuthenticatedTomadoresIdRoute
+  '/portal/operacoes/$id': typeof PortalOperacoesIdRoute
   '/operacoes': typeof AuthenticatedOperacoesIndexRoute
   '/tomadores': typeof AuthenticatedTomadoresIndexRoute
 }
@@ -134,15 +157,18 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
+  '/portal': typeof PortalRouteWithChildren
   '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
   '/_authenticated/capital': typeof AuthenticatedCapitalRoute
   '/_authenticated/cobranca': typeof AuthenticatedCobrancaRoute
   '/_authenticated/compliance': typeof AuthenticatedComplianceRoute
   '/_authenticated/fiscal': typeof AuthenticatedFiscalRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/portal/': typeof PortalIndexRoute
   '/_authenticated/operacoes/$id': typeof AuthenticatedOperacoesIdRoute
   '/_authenticated/operacoes/nova': typeof AuthenticatedOperacoesNovaRoute
   '/_authenticated/tomadores/$id': typeof AuthenticatedTomadoresIdRoute
+  '/portal/operacoes/$id': typeof PortalOperacoesIdRoute
   '/_authenticated/operacoes/': typeof AuthenticatedOperacoesIndexRoute
   '/_authenticated/tomadores/': typeof AuthenticatedTomadoresIndexRoute
 }
@@ -152,14 +178,17 @@ export interface FileRouteTypes {
     | '/'
     | '/definir-senha'
     | '/login'
+    | '/portal'
     | '/auditoria'
     | '/capital'
     | '/cobranca'
     | '/compliance'
     | '/fiscal'
+    | '/portal/'
     | '/operacoes/$id'
     | '/operacoes/nova'
     | '/tomadores/$id'
+    | '/portal/operacoes/$id'
     | '/operacoes/'
     | '/tomadores/'
   fileRoutesByTo: FileRoutesByTo
@@ -172,9 +201,11 @@ export interface FileRouteTypes {
     | '/compliance'
     | '/fiscal'
     | '/'
+    | '/portal'
     | '/operacoes/$id'
     | '/operacoes/nova'
     | '/tomadores/$id'
+    | '/portal/operacoes/$id'
     | '/operacoes'
     | '/tomadores'
   id:
@@ -182,15 +213,18 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/definir-senha'
     | '/login'
+    | '/portal'
     | '/_authenticated/auditoria'
     | '/_authenticated/capital'
     | '/_authenticated/cobranca'
     | '/_authenticated/compliance'
     | '/_authenticated/fiscal'
     | '/_authenticated/'
+    | '/portal/'
     | '/_authenticated/operacoes/$id'
     | '/_authenticated/operacoes/nova'
     | '/_authenticated/tomadores/$id'
+    | '/portal/operacoes/$id'
     | '/_authenticated/operacoes/'
     | '/_authenticated/tomadores/'
   fileRoutesById: FileRoutesById
@@ -199,10 +233,18 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   DefinirSenhaRoute: typeof DefinirSenhaRoute
   LoginRoute: typeof LoginRoute
+  PortalRoute: typeof PortalRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/portal': {
+      id: '/portal'
+      path: '/portal'
+      fullPath: '/portal'
+      preLoaderRoute: typeof PortalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -223,6 +265,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/portal/': {
+      id: '/portal/'
+      path: '/'
+      fullPath: '/portal/'
+      preLoaderRoute: typeof PortalIndexRouteImport
+      parentRoute: typeof PortalRoute
     }
     '/_authenticated/': {
       id: '/_authenticated/'
@@ -280,6 +329,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOperacoesIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/portal/operacoes/$id': {
+      id: '/portal/operacoes/$id'
+      path: '/operacoes/$id'
+      fullPath: '/portal/operacoes/$id'
+      preLoaderRoute: typeof PortalOperacoesIdRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_authenticated/tomadores/$id': {
       id: '/_authenticated/tomadores/$id'
       path: '/tomadores/$id'
@@ -336,10 +392,24 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
   AuthenticatedRouteChildren,
 )
 
+interface PortalRouteChildren {
+  PortalIndexRoute: typeof PortalIndexRoute
+  PortalOperacoesIdRoute: typeof PortalOperacoesIdRoute
+}
+
+const PortalRouteChildren: PortalRouteChildren = {
+  PortalIndexRoute: PortalIndexRoute,
+  PortalOperacoesIdRoute: PortalOperacoesIdRoute,
+}
+
+const PortalRouteWithChildren =
+  PortalRoute._addFileChildren(PortalRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   DefinirSenhaRoute: DefinirSenhaRoute,
   LoginRoute: LoginRoute,
+  PortalRoute: PortalRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

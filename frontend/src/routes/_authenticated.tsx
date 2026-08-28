@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react'
 import { createFileRoute, Outlet, redirect, useRouterState } from '@tanstack/react-router'
 import { AlertTriangle, Search } from 'lucide-react'
 import { getSession } from '@/auth/supabaseClient'
+import { papelDoLogin } from '@/auth/papel'
 import { AppSidebar } from '@/components/app-sidebar'
 import { CommandPalette } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -22,6 +23,12 @@ export const Route = createFileRoute('/_authenticated')({
     const session = await getSession()
     if (!session) {
       throw redirect({ to: '/login' })
+    }
+    // Um tomador autenticado não entra no painel da ESC: vai para o portal.
+    // O backend já barra as rotas (get_painel_user); isto evita mostrar a ele
+    // uma tela inteira que só responderia 403.
+    if ((await papelDoLogin()) === 'tomador') {
+      throw redirect({ to: '/portal' })
     }
   },
   component: AuthenticatedLayout,

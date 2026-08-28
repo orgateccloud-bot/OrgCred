@@ -375,7 +375,11 @@ class Usuario(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True)
     email = Column(String(255), unique=True, nullable=False)
     nome = Column(String(255), nullable=False)
-    papel = Column(String(20), nullable=False)  # admin, operador
+    papel = Column(String(20), nullable=False)  # admin, operador, tomador
+    # Vínculo do portal (migration 031): a empresa cujo painel um login de
+    # tomador enxerga. NULO para admin/operador — o CHECK no banco garante os
+    # dois lados.
+    tomador_id = Column(PG_UUID(as_uuid=True), ForeignKey("tomador.id"), nullable=True)
     ativo = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

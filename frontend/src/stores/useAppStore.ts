@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type Papel = 'admin' | 'operador'
+export type Papel = 'admin' | 'operador' | 'tomador'
 export type Tema = 'dark' | 'light'
 
 /**

@@ -31,6 +31,9 @@ import type {
   GetContratoApiContratosOperacoesOperacaoIdContratoGetData,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetData,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetErrors,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetResponses,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses,
@@ -49,6 +52,8 @@ import type {
   GetOperacaoApiOperacoesOperacaoIdGetResponses,
   GetOperacoesApiOperacoesGetData,
   GetOperacoesApiOperacoesGetResponses,
+  GetOperacoesApiPortalOperacoesGetData,
+  GetOperacoesApiPortalOperacoesGetResponses,
   GetParametrosApiFiscalParametrosGetData,
   GetParametrosApiFiscalParametrosGetResponses,
   GetParametroVigenteApiFiscalParametrosVigenteGetData,
@@ -56,10 +61,15 @@ import type {
   GetParcelasApiOperacoesOperacaoIdParcelasGetData,
   GetParcelasApiOperacoesOperacaoIdParcelasGetErrors,
   GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetErrors,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponses,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses,
   GetPendenciasRegistroApiContratosRegistrosPendenciasGetData,
   GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses,
+  GetPerfilApiPortalPerfilGetData,
+  GetPerfilApiPortalPerfilGetResponses,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses,
@@ -1714,6 +1724,78 @@ export const getMeApiMeGet = <ThrowOnError extends boolean = false>(
   (options?.client ?? client).get<GetMeApiMeGetResponses, unknown, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/me',
+    ...options,
+  })
+
+/**
+ * Get Perfil
+ */
+export const getPerfilApiPortalPerfilGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetPerfilApiPortalPerfilGetData, ThrowOnError>,
+): RequestResult<GetPerfilApiPortalPerfilGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<GetPerfilApiPortalPerfilGetResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/portal/perfil',
+    ...options,
+  })
+
+/**
+ * Get Operacoes
+ */
+export const getOperacoesApiPortalOperacoesGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetOperacoesApiPortalOperacoesGetData, ThrowOnError>,
+): RequestResult<GetOperacoesApiPortalOperacoesGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetOperacoesApiPortalOperacoesGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/portal/operacoes',
+    ...options,
+  })
+
+/**
+ * Get Parcelas
+ */
+export const getParcelasApiPortalOperacoesOperacaoIdParcelasGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData, ThrowOnError>,
+): RequestResult<
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponses,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponses,
+    GetParcelasApiPortalOperacoesOperacaoIdParcelasGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/portal/operacoes/{operacao_id}/parcelas',
+    ...options,
+  })
+
+/**
+ * Get Contrato
+ */
+export const getContratoApiPortalOperacoesOperacaoIdContratoGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetContratoApiPortalOperacoesOperacaoIdContratoGetData, ThrowOnError>,
+): RequestResult<
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetResponses,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetContratoApiPortalOperacoesOperacaoIdContratoGetResponses,
+    GetContratoApiPortalOperacoesOperacaoIdContratoGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/portal/operacoes/{operacao_id}/contrato',
     ...options,
   })
 

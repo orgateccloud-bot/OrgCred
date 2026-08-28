@@ -13,6 +13,7 @@ import {
   getCapitalSnapshotApiCapitalSnapshotGet,
   getConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGet,
   getContratoApiContratosOperacoesOperacaoIdContratoGet,
+  getContratoApiPortalOperacoesOperacaoIdContratoGet,
   getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet,
   getEstadoRotinasApiAuditoriaRotinasGet,
   getMeApiMeGet,
@@ -20,11 +21,14 @@ import {
   getMovimentosApiCobrancaMovimentosGet,
   getOperacaoApiOperacoesOperacaoIdGet,
   getOperacoesApiOperacoesGet,
+  getOperacoesApiPortalOperacoesGet,
   getParametrosApiFiscalParametrosGet,
   getParametroVigenteApiFiscalParametrosVigenteGet,
   getParcelasApiOperacoesOperacaoIdParcelasGet,
+  getParcelasApiPortalOperacoesOperacaoIdParcelasGet,
   getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet,
   getPendenciasRegistroApiContratosRegistrosPendenciasGet,
+  getPerfilApiPortalPerfilGet,
   getRegistrosApiContratosOperacoesOperacaoIdRegistrosGet,
   getRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGet,
   getTomadorApiTomadoresTomadorIdGet,
@@ -81,6 +85,9 @@ import type {
   GetContratoApiContratosOperacoesOperacaoIdContratoGetData,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetError,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetResponse,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetData,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetError,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetResponse,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetError,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse,
@@ -99,6 +106,8 @@ import type {
   GetOperacaoApiOperacoesOperacaoIdGetResponse,
   GetOperacoesApiOperacoesGetData,
   GetOperacoesApiOperacoesGetResponse,
+  GetOperacoesApiPortalOperacoesGetData,
+  GetOperacoesApiPortalOperacoesGetResponse,
   GetParametrosApiFiscalParametrosGetData,
   GetParametrosApiFiscalParametrosGetResponse,
   GetParametroVigenteApiFiscalParametrosVigenteGetData,
@@ -106,10 +115,15 @@ import type {
   GetParcelasApiOperacoesOperacaoIdParcelasGetData,
   GetParcelasApiOperacoesOperacaoIdParcelasGetError,
   GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetError,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponse,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponse,
   GetPendenciasRegistroApiContratosRegistrosPendenciasGetData,
   GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponse,
+  GetPerfilApiPortalPerfilGetData,
+  GetPerfilApiPortalPerfilGetResponse,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetError,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponse,
@@ -2064,6 +2078,118 @@ export const getMeApiMeGetOptions = (options?: Options<GetMeApiMeGetData>) =>
       return data
     },
     queryKey: getMeApiMeGetQueryKey(options),
+  })
+
+export const getPerfilApiPortalPerfilGetQueryKey = (
+  options?: Options<GetPerfilApiPortalPerfilGetData>,
+) => createQueryKey('getPerfilApiPortalPerfilGet', options)
+
+/**
+ * Get Perfil
+ */
+export const getPerfilApiPortalPerfilGetOptions = (
+  options?: Options<GetPerfilApiPortalPerfilGetData>,
+) =>
+  queryOptions<
+    GetPerfilApiPortalPerfilGetResponse,
+    DefaultError,
+    GetPerfilApiPortalPerfilGetResponse,
+    ReturnType<typeof getPerfilApiPortalPerfilGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getPerfilApiPortalPerfilGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getPerfilApiPortalPerfilGetQueryKey(options),
+  })
+
+export const getOperacoesApiPortalOperacoesGetQueryKey = (
+  options?: Options<GetOperacoesApiPortalOperacoesGetData>,
+) => createQueryKey('getOperacoesApiPortalOperacoesGet', options)
+
+/**
+ * Get Operacoes
+ */
+export const getOperacoesApiPortalOperacoesGetOptions = (
+  options?: Options<GetOperacoesApiPortalOperacoesGetData>,
+) =>
+  queryOptions<
+    GetOperacoesApiPortalOperacoesGetResponse,
+    DefaultError,
+    GetOperacoesApiPortalOperacoesGetResponse,
+    ReturnType<typeof getOperacoesApiPortalOperacoesGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getOperacoesApiPortalOperacoesGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getOperacoesApiPortalOperacoesGetQueryKey(options),
+  })
+
+export const getParcelasApiPortalOperacoesOperacaoIdParcelasGetQueryKey = (
+  options: Options<GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData>,
+) => createQueryKey('getParcelasApiPortalOperacoesOperacaoIdParcelasGet', options)
+
+/**
+ * Get Parcelas
+ */
+export const getParcelasApiPortalOperacoesOperacaoIdParcelasGetOptions = (
+  options: Options<GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData>,
+) =>
+  queryOptions<
+    GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponse,
+    GetParcelasApiPortalOperacoesOperacaoIdParcelasGetError,
+    GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponse,
+    ReturnType<typeof getParcelasApiPortalOperacoesOperacaoIdParcelasGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getParcelasApiPortalOperacoesOperacaoIdParcelasGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getParcelasApiPortalOperacoesOperacaoIdParcelasGetQueryKey(options),
+  })
+
+export const getContratoApiPortalOperacoesOperacaoIdContratoGetQueryKey = (
+  options: Options<GetContratoApiPortalOperacoesOperacaoIdContratoGetData>,
+) => createQueryKey('getContratoApiPortalOperacoesOperacaoIdContratoGet', options)
+
+/**
+ * Get Contrato
+ */
+export const getContratoApiPortalOperacoesOperacaoIdContratoGetOptions = (
+  options: Options<GetContratoApiPortalOperacoesOperacaoIdContratoGetData>,
+) =>
+  queryOptions<
+    GetContratoApiPortalOperacoesOperacaoIdContratoGetResponse,
+    GetContratoApiPortalOperacoesOperacaoIdContratoGetError,
+    GetContratoApiPortalOperacoesOperacaoIdContratoGetResponse,
+    ReturnType<typeof getContratoApiPortalOperacoesOperacaoIdContratoGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getContratoApiPortalOperacoesOperacaoIdContratoGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getContratoApiPortalOperacoesOperacaoIdContratoGetQueryKey(options),
   })
 
 export const healthCheckHealthGetQueryKey = (options?: Options<HealthCheckHealthGetData>) =>

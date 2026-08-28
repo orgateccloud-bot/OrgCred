@@ -339,6 +339,20 @@ class ParcelaForaDaEmissao(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC025", http_status=422)
 
 
+class ConviteImutavel(RegraNegocioViolada):
+    """OC027: a trilha de convites ao portal do tomador é append-only.
+
+    Convidar um tomador é dar a um CNPJ externo uma janela para os dados de
+    crédito dele — quem convidou e quando é prova de conformidade (Lei
+    9.613/98). Só o vínculo do login e a data de aceite se preenchem depois; o
+    resto não se edita nem se apaga. Mesma disciplina de `ocorrencia_atipicidade`
+    (OC014), código próprio porque a instrução ao operador é outra.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC027", http_status=422)
+
+
 class OperacaoNaoEncontrada(Exception):
     """Operação não existe."""
 

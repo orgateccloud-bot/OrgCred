@@ -177,33 +177,33 @@ class TestProtecaoAppendOnly:
         )
 
     def test_truncate_segue_livre_fora_das_trilhas(self, db_session: Session) -> None:
-        """Caminho feliz: nem a 016 nem a 027 proibiram TRUNCATE, proibiram
-        TRUNCATE ONDE A LINHA GRAVADA NÃO PODE SUMIR. Cadastro continua sendo
-        cadastro — `usuario` é a lista de quem opera o painel, e limpá-la num
-        ambiente de homologação não apaga trilha de conformidade nenhuma (o
-        nome de quem agiu já está copiado dentro de cada trilha, que é o que
-        as travas protegem).
+        """Caminho feliz: as travas de TRUNCATE são targeted, não um banimento
+        geral. `parametro_fiscal` é o exemplo certo do que continua livre: ela
+        não é trilha append-only e não arrasta nenhuma — é parâmetro de cálculo,
+        que se recadastra, e limpá-la num ambiente de homologação não apaga
+        prova de conformidade nenhuma.
 
-        ESTE TESTE JÁ AFIRMOU O CONTRÁRIO SOBRE `movimento_bancario`, e a troca
-        é o registro de uma decisão, não uma acomodação: até a 027 ele provava
-        que `truncate table movimento_bancario cascade` PASSAVA, e o docstring
-        anterior anotava a consequência sem tratá-la como defeito — "quem limpa
-        extrato em base com agenda emitida está apagando a agenda também". A
-        027 mostrou que essa consequência habilitava um ataque (ver
-        tests/test_parcelas.py::test_truncate_nao_reabre_a_janela_de_emissao):
-        com a agenda vazia, a operação segue 'ativa' e a guarda de inserção
-        passa a ler isso como agenda incompleta. O comando está provado no
-        teste abaixo, agora do lado da recusa.
+        POR QUE NÃO `usuario`, que este teste usava até a migration 031: ele
+        deixou de ser livre. `usuario` passou a ancorar `convite_portal`, uma
+        trilha append-only (quem deu acesso de portal a qual CNPJ, e quando),
+        então `truncate usuario cascade` alcança a trilha e bate no
+        BEFORE TRUNCATE dela — OC027. Não é acomodação: é o cadastro que ganhou
+        um satélite append-only e, com ele, deixou de poder sumir de graça. O
+        comando está provado do lado da recusa em
+        tests/test_portal.py.
         """
         db_session.execute(
             text("""
-            insert into usuario (email, nome, papel)
-            values ('truncate@orgatec.com', 'Usuário Descartável', 'operador')
+            insert into parametro_fiscal
+                (vigencia_inicio, percentual_presuncao_irpj, percentual_presuncao_csll,
+                 aliquota_irpj, aliquota_csll, adicional_irpj_aliquota, adicional_irpj_limite,
+                 aliquota_pis, aliquota_cofins, regime_reconhecimento)
+            values ('2099-01-01', 0.32, 0.32, 0.15, 0.09, 0.10, 60000, 0.0065, 0.03, 'caixa')
             """)
         )
-        db_session.execute(text("truncate table usuario cascade"))
+        db_session.execute(text("truncate table parametro_fiscal"))
 
-        assert db_session.execute(text("select count(*) from usuario")).scalar_one() == 0
+        assert db_session.execute(text("select count(*) from parametro_fiscal")).scalar_one() == 0
         db_session.rollback()
 
     def test_truncate_no_extrato_alcanca_a_agenda_e_por_isso_e_recusado(

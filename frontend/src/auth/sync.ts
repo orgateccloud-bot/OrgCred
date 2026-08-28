@@ -31,7 +31,7 @@ export function initAuthSync(): void {
               id: res.data.id,
               email: res.data.email,
               nome: res.data.nome,
-              papel: res.data.papel as 'admin' | 'operador',
+              papel: res.data.papel as 'admin' | 'operador' | 'tomador',
             })
           }
         })
