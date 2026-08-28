@@ -89,6 +89,60 @@ class TestGetCurrentUser:
         with pytest.raises(TokenInvalido, match="sub"):
             get_current_user(credentials=_credentials(token), db=db_session)
 
+    def test_token_sem_exp_e_recusado(self, db_session: Session) -> None:
+        """O furo que o `require=['exp']` fecha: um token assinado com o segredo
+        mas SEM `exp` nunca expira. Sem a exigência de presença, a assinatura
+        confere e `verify_exp` não tem o que checar — o token vale para sempre.
+        """
+        usuario_id = _criar_usuario(db_session)
+        claims = {"sub": str(usuario_id)}  # sem exp, de propósito
+        token = jwt.encode(claims, settings.supabase_jwt_secret, algorithm="HS256")
+
+        with pytest.raises(TokenInvalido, match="obrigatória"):
+            get_current_user(credentials=_credentials(token), db=db_session)
+
+    def test_issuer_verificado_quando_configurado(self, db_session: Session, monkeypatch) -> None:
+        """Com `supabase_url` configurada, um token de OUTRO emissor é recusado,
+        mesmo assinado com o segredo certo. Sem a URL (default), o issuer não é
+        verificado — para não recusar todo token antes de a config existir."""
+        monkeypatch.setattr(settings, "supabase_url", "https://projeto-real.supabase.co")
+        usuario_id = _criar_usuario(db_session)
+        claims = {
+            "sub": str(usuario_id),
+            "exp": int(time.time()) + 3600,
+            "iss": "https://projeto-INTRUSO.supabase.co/auth/v1",
+        }
+        token = jwt.encode(claims, settings.supabase_jwt_secret, algorithm="HS256")
+
+        with pytest.raises(TokenInvalido, match="emissor"):
+            get_current_user(credentials=_credentials(token), db=db_session)
+
+    def test_issuer_correto_passa_quando_configurado(
+        self, db_session: Session, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(settings, "supabase_url", "https://projeto-real.supabase.co")
+        usuario_id = _criar_usuario(db_session, papel="operador")
+        claims = {
+            "sub": str(usuario_id),
+            "exp": int(time.time()) + 3600,
+            "iss": "https://projeto-real.supabase.co/auth/v1",
+        }
+        token = jwt.encode(claims, settings.supabase_jwt_secret, algorithm="HS256")
+
+        usuario = get_current_user(credentials=_credentials(token), db=db_session)
+        assert usuario.id == usuario_id
+
+    def test_sem_url_configurada_o_issuer_nao_e_exigido(self, db_session: Session) -> None:
+        """O comportamento de produção HOJE (supabase_url vazia): um token sem
+        `iss` nenhum passa, desde que assinado e com exp/sub. Fechar o issuer
+        sem a URL configurada recusaria todo mundo — fail-closed pelo motivo
+        errado."""
+        usuario_id = _criar_usuario(db_session, papel="operador")
+        token = _gerar_token(sub=str(usuario_id))  # sem iss
+
+        usuario = get_current_user(credentials=_credentials(token), db=db_session)
+        assert usuario.id == usuario_id
+
     def test_token_com_usuario_inexistente_levanta_permissao_negada(
         self, db_session: Session
     ) -> None:
