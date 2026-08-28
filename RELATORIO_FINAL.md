@@ -1,6 +1,6 @@
 # OrgCred — Relatório de execução e auditoria
 
-**Período: 12 a 26 de agosto de 2026.** Trinta e quatro commits, ~16.000 linhas.
+**Período: 12 a 27 de agosto de 2026.** Trinta e cinco commits, ~16.000 linhas.
 
 > Este relatório tem duas metades que precisam ser lidas juntas: o que foi
 > construído, e o que uma auditoria independente encontrou depois. A segunda
@@ -10,15 +10,44 @@
 
 ## 1. Veredito
 
-**Ainda não dá para entrar em produção com dinheiro real** — mas o que impede
-deixou de ser código. Não confundir as causas é o que torna a fila acionável:
+**Não dá para entrar em produção com dinheiro real.** Não há crítico aberto,
+mas há altos — e uma frase anterior desta mesma seção ("o que impede deixou de
+ser código") durou uma hora antes de ser derrubada por medição. Ela fica
+registrada porque o padrão que ela repete é o assunto da seção 5.
 
-1. ~~**Um defeito de código crítico e aberto.**~~ **Fechado.** A renegociação
-   que liberava o teto do Art. 5º sem prova de pagamento foi barrada pela
-   migration 026 (OC024), e os três altos de cobrança pela 027 (OC025/OC011).
-   Todos reproduzidos **nos dois sentidos**: o ataque recusado no schema novo e
-   aceito no antigo. Resta um alto de código, o rate limit global, que degrada
-   disponibilidade sob abuso e não fura invariante legal nenhum.
+1. ~~**Um defeito de código crítico e aberto.**~~ **Fechado pela migration 028**,
+   doze horas depois de ter sido criado pela 027. O que era: a migration 027 trocou a
+   chave global `unique (documento)` por `(documento, conta_origem)` — mas
+   `conta_origem` é a **grafia que o arquivo trouxe**, não a identidade da
+   conta: `_formatar_conta` ([ofx.py:289](app/ofx.py:289)) devolve
+   `BANKID/ACCTID`, `ACCTID` ou `BANKID`, verbatim, sem normalizar. O mesmo
+   extrato da mesma conta, exportado com e sem `<BANKID>`, importa **duas
+   vezes** — com a aritmética do relatório fechando nas duas. Reproduzido de
+   ponta a ponta pelo parser e pelo serviço do próprio projeto: R$ 31.514,86
+   recebidos viram R$ 63.029,72 de lastro, as quatro parcelas ficam quitadas,
+   `liquidar` é aceito e o comprometido volta a zero com R$ 28.485,14 de
+   principal na rua. É o efeito da seção 4 deste relatório reaberto pela porta
+   do extrato.
+
+   A 028 move a chave da GRAFIA para a IDENTIDADE: `conta_chave` é uma coluna
+   **gerada pelo banco** a partir de `conta_origem`, descartando o BANKID (que
+   está presente numa exportação e ausente noutra) e normalizando pontuação e
+   zeros. Verificado com o mesmo script que provou o furo: `criados=2` virou
+   `ja_registrados=2`, e o lastro fabricado caiu de R$ 31.514,86 para **zero**.
+   A colisão residual que sobra — dois bancos com o mesmo número de conta E o
+   mesmo FITID — deixou de ser silenciosa: virou um contador próprio no
+   relatório, separado de `ja_registrados`, porque o achado nunca foi "uma linha
+   se perdeu" e sim "uma linha se perdeu **e a aritmética fechou**".
+
+   Fechados junto: a agenda do título já renegociado, que aceitava baixa pela
+   porta de produção e consumia o crédito real do tomador para sempre (OC026); o
+   `TRUNCATE` nas três tabelas append-only que a 016 e a 027 tinham deixado de
+   fora; e a linha ausente na revisão 0006 que fazia `alembic downgrade base`
+   morrer com `DuplicateObject` — o job `alembic` da CI era **vermelho por
+   construção desde o primeiro commit dela**, de modo que a prova de que o
+   schema reverte nunca tinha existido.
+
+   **Produção nunca esteve exposta: ela roda o schema 0026.**
 2. **Uma credencial ausente.** Sem a `service_role` key do Supabase, arquivar
    identificação responde 503; como o gate OC019 exige evidência arquivada para
    ativar, nenhum tomador novo recebe crédito.
@@ -34,7 +63,7 @@ apontava a API para `localhost:8000`, o operador autenticava e nenhuma chamada
 funcionava — e `POST /liquidar` devolvia 100% do capital ao teto com todas as
 parcelas em aberto.
 
-Ao longo da semana, treze migrations (015 a 027):
+Ao longo da semana, catorze migrations (015 a 028):
 
 - **Bordas do teto** (015): `UPDATE` de `valor_principal` em operação ativa,
   `esc_capital_social` sem trigger de `UPDATE`/`DELETE`, e redução com valor
@@ -64,9 +93,13 @@ Ao longo da semana, treze migrations (015 a 027):
   conta**, o `INSERT` em `parcela` ganha guarda (OC025) com o `TRUNCATE` fechado
   junto, e a cobertura de valor da baixa sai de dentro de `fn_baixar_parcela`
   para o trigger (OC011), alcançável por qualquer porta.
+- **Identidade da conta** (028): a chave do extrato deixa de ser a GRAFIA e
+  passa a ser a IDENTIDADE da conta — consertando o crítico que a 027 abriu —,
+  a baixa passa a exigir operação em cobrança (OC026), e as três tabelas
+  append-only que faltavam ganham guarda de `TRUNCATE`.
 
-**Números:** 611 testes backend (eram 198), 216 de frontend (eram 50), 6 E2E,
-93% de cobertura, 27 migrations, 24 SQLSTATEs.
+**Números:** 637 testes backend (eram 198), 219 de frontend (eram 50), 6 E2E,
+93% de cobertura, 28 migrations, 25 SQLSTATEs.
 
 ---
 
@@ -84,7 +117,9 @@ acusaria divergência falsa de um centavo — arruinando o indicador que existe 
 ser confiável.
 
 **`pg_dump` recusa servidor mais novo.** Cravei `postgresql-client-16` lendo o
-`postgres:16` do `docker-compose`, que é o banco **local**; produção roda 18.4.
+`postgres:16` do `docker-compose`, que é o banco **local**; produção roda 18.6
+(era 18.4 quando isto foi escrito — o número mudou sozinho, que é precisamente
+o argumento).
 A correção não foi trocar 16 por 18 — foi **tirar a versão**, senão a próxima
 atualização do servidor quebraria o backup em silêncio.
 
@@ -181,7 +216,46 @@ teste verde provando que a função grava quem recebe — nunca que alguém entr
 
 ---
 
-## 5. A lição que se repetiu a semana inteira
+## 5. As doze horas entre a 027 e a 028
+
+É o episódio mais instrutivo da semana, e vale contado em ordem.
+
+**De manhã**, a migration 027 fechou três altos de cobrança. Foi verificada com
+o rigor que este projeto adota: cada ataque reproduzido contra Postgres com dado
+gravado pelos caminhos reais, e cada um repetido contra o schema anterior para
+provar que os testes discriminam. Suíte verde, lint limpo, commit.
+
+**À tarde**, uma verificação domínio a domínio — onze céticos, um por domínio,
+obrigados a medir — derrubou seis das onze notas. E um crítico de completude,
+lendo os onze relatos juntos, achou o que nenhum deles podia achar sozinho: a
+027 tinha **aberto um crítico**. Ela pôs a GRAFIA da conta na chave do extrato
+supondo que a grafia identificasse a conta. O mesmo extrato exportado com e sem
+`<BANKID>` passou a importar duas vezes, dobrando o lastro; e o lastro dobrado
+quita a carteira e devolve o capital ao teto do Art. 5º por `liquidar`.
+
+**Três coisas que este episódio ensina, e que nenhuma quantidade de rigor dentro
+de um domínio teria ensinado:**
+
+1. **A verificação que fecha um furo não vê o furo que ela abre.** A 027
+   perguntou *"mesmo FITID em contas DIFERENTES entra?"* e comemorou o sim.
+   Nunca perguntou *"e quando é a MESMA conta escrita de dois jeitos?"*. Uma
+   guarda testada só na direção em que foi desenhada não foi testada.
+
+2. **O furo mora na junta.** Capital atacou o teto por doze caminhos e nenhum
+   entrava pelo extrato, porque o extrato é o domínio do vizinho. Cobrança viu a
+   duplicação mas não a seguiu até o teto. Os dois estavam certos dentro do
+   próprio quadrado; foi a divisão do trabalho que produziu dois verdes sobre um
+   crítico.
+
+3. **A propriedade que fazia o defeito ser invisível era a mesma nos dois
+   casos**: a aritmética do relatório de importação FECHA. Antes da 027, fechava
+   por cima de uma linha perdida; depois dela, por cima de uma linha duplicada. A
+   028 não se contentou em estreitar a janela — separou o contador, para que o
+   que sobra faça barulho.
+
+---
+
+## 6. A lição que se repetiu a semana inteira
 
 Três vezes o mesmo padrão apareceu, e a terceira foi a auditoria inteira:
 

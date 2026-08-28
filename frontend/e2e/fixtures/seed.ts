@@ -59,6 +59,14 @@ async function arquivarIdentificacao(client: Client, tomadorId: string) {
  * exige desligar a proteção com nome e sobrenome, e é isso que este helper
  * faz — de propósito verboso, porque a dificuldade é a prova de que pela
  * aplicação não existe caminho para destruir o histórico.
+ *
+ * A LISTA CRESCE A CADA MIGRATION QUE FECHA UMA TABELA, e é bom que doa: a
+ * 027 acrescentou `parcela` (esvaziar a agenda reabria a guarda de INSERT em
+ * dois comandos) e a 028 acrescentou `contrato_emprestimo`,
+ * `registro_operacao` e `apuracao_fiscal`. Nenhuma delas é alvo direto do
+ * TRUNCATE abaixo — todas chegam pelo `cascade` a partir de
+ * `operacao_credito` —, e foi o E2E que as encontrou, falhando com a
+ * mensagem da guarda. Quem acrescentar a próxima descobre aqui.
  */
 async function zerarCenario(client: Client) {
   await client.query('alter table capital_ledger disable trigger trg_bloquear_truncate_ledger')
@@ -74,6 +82,12 @@ async function zerarCenario(client: Client) {
   await client.query(
     'alter table ocorrencia_atipicidade disable trigger trg_bloquear_truncate_ocorrencia',
   )
+  await client.query('alter table parcela disable trigger trg_bloquear_truncate_parcela')
+  await client.query(
+    'alter table contrato_emprestimo disable trigger trg_bloquear_truncate_contrato',
+  )
+  await client.query('alter table registro_operacao disable trigger trg_bloquear_truncate_registro')
+  await client.query('alter table apuracao_fiscal disable trigger trg_bloquear_truncate_apuracao')
   try {
     // movimento_bancario entra explicitamente: ele é referenciado POR parcela,
     // então o cascade de operacao_credito não o alcança — sem isto o documento
@@ -94,6 +108,14 @@ async function zerarCenario(client: Client) {
     await client.query(
       'alter table ocorrencia_atipicidade enable trigger trg_bloquear_truncate_ocorrencia',
     )
+    await client.query('alter table parcela enable trigger trg_bloquear_truncate_parcela')
+    await client.query(
+      'alter table contrato_emprestimo enable trigger trg_bloquear_truncate_contrato',
+    )
+    await client.query(
+      'alter table registro_operacao enable trigger trg_bloquear_truncate_registro',
+    )
+    await client.query('alter table apuracao_fiscal enable trigger trg_bloquear_truncate_apuracao')
   }
 }
 

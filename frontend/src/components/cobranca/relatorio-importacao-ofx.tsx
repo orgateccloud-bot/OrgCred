@@ -11,10 +11,12 @@ import { Badge } from '@/components/ui/badge'
 /**
  * Um destino possível para uma linha do extrato.
  *
- * O texto não é decoração: `ja_registrados` e `repetidos_no_arquivo` viram
- * ambos "não criado" e significam coisas opostas — reimportação normal contra
- * anomalia do arquivo do banco. Quem não leu `capital_engine` não tem como
- * inferir isso de um número solto.
+ * O texto não é decoração: `ja_registrados`, `conflitos` e
+ * `repetidos_no_arquivo` viram todos "não criado" e significam coisas
+ * diferentes — reimportação normal, colisão de identidade e anomalia do
+ * arquivo do banco. Quem não leu `capital_engine` não tem como inferir isso de
+ * um número solto, e `conflitos` é o que separa a linha que não entrou porque
+ * já estava lá IGUAL daquela que não entrou por cima de outra transação.
  */
 interface Destino {
   chave: string
@@ -44,6 +46,21 @@ function destinos(relatorio: ImportacaoOfxOut): Destino[] {
         'reimportar não duplica crédito nem permite baixar duas parcelas com o mesmo dinheiro.',
     },
     {
+      chave: 'conflitos',
+      rotulo: 'Conflitos de identidade',
+      quantidade: relatorio.conflitos,
+      anomalia: relatorio.conflitos > 0,
+      explicacao:
+        'O sistema já tinha uma linha com este identificador NESTA conta, mas com valor ou data ' +
+        'diferentes — então não é a mesma transação, e a que veio agora não foi criada. É a única ' +
+        'situação em que um crédito real pode ficar de fora do lastro, e por isso ela aparece ' +
+        'separada de "Já registrados" em vez de somada a ela: confira as linhas no extrato e ' +
+        'lance à mão a que faltar. ' +
+        (relatorio.documentos_em_conflito.length > 0
+          ? `Identificadores: ${relatorio.documentos_em_conflito.join(', ')}.`
+          : ''),
+    },
+    {
       chave: 'repetidos_no_arquivo',
       rotulo: 'Repetidos dentro do arquivo',
       quantidade: relatorio.repetidos_no_arquivo,
@@ -69,9 +86,13 @@ function destinos(relatorio: ImportacaoOfxOut): Destino[] {
  *
  * Este bloco é o produto do endpoint, não o rodapé dele. "Importado com
  * sucesso" descartaria a única informação que torna a importação auditável:
- * `lidas` fecha com a soma dos quatro destinos, e é essa aritmética — exibida
- * por extenso, com os quatro parcelas somando à vista — que permite ao
+ * `lidas` fecha com a soma dos cinco destinos, e é essa aritmética — exibida
+ * por extenso, com as cinco parcelas somando à vista — que permite ao
  * operador afirmar que nenhuma linha do extrato dele se perdeu no caminho.
+ *
+ * E a aritmética só significa isso desde a 028: enquanto `conflitos` estava
+ * somado dentro de `ja_registrados`, ela fechava por cima de um crédito real
+ * descartado, que foi o achado que derrubou a 027.
  *
  * Período e contas ficam no topo porque o engano mais provável aqui não é
  * técnico: é importar o mês errado ou a conta errada, e nesse caso todos os

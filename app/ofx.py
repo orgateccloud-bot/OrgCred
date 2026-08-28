@@ -87,8 +87,15 @@ class TransacaoOfx(NamedTuple):
     banal. Até a migration 027 `movimento_bancario.documento` era UNIQUE global
     e o crédito do segundo banco era descartado, na importação, como "já
     registrado": a linha existia na tabela, mas era a do OUTRO banco, com outro
-    valor e outra data. Desde a 027 a chave do banco é (documento,
-    conta_origem) e a deduplicação de `importar_extrato_ofx` é pelo par.
+    valor e outra data.
+
+    MAS `conta` É A GRAFIA, E A IDENTIDADE É `conta_chave(conta)` — a correção
+    da 028, e a distinção que faltava à 027. Aquela migration pôs a grafia na
+    chave e, com isso, a mesma conta exportada com e sem `<BANKID>` passou a
+    ocupar dois espaços de nomes: as duas importações criavam, o lastro dobrava,
+    e o lastro dobrado quitava a carteira e devolvia o capital ao teto do
+    Art. 5º. A chave do banco é (documento, conta_chave) e a deduplicação de
+    `importar_extrato_ofx` é pelo mesmo par.
     """
 
     fitid: str
@@ -287,10 +294,55 @@ def _descricao(nome: Optional[str], memo: Optional[str]) -> Optional[str]:
 
 
 def _formatar_conta(bankid: Optional[str], acctid: Optional[str]) -> Optional[str]:
-    """BANKID + ACCTID -> "banco/conta". Só ACCTID (cartão) vira só a conta."""
+    """BANKID + ACCTID -> "banco/conta". Só ACCTID (cartão) vira só a conta.
+
+    ISTO É A GRAFIA, NÃO A IDENTIDADE, e a distinção custou um crítico: a
+    migration 027 usou o retorno desta função como metade da chave única do
+    extrato, supondo que ela identificasse a conta. Não identifica — devolve o
+    que o arquivo trouxe. A mesma conta exportada com e sem `<BANKID>` produz
+    duas strings, e com elas na chave o lastro DOBRA. A identidade é
+    `conta_chave`, logo abaixo.
+    """
     if bankid and acctid:
         return f"{bankid}/{acctid}"
     return acctid or bankid or None
+
+
+# `[^0-9A-Za-z]` e não `str.isalnum()`: o `isalnum` do Python é Unicode e
+# aceitaria 'ç' ou 'á', que o `regexp_replace` de `fn_conta_chave` (migration
+# 028) apaga. A classe explícita é o que mantém as duas implementações
+# idênticas — e há teste que roda as duas sobre a mesma tabela de casos.
+_NAO_ALFANUMERICO = re.compile(r"[^0-9A-Za-z]")
+
+
+def conta_chave(conta: Optional[str]) -> Optional[str]:
+    """A IDENTIDADE da conta, a partir da grafia que o arquivo trouxe.
+
+    Espelho exato de `fn_conta_chave(text)` da migration 028, e o espelho é
+    deliberado, não descuido: a regra mora no banco (a coluna
+    `movimento_bancario.conta_chave` é GERADA por ela, e nenhum cliente pode
+    discordar da chave que o banco usa), e esta cópia existe só para a
+    deduplicação DENTRO do arquivo, que acontece antes de qualquer INSERT.
+    `tests/test_ofx.py` roda as duas sobre a mesma tabela de casos e falha se
+    divergirem — é o que torna a duplicação honesta em vez de perigosa.
+
+    A canonização descarta o BANKID de propósito. O caso que quebrou é a MESMA
+    conta com o BANKID presente numa exportação e ausente noutra, e não existe
+    normalização de string que una '001/123456' e '123456' sem descartá-lo: a
+    informação está num arquivo e não está no outro. O custo — dois bancos
+    diferentes com o mesmo número de conta E o mesmo FITID voltam a colidir —
+    está assumido e escrito no cabeçalho da 028, e deixou de ser silencioso: a
+    importação compara valor e data do que pulou e conta os divergentes à parte.
+
+    Devolve None para o que não identifica conta nenhuma (ausente, ou só zeros e
+    pontuação), jogando a linha no espaço de nomes dos sem-conta — o mesmo do
+    lançamento manual, que é a leitura conservadora.
+    """
+    if conta is None:
+        return None
+    bruto = conta.rsplit("/", 1)[-1]
+    limpo = _NAO_ALFANUMERICO.sub("", bruto).upper().lstrip("0")
+    return limpo or None
 
 
 def _montar_transacao(campos: Dict[str, str], conta: Optional[str]) -> TransacaoOfx:

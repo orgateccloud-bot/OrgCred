@@ -99,6 +99,28 @@ class BaixaInvalida(RegraNegocioViolada):
         super().__init__(message, sqlstate="OC011", http_status=422)
 
 
+class BaixaForaDeCobranca(RegraNegocioViolada):
+    """OC026: baixa numa agenda cuja operação não está mais em cobrança.
+
+    `fn_baixar_parcela` perguntava pelo status da PARCELA e nunca pelo da
+    OPERAÇÃO — zero ocorrências de `operacao_credito` no corpo dela até a
+    migration 028. Consumada uma novação, a agenda do título EXTINTO continua
+    'aberta' e o endpoint devolvia 204: o crédito real do tomador era consumido
+    contra uma dívida que já migrou, e a parcela VIVA da substituta passava a
+    ser recusada com OC011 ("movimento já usado"). Não há estorno — o lastro
+    ficava preso na parcela errada para sempre.
+
+    Código próprio, e não OC011, pelo critério da 016: OC011 diz "a baixa não
+    tem lastro bancário válido" e manda conferir o extrato. Aqui o lastro é
+    perfeitamente válido e o extrato está certo; o que está errado é o
+    ENDEREÇO. A instrução ao operador é outra — a dívida viva é a da operação
+    substituta.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC026", http_status=422)
+
+
 class MovimentoDuplicado(RegraNegocioViolada):
     """Documento de extrato já registrado (violação do UNIQUE de `documento`).
 

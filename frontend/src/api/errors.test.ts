@@ -219,11 +219,22 @@ describe('mensagemDeErro', () => {
     'OC022',
     'OC024',
     'OC025',
+    'OC026',
   ])('%s tem tradução própria, e não o texto cru do backend', (codigo) => {
     const tecnico = `ERROR: trigger recusou a operação (SQLSTATE ${codigo})`
     const traduzida = mensagemDeErro(new ApiError(tecnico, codigo, 422))
     expect(traduzida).not.toBe(tecnico)
     expect(traduzida.length).toBeGreaterThan(20)
+  })
+
+  // OC026 recusa a baixa numa agenda cujo título já saiu de cobrança. A
+  // mensagem PRECISA dizer onde a dívida viva está, senão o operador que
+  // acabou de receber o dinheiro fica sem caminho — e a tentação passa a ser
+  // lançar o crédito à mão em outro lugar.
+  it('OC026 diz onde a dívida viva está, em vez de só recusar', () => {
+    const mensagem = mensagemDeErro(new ApiError('...', 'OC026', 422))
+    expect(mensagem.toLowerCase()).toContain('substitui')
+    expect(mensagem.toLowerCase()).not.toContain('extrato corrigido')
   })
 
   // OC022 é o gate de liquidação: sem citar a baixa por prejuízo, o operador

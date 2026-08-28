@@ -106,6 +106,12 @@ const MENSAGENS_POR_CODIGO: Record<string, string> = {
   // ativa — sem ela, o operador fica sem caminho nenhum.
   OC025:
     'A agenda de parcelas é emitida pelo banco na ativação da operação e não recebe parcelas avulsas — ela é a prova do que foi contratado. Para mudar as condições de uma operação ativa, renegocie: a operação substituta nasce com agenda própria.',
+  // NÃO é OC011 (migration 028). Ali o lastro é inválido e a instrução é
+  // conferir o extrato; aqui o lastro está certo e o extrato também — o que
+  // está errado é o ENDEREÇO da baixa. Mandar conferir o extrato faria o
+  // operador procurar defeito onde não há.
+  OC026:
+    'Esta agenda não recebe mais baixa: a operação dela já saiu de cobrança (foi renegociada, liquidada ou baixada por prejuízo). Se o tomador pagou, a dívida viva é a da operação que substituiu esta — faça a baixa na agenda dela. O movimento bancário continua disponível.',
   OC429: 'Muitas requisições em pouco tempo. Aguarde cerca de um minuto e tente novamente.',
 }
 

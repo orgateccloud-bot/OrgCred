@@ -54,7 +54,7 @@ from app.core.db_errors import extrair_sqlstate, traduzir_erro_banco
 from app.core.exceptions import MovimentoDuplicado, OperacaoNaoEncontrada
 from app.core.metrics import registrar_ativacao
 from app.models import EscCapitalSocial, OperacaoCredito
-from app.ofx import TransacaoOfx
+from app.ofx import TransacaoOfx, conta_chave
 
 
 # Tradução SQLSTATE -> exceção vive em app/core/db_errors.py desde que
@@ -333,18 +333,30 @@ class ResultadoImportacaoOfx(NamedTuple):
     "débito não foi considerado", e é justamente nessa dúvida que ele decide
     se precisa lançar algo à mão.
 
-    Os quatro últimos números fecham em `lidas`:
-        lidas = criados + ja_registrados + repetidos_no_arquivo + debitos_ignorados
+    Os cinco últimos números fecham em `lidas`:
+        lidas = criados + ja_registrados + conflitos
+              + repetidos_no_arquivo + debitos_ignorados
+
+    `conflitos` SAIU DE DENTRO DE `ja_registrados` na migration 028, e a
+    separação é o remédio para o defeito que a 027 nomeou sem curar: "a
+    aritmética fecha ENQUANTO a linha se perde". Um `on conflict do nothing`
+    funde dois fatos opostos num número só — a linha que já estava lá porque é a
+    MESMA (reimportação, rotina diária) e a linha que já estava lá com outro
+    valor ou outra data (colisão de identidade, anomalia que exige olho humano).
+    Enquanto os dois somarem no mesmo contador, o relatório continua fechando
+    por cima de um crédito real descartado.
     """
 
     lidas: int
     creditos: int
     criados: int
     ja_registrados: int
+    conflitos: int
     repetidos_no_arquivo: int
     debitos_ignorados: int
     periodo_inicio: Optional[date]
     periodo_fim: Optional[date]
+    documentos_em_conflito: Tuple[str, ...] = ()
 
 
 def importar_extrato_ofx(
@@ -397,8 +409,22 @@ def importar_extrato_ofx(
     duplicado pelo BANCO, anomalia do arquivo que o operador deve enxergar.
 
     4) A IDENTIDADE DE UMA LINHA DE EXTRATO É (FITID, CONTA), NUNCA O FITID
-       SOZINHO — corrigido na migration 027, e o motivo de ser a decisão mais
-       importante desta função. A especificação OFX define o FITID como único
+       SOZINHO — e "CONTA" AQUI É `conta_chave`, NÃO A GRAFIA. É a decisão mais
+       importante desta função, e foi errada em duas gerações seguidas: a 009 a
+       reduziu ao FITID e a 027 a corrigiu pela metade.
+
+       O QUE A 027 ERROU: ela pôs `conta_origem` — o que o arquivo escreveu — na
+       chave, supondo que aquilo identificasse a conta. Não identifica. O mesmo
+       extrato exportado com e sem `<BANKID>` produz '001/123456' e '123456',
+       dois espaços de nomes, e as DUAS importações criam. R$ 31.514,86
+       recebidos viram R$ 63.029,72 de lastro; as parcelas ficam quitadas contra
+       dinheiro que não entrou; `liquidar` é aceito, porque OC022 pede
+       exatamente "todas as parcelas pagas"; e o comprometido volta a zero com
+       principal na rua. O furo do teto do Art. 5º, reaberto pela porta do
+       extrato, sem má-fé nenhuma — duas exportações do mesmo mês bastam.
+
+       A 028 move a chave para a identidade (`fn_conta_chave`, espelhada em
+       `app.ofx.conta_chave`) e esta função deduplica pelo mesmo par. A especificação OFX define o FITID como único
        DENTRO da conta, e banco brasileiro emite sequência curta ('1', '000123',
        o número do documento): duas contas colidem com facilidade banal. Com a
        chave global da 009, uma ESC que recebe em dois bancos importava o
@@ -422,30 +448,38 @@ def importar_extrato_ofx(
     # Primeira ocorrência vence: se a mesma linha aparece duas vezes com dados
     # divergentes, a de cima é a que o banco emitiu primeiro no arquivo.
     #
-    # A chave é o PAR (fitid, conta). `conta` é None quando o arquivo não a
-    # declara, e nesse caso todas as linhas sem conta caem no mesmo espaço de
-    # nomes — a mesma leitura conservadora que a chave `NULLS NOT DISTINCT` do
-    # banco faz: sem conta declarada, não há como saber se dois FITIDs iguais
-    # são a mesma linha ou duas, e inventar a distinção seria pior que mantê-la.
+    # A chave é o PAR (fitid, conta_chave) — a IDENTIDADE da conta, não a
+    # grafia. Usar `transacao.conta` aqui, como a 027 fazia, deixaria o furo de
+    # pé para o arquivo com dois statements da mesma conta escritos de formas
+    # diferentes: as duas linhas passariam por distintas e o banco criaria as
+    # duas. `conta_chave` é None quando o arquivo não declara conta, e nesse
+    # caso todas as linhas sem conta caem no mesmo espaço de nomes — a mesma
+    # leitura conservadora que o `NULLS NOT DISTINCT` do banco faz.
     unicas: Dict[Tuple[str, Optional[str]], TransacaoOfx] = {}
     for transacao in creditos:
-        unicas.setdefault((transacao.fitid, transacao.conta), transacao)
+        unicas.setdefault((transacao.fitid, conta_chave(transacao.conta)), transacao)
     repetidos_no_arquivo = len(creditos) - len(unicas)
 
     datas = [t.data_movimento for t in transacoes] if transacoes else []
     periodo_inicio = min(datas) if datas else None
     periodo_fim = max(datas) if datas else None
 
-    def _resultado(criados: int) -> ResultadoImportacaoOfx:
+    def _resultado(criados: int, em_conflito: Sequence[str] = ()) -> ResultadoImportacaoOfx:
         return ResultadoImportacaoOfx(
             lidas=lidas,
             creditos=len(creditos),
             criados=criados,
-            ja_registrados=len(unicas) - criados,
+            # `conflitos` sai de dentro de `ja_registrados`, não se soma a ele:
+            # as duas categorias descrevem a mesma linha não criada, e contá-la
+            # duas vezes quebraria a aritmética que o operador usa para afirmar
+            # que nada se perdeu.
+            ja_registrados=len(unicas) - criados - len(em_conflito),
+            conflitos=len(em_conflito),
             repetidos_no_arquivo=repetidos_no_arquivo,
             debitos_ignorados=debitos_ignorados,
             periodo_inicio=periodo_inicio,
             periodo_fim=periodo_fim,
+            documentos_em_conflito=tuple(em_conflito),
         )
 
     if not unicas:
@@ -470,7 +504,7 @@ def importar_extrato_ofx(
                      cast(:descricoes as text[]),
                      cast(:contas as text[])
                    ) as t(data, valor, documento, descricao, conta)
-             on conflict (documento, conta_origem) do nothing
+             on conflict (documento, conta_chave) do nothing
              returning id
             """),
             {
@@ -483,12 +517,48 @@ def importar_extrato_ofx(
                 "contas": [t.conta for t in valores],
             },
         ).all()
+
+        # O QUE FOI PULADO DIVERGE DO QUE JÁ ESTAVA LÁ? Esta consulta é o que
+        # impede `ja_registrados` de significar duas coisas. Ela roda DEPOIS do
+        # INSERT de propósito: as linhas recém-criadas casam por construção e
+        # não aparecem aqui, então o que sobra é só o que o `do nothing` pulou —
+        # e, dentro disso, só o que pulou por cima de um valor ou de uma data
+        # diferentes, que é a definição de colisão de identidade.
+        #
+        # `is not distinct from` e não `=`: a conta pode ser NULL dos dois lados
+        # (manual, OFX capado), e `NULL = NULL` devolveria NULL, deixando a
+        # colisão exatamente no espaço de nomes mais perigoso passar despercebida.
+        em_conflito = [
+            linha.documento
+            for linha in db.execute(
+                text("""
+                select t.documento
+                  from unnest(
+                         cast(:datas as date[]),
+                         cast(:valores as numeric[]),
+                         cast(:documentos as text[]),
+                         cast(:contas as text[])
+                       ) as t(data, valor, documento, conta)
+                  join movimento_bancario m
+                    on m.documento = t.documento
+                   and m.conta_chave is not distinct from fn_conta_chave(t.conta)
+                 where m.valor <> t.valor or m.data_movimento <> t.data
+                 order by t.documento
+                """),
+                {
+                    "datas": [t.data_movimento for t in valores],
+                    "valores": [t.valor for t in valores],
+                    "documentos": [t.fitid for t in valores],
+                    "contas": [t.conta for t in valores],
+                },
+            ).all()
+        ]
         db.commit()
     except DBAPIError as exc:
         db.rollback()
         raise _traduz_erro_banco(exc) from exc
 
-    return _resultado(len(criadas))
+    return _resultado(len(criadas), em_conflito)
 
 
 def baixar_parcela(

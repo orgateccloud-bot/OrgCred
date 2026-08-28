@@ -38,6 +38,22 @@ def downgrade() -> None:
     """
     op.execute("drop function if exists fn_novar_operacao(uuid, numeric, numeric, text, int, text)")
 
+    # O TRIGGER SAI ANTES DA REAPLICAÇÃO, e esta linha é a diferença entre o
+    # `alembic downgrade base` funcionar e não funcionar. `003_hardening_capital
+    # .sql:159` cria `trg_check_reducao_capital` com `create trigger` puro, sem
+    # `if not exists` e sem `drop` antes — reaplicar o arquivo num banco que já
+    # tem o trigger aborta com 42710 (DuplicateObject).
+    #
+    # A falha era ATÔMICA (o alembic assume DDL transacional, então o schema
+    # não corrompia), mas parava a descida em 0006 e tornava o job `alembic` da
+    # CI vermelho POR CONSTRUÇÃO — desde o primeiro commit dela. Toda a prova de
+    # que o schema reverte era não-provada, e um pipeline que carrega job
+    # vermelho desde o dia zero é um pipeline que ninguém lê.
+    #
+    # O remédio já estava escrito no repositório: é a primeira linha do
+    # downgrade da própria 0003.
+    op.execute("drop trigger if exists trg_check_reducao_capital on esc_capital_social")
+
     # fn_check_reducao_capital volta à definição da 003; fn_check_teto_capital
     # à da 004 (a 004 já a redefine por completo).
     for arquivo in ("003_hardening_capital.sql", "004_auditoria_autor.sql"):

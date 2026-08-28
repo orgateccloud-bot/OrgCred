@@ -17,6 +17,7 @@ from sqlalchemy.exc import DBAPIError
 from app.core.exceptions import (
     ApuracaoImutavel,
     ApuracaoSemParametro,
+    BaixaForaDeCobranca,
     BaixaInvalida,
     ContratoImutavel,
     DocumentoEmRetencao,
@@ -105,6 +106,7 @@ PGCODE_MAP: Dict[str, Type[Exception]] = {
     "OC022": LiquidacaoSemQuitacao,
     "OC024": NovacaoSemLastro,
     "OC025": ParcelaForaDaEmissao,
+    "OC026": BaixaForaDeCobranca,
 }
 
 
