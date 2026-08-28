@@ -111,7 +111,7 @@ const MENSAGENS_POR_CODIGO: Record<string, string> = {
   // está errado é o ENDEREÇO da baixa. Mandar conferir o extrato faria o
   // operador procurar defeito onde não há.
   OC026:
-    'Esta agenda não recebe mais baixa: a operação dela já saiu de cobrança (foi renegociada, liquidada ou baixada por prejuízo). Se o tomador pagou, a dívida viva é a da operação que substituiu esta — faça a baixa na agenda dela. O movimento bancário continua disponível.',
+    'Esta agenda não recebe mais baixa: a operação dela já saiu de cobrança. Se ela foi RENEGOCIADA, a dívida viva é a da operação que substituiu esta — faça a baixa na agenda dela. Se foi LIQUIDADA, não há o que baixar: confira se o crédito não é de outra operação. Se foi BAIXADA POR PREJUÍZO, a cobrança foi encerrada e o sistema não modela recuperação — registre o movimento e procure a contabilidade. O crédito bancário continua na lista de movimentos, sem consumo.',
   OC429: 'Muitas requisições em pouco tempo. Aguarde cerca de um minuto e tente novamente.',
 }
 

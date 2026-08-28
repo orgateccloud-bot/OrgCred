@@ -63,7 +63,7 @@ apontava a API para `localhost:8000`, o operador autenticava e nenhuma chamada
 funcionava — e `POST /liquidar` devolvia 100% do capital ao teto com todas as
 parcelas em aberto.
 
-Ao longo da semana, catorze migrations (015 a 028):
+Ao longo da semana, quinze migrations (015 a 029):
 
 - **Bordas do teto** (015): `UPDATE` de `valor_principal` em operação ativa,
   `esc_capital_social` sem trigger de `UPDATE`/`DELETE`, e redução com valor
@@ -94,12 +94,17 @@ Ao longo da semana, catorze migrations (015 a 028):
   junto, e a cobertura de valor da baixa sai de dentro de `fn_baixar_parcela`
   para o trigger (OC011), alcançável por qualquer porta.
 - **Identidade da conta** (028): a chave do extrato deixa de ser a GRAFIA e
-  passa a ser a IDENTIDADE da conta — consertando o crítico que a 027 abriu —,
-  a baixa passa a exigir operação em cobrança (OC026), e as três tabelas
-  append-only que faltavam ganham guarda de `TRUNCATE`.
+  passa a ser a IDENTIDADE da conta — consertando metade do crítico que a 027
+  abriu —, a baixa passa a exigir operação em cobrança (OC026), e as três
+  tabelas append-only que faltavam ganham guarda de `TRUNCATE`.
+- **Identidade do crédito** (029): a conta sai da identidade. Fecha a CLASSE
+  inteira — a 028 tinha fechado a metade do `<BANKID>` e deixado a do
+  `<ACCTID>` —, faz `ja_registrados` ser contado em vez de derivado (o selo do
+  relatório era uma tautologia que não podia falhar), e dá ao gate OC026 o
+  `for share` sem o qual ele valia só na direção sequencial.
 
-**Números:** 637 testes backend (eram 198), 219 de frontend (eram 50), 6 E2E,
-93% de cobertura, 28 migrations, 25 SQLSTATEs.
+**Números:** 654 testes backend (eram 198), 219 de frontend (eram 50), 6 E2E,
+93% de cobertura, 29 migrations, 25 SQLSTATEs.
 
 ---
 
@@ -216,7 +221,7 @@ teste verde provando que a função grava quem recebe — nunca que alguém entr
 
 ---
 
-## 5. As doze horas entre a 027 e a 028
+## 5. As vinte e quatro horas entre a 027, a 028 e a 029
 
 É o episódio mais instrutivo da semana, e vale contado em ordem.
 
@@ -233,8 +238,29 @@ supondo que a grafia identificasse a conta. O mesmo extrato exportado com e sem
 `<BANKID>` passou a importar duas vezes, dobrando o lastro; e o lastro dobrado
 quita a carteira e devolve o capital ao teto do Art. 5º por `liquidar`.
 
-**Três coisas que este episódio ensina, e que nenhuma quantidade de rigor dentro
-de um domínio teria ensinado:**
+**No dia seguinte aconteceu de novo.** Sete lentes atacaram a 028 — com o
+mandato explícito de testar as DUAS direções de cada regra, porque essa era a
+lição — e acharam a metade simétrica: a 028 perguntou *"e se o `<BANKID>`
+faltar?"* e não perguntou *"e se faltar o `<ACCTID>`?"*. Mesmo efeito, mesmo
+destino, mesmo valor de dano, reproduzido de ponta a ponta.
+
+Foi a segunda repetição que revelou o que a primeira não tinha: **o problema não
+era a canonização estar incompleta, era a forma da solução.** As três chaves
+erradas — `(documento)`, `(documento, conta_origem)`, `(documento, conta_chave)`
+— partilham uma premissa que nunca foi enunciada: que o arquivo diz de qual
+conta a linha é. Ele diz o que o exportador resolveu escrever, e duas
+exportações da mesma conta escrevem coisas diferentes. **Canonização normaliza
+formato; não recupera informação ausente.** Enquanto a conta estiver na
+identidade, sempre haverá um par de exportações em que uma declara menos que a
+outra, e duas declarações viram dois espaços de nomes.
+
+A 029 tira a conta da identidade: um crédito é `(identificador, valor, data)`, e
+a conta vira proveniência. Nenhuma grafia, nenhum bloco ausente e nenhuma
+diferença entre lançamento manual e OFX cria espaço de nomes novo, porque a
+conta não aparece na chave.
+
+**Quatro coisas que este episódio ensina, e que nenhuma quantidade de rigor
+dentro de um domínio teria ensinado:**
 
 1. **A verificação que fecha um furo não vê o furo que ela abre.** A 027
    perguntou *"mesmo FITID em contas DIFERENTES entra?"* e comemorou o sim.
@@ -251,7 +277,17 @@ de um domínio teria ensinado:**
    casos**: a aritmética do relatório de importação FECHA. Antes da 027, fechava
    por cima de uma linha perdida; depois dela, por cima de uma linha duplicada. A
    028 não se contentou em estreitar a janela — separou o contador, para que o
-   que sobra faça barulho.
+   que sobra faça barulho. Só que o contador dela ainda era DERIVADO por
+   subtração, o que fazia da soma uma identidade algébrica: o selo não podia
+   falhar nem com o motor quebrado. A 029 passou a contar os três destinos.
+
+4. **Consertar a direção que falhou não é consertar o defeito.** Depois de duas
+   tentativas, a pergunta certa deixou de ser *"que outro caso eu não testei?"*
+   e passou a ser *"por que este desenho tem casos que eu preciso lembrar de
+   testar?"*. Uma regra cuja correção depende de enumerar variantes de entrada
+   está errada na forma. A que sobreviveu não tem variantes a enumerar — e o
+   teste que a guarda parametriza as sete formas conhecidas de exportação
+   capada, de modo que a oitava custa uma linha e não um incidente.
 
 ---
 

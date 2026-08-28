@@ -840,16 +840,29 @@ def test_documento_repetido_entre_contas_coexiste(db_session):
     gravada pelo caminho da importação (024) — o formulário manual não a
     coleta. O que se prova aqui é a CHAVE; a importação inteira é provada em
     tests/test_router_cobranca.py.
+
+    OS VALORES PRECISAM DIFERIR DESDE A MIGRATION 029, e a razão é o custo que
+    ela assume por escrito: a identidade de um crédito passou a ser (documento,
+    valor, data_movimento), sem a conta, porque enquanto a conta participava da
+    identidade a mesma conta escrita de dois jeitos dobrava o lastro. Duas
+    linhas com o MESMO identificador, o MESMO valor e a MESMA data são, para o
+    sistema, o mesmo crédito — e a segunda é pulada.
+
+    A versão anterior deste teste usava R$ 100,00 nas duas e passava. Ela não
+    provava a coexistência de dois BANCOS: provava a coexistência de duas
+    GRAFIAS, que é precisamente o furo. O que continua sendo verdade, e é o que
+    este teste guarda, é que dois créditos DIFERENTES com o mesmo FITID
+    coexistem.
     """
     sha = "a" * 64
-    for conta in ("001/111", "341/222"):
+    for conta, valor in (("001/111", 100), ("341/222", 250)):
         db_session.execute(
             text("""
             insert into movimento_bancario
                 (data_movimento, valor, documento, origem, conta_origem, arquivo_sha256)
-            values (current_date, 100, '000123', 'ofx', :conta, :sha)
+            values (current_date, :valor, '000123', 'ofx', :conta, :sha)
             """),
-            {"conta": conta, "sha": sha},
+            {"conta": conta, "valor": valor, "sha": sha},
         )
     db_session.commit()
 

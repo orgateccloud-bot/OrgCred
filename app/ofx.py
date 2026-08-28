@@ -89,13 +89,22 @@ class TransacaoOfx(NamedTuple):
     registrado": a linha existia na tabela, mas era a do OUTRO banco, com outro
     valor e outra data.
 
-    MAS `conta` É A GRAFIA, E A IDENTIDADE É `conta_chave(conta)` — a correção
-    da 028, e a distinção que faltava à 027. Aquela migration pôs a grafia na
-    chave e, com isso, a mesma conta exportada com e sem `<BANKID>` passou a
-    ocupar dois espaços de nomes: as duas importações criavam, o lastro dobrava,
-    e o lastro dobrado quitava a carteira e devolvia o capital ao teto do
-    Art. 5º. A chave do banco é (documento, conta_chave) e a deduplicação de
-    `importar_extrato_ofx` é pelo mesmo par.
+    MAS A CONTA NÃO PARTICIPA DA IDENTIDADE — correção da 029, depois de duas
+    tentativas erradas. A 027 pôs a GRAFIA na chave e a mesma conta exportada
+    com e sem `<BANKID>` passou a ocupar dois espaços de nomes: as duas
+    importações criavam, o lastro dobrava, e o lastro dobrado quitava a carteira
+    e devolvia o capital ao teto do Art. 5º. A 028 canonizou a grafia e fechou
+    essa metade; horas depois mediu-se a simétrica, com o `<ACCTID>` ausente.
+
+    A premissa comum às duas é que o arquivo DIZ de qual conta a linha é. Ele
+    diz o que o exportador resolveu escrever, e exportações diferentes da MESMA
+    conta escrevem coisas diferentes. Canonização normaliza FORMATO; não
+    recupera informação AUSENTE — e enquanto a conta estiver na identidade,
+    sempre haverá um par de exportações em que uma declara menos que a outra.
+
+    Desde a 029 a identidade de um crédito é (fitid, valor, data_movimento), e
+    `conta` é PROVENIÊNCIA: diz de onde a linha veio, aparece na tela, e não
+    decide se duas linhas são a mesma.
     """
 
     fitid: str
@@ -305,7 +314,17 @@ def _formatar_conta(bankid: Optional[str], acctid: Optional[str]) -> Optional[st
     """
     if bankid and acctid:
         return f"{bankid}/{acctid}"
-    return acctid or bankid or None
+    # SEM o ramo `or bankid`, removido na 029. Ele existia para não perder
+    # informação, e o efeito era pior que a perda: com o `<ACCTID>` vazio ou
+    # ausente, o CÓDIGO DO BANCO era gravado na coluna da conta e exibido na
+    # tela como se fosse uma. Pior ainda depois da 028, que canoniza — o COMPE
+    # '001' e a conta '0000001' viram a mesma chave, e todo código de banco
+    # brasileiro passou a ser o espaço de nomes de alguma conta real.
+    #
+    # Sem ACCTID não há conta a declarar. `None` é a resposta honesta, e o
+    # BANKID continua no arquivo para quem for auditar os bytes (o sha256 deles
+    # é gravado desde a 024).
+    return acctid or None
 
 
 # `[^0-9A-Za-z]` e não `str.isalnum()`: o `isalnum` do Python é Unicode e
