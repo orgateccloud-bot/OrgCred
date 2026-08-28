@@ -85,6 +85,10 @@ Ao longo da semana, dezesseis migrations (015 a 030):
 - **Importação de extrato OFX** (024) com proveniência por sha256 dos bytes, e a
   tela que a torna usável.
 - **Trilha de execução das rotinas** (025) e o serviço de cron que as agenda.
+  Ressalva de produção, porque construído não é operando: o serviço de cron
+  roda um commit anterior à 025, então a trilha está **vazia** e o backup vai
+  para `/tmp` sem volume. É configuração de deploy pendente (autodeploy do
+  `orgcred-rotinas` + volume), não código — e o domínio Rotinas está 🟡 por isso.
 - **Gate de novação** (026, OC024): a substituta tem que cobrir o saldo devedor
   da original, calculado sobre `valor_amortizacao` com lastro bancário — e a
   original só sai do comprometido quando a substituta é **ativada**, nunca
@@ -105,9 +109,17 @@ Ao longo da semana, dezesseis migrations (015 a 030):
   `<ACCTID>` —, faz `ja_registrados` ser contado em vez de derivado (o selo do
   relatório era uma tautologia que não podia falhar), e dá ao gate OC026 o
   `for share` sem o qual ele valia só na direção sequencial.
+- **Chave canônica, paridade** (032): o espelho Python↔SQL da chave concorda em
+  todo o Unicode — o `upper()` do fallback divergia (`ß`→`SS` no Python, `ß` no
+  Postgres) e recontava um crédito criado como já registrado.
+- **Portal do tomador** (031, OC027): o cliente da ESC ganha login próprio e vê
+  só o que é dele — vínculo login↔tomador garantido por CHECK no banco, escopo
+  cercado pelo `tomador_id` do login, papéis estanques, e a trilha de convites
+  append-only. Somente leitura: o tomador acompanha, a ESC age.
 
-**Números:** 882 testes backend (eram 198), 219 de frontend (eram 50), 6 E2E,
-93% de cobertura, 30 migrations, 25 SQLSTATEs.
+**Números:** 902 testes backend (eram 198), 219 de frontend (eram 50), 6 E2E,
+93% de cobertura, 32 migrations, 23 SQLSTATEs da classe OC (OC001–OC027, sem
+OC006/OC020/OC021, que são buracos deliberados).
 
 ---
 
