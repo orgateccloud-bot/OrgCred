@@ -54,7 +54,7 @@ do arquivo do banco.
 
 import html
 import re
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
 
@@ -237,20 +237,77 @@ def _tokens(texto: str) -> Iterator[Tuple[bool, str, str]]:
         yield bool(casado.group(1)), casado.group(2).upper(), html.unescape(conteudo).strip()
 
 
-def _ler_data(bruto: str) -> date:
-    """DTPOSTED -> date. Só a parte da data importa para o extrato.
+# A ESC opera no Brasil, e é a data brasileira do crédito que o operador vê no
+# extrato e que a apuração fiscal usa. Sem fuso de referência não existe "a
+# data" de um instante — existem 24 —, e foi essa ausência que fez o mesmo
+# recebimento exportado em BRT e em GMT virar dois créditos.
+#
+# Offset fixo e não `ZoneInfo('America/Sao_Paulo')` porque o Brasil não observa
+# horário de verão desde 2019: a tabela de fusos acrescentaria uma dependência
+# de dados do sistema operacional para produzir, hoje, exatamente −03:00. Se o
+# horário de verão voltar, este é o lugar de mudar — e a mudança reclassifica
+# créditos de madrugada, o que é decisão consciente e não efeito colateral.
+FUSO_NEGOCIO = timezone(timedelta(hours=-3))
 
-    O formato do OFX é `YYYYMMDD` podendo vir com hora e fuso
-    (`20260115120000.000[-3:BRT]`). O sufixo entre colchetes é cortado ANTES
-    de filtrar dígitos — senão o `3` de `[-3:BRT]` entraria na contagem.
+_OFFSET_RE = re.compile(r"\[\s*([+-]?\d+(?:\.\d+)?)")
+
+
+def _ler_data(bruto: str) -> date:
+    """DTPOSTED -> a data do crédito no fuso do negócio.
+
+    O formato do OFX é `YYYYMMDD`, podendo vir com hora e fuso
+    (`20260115120000.000[-3:BRT]`). O sufixo entre colchetes é cortado ANTES de
+    filtrar dígitos — senão o `3` de `[-3:BRT]` entraria na contagem.
+
+    O FUSO DEIXOU DE SER DESCARTADO NA MIGRATION 030, e a razão é a mesma que
+    tirou a conta da identidade uma migration antes: exportações diferentes
+    escrevem o mesmo fato de formas diferentes. Medido, com o parser anterior:
+
+        '20260810220000.000[-3:BRT]'  ->  2026-08-10
+        '20260811010000.000[0:GMT]'   ->  2026-08-11
+
+    É O MESMO INSTANTE. Duas datas, duas identidades, duas linhas de lastro para
+    um crédito só — e o lastro dobrado quita parcela que ninguém pagou,
+    `liquidar` é aceito e o capital volta ao teto do Art. 5º.
+
+    SEM HORA declarada não há o que converter: `20260810` é a data que o banco
+    afirma, e inventar uma hora para depois convertê-la seria fabricar precisão.
+    SEM FUSO declarado, o horário é lido como já sendo o do negócio — é o que
+    banco brasileiro emite, e é a leitura que preserva o comportamento anterior
+    para todo arquivo que não declara nada.
     """
-    digitos = _NAO_DIGITO_RE.sub("", bruto.split("[", 1)[0])
+    prefixo = bruto.split("[", 1)[0]
+    digitos = _NAO_DIGITO_RE.sub("", prefixo.split(".", 1)[0])
     if len(digitos) < 8:
         raise OfxInvalido(f"DTPOSTED '{bruto}' não tem uma data no formato AAAAMMDD.")
+
     try:
-        return date(int(digitos[0:4]), int(digitos[4:6]), int(digitos[6:8]))
+        dia = date(int(digitos[0:4]), int(digitos[4:6]), int(digitos[6:8]))
     except ValueError as exc:
         raise OfxInvalido(f"DTPOSTED '{bruto}' não é uma data válida.") from exc
+
+    achado = _OFFSET_RE.search(bruto)
+    if len(digitos) < 14 or achado is None:
+        return dia
+
+    try:
+        horas = float(achado.group(1))
+        momento = datetime(
+            dia.year,
+            dia.month,
+            dia.day,
+            int(digitos[8:10]),
+            int(digitos[10:12]),
+            int(digitos[12:14]),
+            tzinfo=timezone(timedelta(hours=horas)),
+        )
+    except (ValueError, OverflowError):
+        # Hora ou offset fora de faixa: a DATA continua legível e é o que
+        # importa. Recusar o arquivo inteiro por causa de um campo que sequer
+        # entra na identidade seria desproporcional.
+        return dia
+
+    return momento.astimezone(FUSO_NEGOCIO).date()
 
 
 def _ler_valor(bruto: str) -> Decimal:
@@ -359,9 +416,37 @@ def conta_chave(conta: Optional[str]) -> Optional[str]:
     """
     if conta is None:
         return None
-    bruto = conta.rsplit("/", 1)[-1]
-    limpo = _NAO_ALFANUMERICO.sub("", bruto).upper().lstrip("0")
-    return limpo or None
+    return chave_texto(conta.rsplit("/", 1)[-1])
+
+
+def chave_texto(bruto: str) -> Optional[str]:
+    """A normalização de representação, num lugar só — espelho de
+    `fn_chave_texto` (migration 030).
+
+    Some o que não é alfanumérico, sobem as maiúsculas, caem os zeros à esquerda
+    PRESERVANDO um caractere: '000' e '0' viram a mesma coisa em vez de um deles
+    virar vazio.
+
+    Antes da 030 esta lógica estava embutida em `conta_chave` e, por isso, não
+    podia ser reusada — foi assim que o sistema chegou a ter a única canonização
+    que existia aplicada ao campo que a migration 029 havia REMOVIDO da
+    identidade, enquanto o identificador que ficou nela era comparado byte a
+    byte. 'TED1', 'ted1', '0TED1' e 'TED 1' eram quatro créditos.
+    """
+    limpo = _NAO_ALFANUMERICO.sub("", bruto).upper()
+    return re.sub(r"^0+(.)", r"\1", limpo) or None
+
+
+def documento_chave(documento: str) -> str:
+    """A identidade do identificador. Espelho da coluna gerada
+    `movimento_bancario.documento_chave`.
+
+    Cai no verbatim em maiúsculas quando a normalização esvaziaria o campo (um
+    FITID só de pontuação): `documento` é NOT NULL e precisa continuar
+    identificando, e devolver vazio faria duas linhas sem nada em comum
+    colidirem.
+    """
+    return chave_texto(documento) or documento.upper()
 
 
 def _montar_transacao(campos: Dict[str, str], conta: Optional[str]) -> TransacaoOfx:

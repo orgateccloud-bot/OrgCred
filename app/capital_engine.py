@@ -54,7 +54,7 @@ from app.core.db_errors import extrair_sqlstate, traduzir_erro_banco
 from app.core.exceptions import MovimentoDuplicado, OperacaoNaoEncontrada
 from app.core.metrics import registrar_ativacao
 from app.models import EscCapitalSocial, OperacaoCredito
-from app.ofx import TransacaoOfx
+from app.ofx import TransacaoOfx, documento_chave
 
 
 # Tradução SQLSTATE -> exceção vive em app/core/db_errors.py desde que
@@ -462,7 +462,10 @@ def importar_extrato_ofx(
     # auditar o banco por uma fusão que fomos nós que fizemos.
     unicas: Dict[Tuple[str, Decimal, date], TransacaoOfx] = {}
     for transacao in creditos:
-        unicas.setdefault((transacao.fitid, transacao.valor, transacao.data_movimento), transacao)
+        unicas.setdefault(
+            (documento_chave(transacao.fitid), transacao.valor, transacao.data_movimento),
+            transacao,
+        )
     repetidos_no_arquivo = len(creditos) - len(unicas)
 
     datas = [t.data_movimento for t in transacoes] if transacoes else []
@@ -506,7 +509,7 @@ def importar_extrato_ofx(
         return _resultado(0)
 
     valores = list(unicas.values())
-    chaves = [(t.fitid, t.valor, t.data_movimento) for t in valores]
+    chaves = [(documento_chave(t.fitid), t.valor, t.data_movimento) for t in valores]
     parametros = {
         "datas": [t.data_movimento for t in valores],
         "valores": [t.valor for t in valores],
@@ -528,7 +531,7 @@ def importar_extrato_ofx(
                      cast(:contas as text[])
                    ) as t(data, valor, documento, descricao, conta)
              on conflict do nothing
-             returning documento, valor, data_movimento
+             returning documento_chave, valor, data_movimento
             """),
             {
                 **parametros,
@@ -548,7 +551,7 @@ def importar_extrato_ofx(
         # permite saber QUAIS linhas nasceram, e sem isso o destino de cada uma
         # só poderia ser deduzido por subtração — que é exatamente o vício que
         # a 029 removeu.
-        criados_agora = {(r.documento, r.valor, r.data_movimento) for r in criadas}
+        criados_agora = {(r.documento_chave, r.valor, r.data_movimento) for r in criadas}
 
         # O QUE FOI PULADO: já estava aqui IGUAL, ou já estava aqui DIFERENTE?
         # Esta consulta roda DEPOIS do INSERT e pergunta, para cada linha
@@ -556,17 +559,17 @@ def importar_extrato_ofx(
         # conta não entra na comparação — ela é proveniência, e foi justamente
         # tratá-la como identidade que duplicou lastro na 027 e na 028.
         identicos = {
-            (linha.documento, linha.valor, linha.data_movimento)
+            (linha.documento_chave, linha.valor, linha.data_movimento)
             for linha in db.execute(
                 text("""
-                select m.documento, m.valor, m.data_movimento
+                select m.documento_chave, m.valor, m.data_movimento
                   from unnest(
                          cast(:datas as date[]),
                          cast(:valores as numeric[]),
                          cast(:documentos as text[])
                        ) as t(data, valor, documento)
                   join movimento_bancario m
-                    on m.documento = t.documento
+                    on m.documento_chave = fn_documento_chave(t.documento)
                    and m.valor = t.valor
                    and m.data_movimento = t.data
                 """),
@@ -586,13 +589,17 @@ def importar_extrato_ofx(
     # perde, e por isso ela tem contador próprio e sai destacada na tela.
     ja_registrados = 0
     em_conflito = []
-    for chave in chaves:
+    for transacao, chave in zip(valores, chaves):
         if chave in criados_agora:
             continue
         if chave in identicos:
             ja_registrados += 1
         else:
-            em_conflito.append(chave[0])
+            # O FITID VERBATIM, e não a chave canônica: o operador vai procurar
+            # esta linha no extrato que o banco emitiu, e lá está escrito o que
+            # o banco escreveu. Mostrar 'TED1' a quem tem '0ted-1' no arquivo
+            # transformaria o aviso em enigma.
+            em_conflito.append(transacao.fitid)
 
     return _resultado(len(criadas), ja_registrados, sorted(em_conflito))
 

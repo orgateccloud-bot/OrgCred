@@ -106,7 +106,10 @@ CASOS_DE_CONTA = [
     ("001/12345-6", "123456"),  # dígito verificador separado
     ("237/98765-4", "987654"),  # outra conta: continua outra
     ("001/abc123", "ABC123"),  # conta com letra
-    ("000", None),  # só zeros não identifica nada
+    # A regra passou a preservar UM caractere ao tirar zeros à esquerda
+    # (migration 030): com `^0+` puro, '000' virava vazio e '000' e '0000'
+    # ficavam distintos — separar o que é igual é a direção perigosa.
+    ("000", "0"),
     ("---", None),  # só pontuação, idem
     ("", None),
     (None, None),

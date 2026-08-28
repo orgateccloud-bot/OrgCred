@@ -63,7 +63,7 @@ apontava a API para `localhost:8000`, o operador autenticava e nenhuma chamada
 funcionava — e `POST /liquidar` devolvia 100% do capital ao teto com todas as
 parcelas em aberto.
 
-Ao longo da semana, quinze migrations (015 a 029):
+Ao longo da semana, dezesseis migrations (015 a 030):
 
 - **Bordas do teto** (015): `UPDATE` de `valor_principal` em operação ativa,
   `esc_capital_social` sem trigger de `UPDATE`/`DELETE`, e redução com valor
@@ -97,14 +97,17 @@ Ao longo da semana, quinze migrations (015 a 029):
   passa a ser a IDENTIDADE da conta — consertando metade do crítico que a 027
   abriu —, a baixa passa a exigir operação em cobrança (OC026), e as três
   tabelas append-only que faltavam ganham guarda de `TRUNCATE`.
+- **Chave canônica** (030): a normalização passa a valer para TODOS os campos
+  que formam a identidade, e não só para o que saiu dela — o `DTPOSTED` deixa
+  de ter o fuso descartado, e o identificador do extrato ganha forma canônica.
 - **Identidade do crédito** (029): a conta sai da identidade. Fecha a CLASSE
   inteira — a 028 tinha fechado a metade do `<BANKID>` e deixado a do
   `<ACCTID>` —, faz `ja_registrados` ser contado em vez de derivado (o selo do
   relatório era uma tautologia que não podia falhar), e dá ao gate OC026 o
   `for share` sem o qual ele valia só na direção sequencial.
 
-**Números:** 654 testes backend (eram 198), 219 de frontend (eram 50), 6 E2E,
-93% de cobertura, 29 migrations, 25 SQLSTATEs.
+**Números:** 882 testes backend (eram 198), 219 de frontend (eram 50), 6 E2E,
+93% de cobertura, 30 migrations, 25 SQLSTATEs.
 
 ---
 
