@@ -68,6 +68,7 @@ MIGRATIONS = [
     "029_identidade_do_credito",
     "030_chave_canonica",
     "031_portal_do_tomador",
+    "032_paridade_da_chave",
 ]
 
 

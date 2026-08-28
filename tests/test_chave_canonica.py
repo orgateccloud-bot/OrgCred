@@ -172,6 +172,18 @@ TEXTOS = [
     "001/123456",
     "123456",
     "",
+    # O EIXO UNICODE, e não mais só ASCII: a migration 032 nasceu porque o teste
+    # da 030 enumerava 13 casos ASCII e a divergência morava fora do ASCII. O
+    # `str.upper()` do Python expande 'ß'->'SS' e as ligaduras 'ﬀ'->'FF'; o
+    # `upper()` do Postgres não. Estes são os casos que quebravam o espelho.
+    "ß",
+    "ﬀ",
+    "ﬁ",
+    "ßßß",
+    "0ß",
+    "ǅ",
+    "İ",
+    "²",
 ]
 
 

@@ -441,12 +441,19 @@ def documento_chave(documento: str) -> str:
     """A identidade do identificador. Espelho da coluna gerada
     `movimento_bancario.documento_chave`.
 
-    Cai no verbatim em maiúsculas quando a normalização esvaziaria o campo (um
-    FITID só de pontuação): `documento` é NOT NULL e precisa continuar
-    identificando, e devolver vazio faria duas linhas sem nada em comum
-    colidirem.
+    Cai no VERBATIM (sem upper) quando a normalização esvaziaria o campo (um
+    FITID só de pontuação ou de não-ASCII): `documento` é NOT NULL e precisa
+    continuar identificando, e devolver vazio faria duas linhas sem nada em
+    comum colidirem.
+
+    O `.upper()` saiu na migration 032, e a razão é a paridade com o banco: o
+    `str.upper()` do Python EXPANDE 'ß' para 'SS', o `upper()` do Postgres não.
+    Como o fallback só é alcançado quando nenhum alfanumérico ASCII sobreviveu,
+    não há letra ASCII a maiuscularizar — o upper só tocava os caracteres onde
+    as duas linguagens divergem, e divergir aqui recontava um crédito criado
+    como já registrado, quebrando o selo do relatório.
     """
-    return chave_texto(documento) or documento.upper()
+    return chave_texto(documento) or documento
 
 
 def _montar_transacao(campos: Dict[str, str], conta: Optional[str]) -> TransacaoOfx:
