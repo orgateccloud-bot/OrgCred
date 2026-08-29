@@ -90,6 +90,15 @@ class Settings(BaseSettings):
         """
         return bool(self.supabase_url.strip() and self.supabase_service_key.strip())
 
+    # URL pública do app, usada como base do link "definir senha" no e-mail de
+    # convite ao portal (app/core/convites.py). Vazia, o router deriva da
+    # própria requisição — correto em produção, onde API e SPA são a MESMA
+    # origem (ver o mount do SPA em app/main.py). O override existe para
+    # topologias com proxy que reescreve o Host, onde a URL derivada sairia
+    # interna. Lembrete operacional: o Supabase só segue redirect que esteja
+    # na allow-list do projeto (Authentication → URL Configuration).
+    public_url: str = ""
+
     # Identificação da própria ESC, usada como CREDORA no instrumento
     # contratual. Vazio por padrão de propósito: um default plausível
     # ("ORGATEC ESC LTDA", um CNPJ qualquer) entraria num documento com

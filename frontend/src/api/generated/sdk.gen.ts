@@ -34,6 +34,9 @@ import type {
   GetContratoApiPortalOperacoesOperacaoIdContratoGetData,
   GetContratoApiPortalOperacoesOperacaoIdContratoGetErrors,
   GetContratoApiPortalOperacoesOperacaoIdContratoGetResponses,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetData,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetErrors,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponses,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses,
@@ -112,6 +115,9 @@ import type {
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData,
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors,
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostErrors,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponses,
   PostCriarOperacaoApiOperacoesPostData,
   PostCriarOperacaoApiOperacoesPostErrors,
   PostCriarOperacaoApiOperacoesPostResponses,
@@ -724,6 +730,78 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch = <
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/tomadores/{tomador_id}/autorizacao',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Convites Portal
+ *
+ * A trilha de convites da empresa — quem recebeu janela, quando, e se entrou.
+ *
+ * Leitura aberta ao painel (o gate get_painel_user do main.py já barra
+ * tomador): operador precisa VER o estado do acesso para atender o cliente;
+ * o que é restrito a admin é CRIAR o acesso.
+ */
+export const getConvitesPortalApiTomadoresTomadorIdPortalConvitesGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetData, ThrowOnError>,
+): RequestResult<
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponses,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponses,
+    GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/tomadores/{tomador_id}/portal/convites',
+    ...options,
+  })
+
+/**
+ * Post Convidar Portal
+ *
+ * Convida um e-mail para o portal do tomador. Admin only: dar a um CNPJ
+ * externo uma janela para os dados de crédito dele é ato de chave, como a
+ * autorização de município.
+ *
+ * A ORDEM DAS ESCRITAS importa e é deliberada:
+ *
+ * 1. Supabase Auth PRIMEIRO — o id que ele devolve é o `sub` dos JWTs
+ * futuros, e a linha de `usuario` precisa nascer com ESTE id (senão o
+ * login autentica lá e morre em PERMISSAO_NEGADA aqui).
+ * 2. `usuario` + `convite_portal` numa transação só, depois. Se ela falhar,
+ * sobra uma conta órfã no Auth — recuperável pelo painel do Supabase, e a
+ * mensagem de EmailJaRegistrado ensina o caminho. O inverso (linha local
+ * sem conta no Auth) seria pior: um login prometido que não autentica
+ * nunca, sem nada visível para limpar.
+ *
+ * `usuario_id` do convite nasce preenchido (o login já existe); `aceito_em`
+ * fica nulo até o primeiro sinal autenticado do convidado (app/routers/me.py).
+ */
+export const postConvidarPortalApiTomadoresTomadorIdPortalConvitesPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData, ThrowOnError>,
+): RequestResult<
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponses,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponses,
+    PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/tomadores/{tomador_id}/portal/convites',
     ...options,
     headers: {
       'Content-Type': 'application/json',

@@ -14,6 +14,7 @@ import {
   getConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGet,
   getContratoApiContratosOperacoesOperacaoIdContratoGet,
   getContratoApiPortalOperacoesOperacaoIdContratoGet,
+  getConvitesPortalApiTomadoresTomadorIdPortalConvitesGet,
   getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet,
   getEstadoRotinasApiAuditoriaRotinasGet,
   getMeApiMeGet,
@@ -45,6 +46,7 @@ import {
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPost,
   postCapitalEventoApiCapitalEventosPost,
   postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPost,
+  postConvidarPortalApiTomadoresTomadorIdPortalConvitesPost,
   postCriarOperacaoApiOperacoesPost,
   postCriarTomadorApiTomadoresPost,
   postDetectarApiComplianceAtipicidadesDetectarPost,
@@ -88,6 +90,9 @@ import type {
   GetContratoApiPortalOperacoesOperacaoIdContratoGetData,
   GetContratoApiPortalOperacoesOperacaoIdContratoGetError,
   GetContratoApiPortalOperacoesOperacaoIdContratoGetResponse,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetData,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetError,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponse,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetError,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse,
@@ -165,6 +170,9 @@ import type {
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData,
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostError,
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponse,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostError,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponse,
   PostCriarOperacaoApiOperacoesPostData,
   PostCriarOperacaoApiOperacoesPostError,
   PostCriarOperacaoApiOperacoesPostResponse,
@@ -922,6 +930,85 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchMutation = (
   > = {
     mutationFn: async (fnOptions) => {
       const { data } = await patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getConvitesPortalApiTomadoresTomadorIdPortalConvitesGetQueryKey = (
+  options: Options<GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetData>,
+) => createQueryKey('getConvitesPortalApiTomadoresTomadorIdPortalConvitesGet', options)
+
+/**
+ * Get Convites Portal
+ *
+ * A trilha de convites da empresa — quem recebeu janela, quando, e se entrou.
+ *
+ * Leitura aberta ao painel (o gate get_painel_user do main.py já barra
+ * tomador): operador precisa VER o estado do acesso para atender o cliente;
+ * o que é restrito a admin é CRIAR o acesso.
+ */
+export const getConvitesPortalApiTomadoresTomadorIdPortalConvitesGetOptions = (
+  options: Options<GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetData>,
+) =>
+  queryOptions<
+    GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponse,
+    GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetError,
+    GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponse,
+    ReturnType<typeof getConvitesPortalApiTomadoresTomadorIdPortalConvitesGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getConvitesPortalApiTomadoresTomadorIdPortalConvitesGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getConvitesPortalApiTomadoresTomadorIdPortalConvitesGetQueryKey(options),
+  })
+
+/**
+ * Post Convidar Portal
+ *
+ * Convida um e-mail para o portal do tomador. Admin only: dar a um CNPJ
+ * externo uma janela para os dados de crédito dele é ato de chave, como a
+ * autorização de município.
+ *
+ * A ORDEM DAS ESCRITAS importa e é deliberada:
+ *
+ * 1. Supabase Auth PRIMEIRO — o id que ele devolve é o `sub` dos JWTs
+ * futuros, e a linha de `usuario` precisa nascer com ESTE id (senão o
+ * login autentica lá e morre em PERMISSAO_NEGADA aqui).
+ * 2. `usuario` + `convite_portal` numa transação só, depois. Se ela falhar,
+ * sobra uma conta órfã no Auth — recuperável pelo painel do Supabase, e a
+ * mensagem de EmailJaRegistrado ensina o caminho. O inverso (linha local
+ * sem conta no Auth) seria pior: um login prometido que não autentica
+ * nunca, sem nada visível para limpar.
+ *
+ * `usuario_id` do convite nasce preenchido (o login já existe); `aceito_em`
+ * fica nulo até o primeiro sinal autenticado do convidado (app/routers/me.py).
+ */
+export const postConvidarPortalApiTomadoresTomadorIdPortalConvitesPostMutation = (
+  options?: Partial<Options<PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData>>,
+): UseMutationOptions<
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponse,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostError,
+  Options<PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponse,
+    PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostError,
+    Options<PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postConvidarPortalApiTomadoresTomadorIdPortalConvitesPost({
         ...options,
         ...fnOptions,
         throwOnError: true,

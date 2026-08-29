@@ -265,6 +265,204 @@ def test_convite_nao_pode_ser_apagado(db_session: Session) -> None:
     assert sqlstate_de(exc.value) == "OC027"
 
 
+def _admin_persistido(db_session: Session) -> Usuario:
+    """Admin gravado de verdade na tabela: a listagem de convites resolve o
+    nome de quem convidou por join em `usuario`, e um admin só em memória
+    apareceria como nulo."""
+    admin_id = uuid.uuid4()
+    db_session.execute(
+        text("""
+        insert into usuario (id, email, nome, papel, ativo)
+        values (:id, :email, 'Admin da ESC', 'admin', true)
+        """),
+        {"id": str(admin_id), "email": f"admin-{admin_id.hex[:6]}@orgatec.com"},
+    )
+    db_session.commit()
+    return db_session.query(Usuario).filter(Usuario.id == admin_id).one()
+
+
+def test_convidar_sem_supabase_configurado_responde_503_e_nao_grava_nada(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(settings, "supabase_service_key", "")
+
+    a = _tomador(db_session, "Empresa A", "11222333000181")
+    resp = _como(client, _admin_persistido(db_session)).post(
+        f"/api/tomadores/{a}/portal/convites",
+        json={"email": "socio@empresa.com", "nome": "Sócio"},
+    )
+    assert resp.status_code == 503
+
+    # Fail-closed de verdade: nem login, nem trilha. Um convite meio-gravado
+    # seria um login prometido que não autentica nunca.
+    assert (
+        db_session.execute(
+            text("select count(*) from usuario where email = 'socio@empresa.com'")
+        ).scalar_one()
+        == 0
+    )
+    assert (
+        db_session.execute(
+            text("select count(*) from convite_portal where tomador_id = :t"), {"t": str(a)}
+        ).scalar_one()
+        == 0
+    )
+
+
+def test_convidar_cria_login_vinculado_e_trilha(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.routers.tomadores as tomadores_router
+
+    auth_id = uuid.uuid4()
+    monkeypatch.setattr(
+        tomadores_router, "convidar_no_supabase", lambda email, redirect_to: auth_id
+    )
+
+    a = _tomador(db_session, "Empresa A", "11222333000181")
+    admin = _admin_persistido(db_session)
+    resp = _como(client, admin).post(
+        f"/api/tomadores/{a}/portal/convites",
+        # Caixa alta de propósito: o e-mail é normalizado antes de virar chave.
+        json={"email": "Socio@Empresa.com", "nome": "Sócio da Empresa"},
+    )
+    assert resp.status_code == 201, resp.text
+    corpo = resp.json()
+    assert corpo["email"] == "socio@empresa.com"
+    assert corpo["aceito_em"] is None
+    assert corpo["convidado_por_nome"] == "Admin da ESC"
+
+    # O login nasce com o ID DO AUTH (o `sub` dos JWTs futuros) e com o
+    # vínculo que o CHECK da 031 exige.
+    login = db_session.execute(
+        text("select id, papel, tomador_id, ativo from usuario where email = 'socio@empresa.com'")
+    ).one()
+    assert login.id == auth_id
+    assert login.papel == "tomador"
+    assert login.tomador_id == a
+    assert login.ativo is True
+
+    trilha = db_session.execute(
+        text("""
+        select email, convidado_por, usuario_id, aceito_em
+          from convite_portal where tomador_id = :t
+        """),
+        {"t": str(a)},
+    ).one()
+    assert trilha.email == "socio@empresa.com"
+    assert trilha.convidado_por == str(admin.id)
+    assert trilha.usuario_id == auth_id
+    assert trilha.aceito_em is None
+
+    # A listagem da ficha mostra a mesma trilha, com o nome de quem convidou.
+    lista = _como(client, admin).get(f"/api/tomadores/{a}/portal/convites")
+    assert lista.status_code == 200
+    assert [c["email"] for c in lista.json()] == ["socio@empresa.com"]
+
+
+def test_convidar_e_restrito_a_admin(client: TestClient, db_session: Session) -> None:
+    a = _tomador(db_session, "Empresa A", "11222333000181")
+    operador = Usuario(
+        id=uuid.uuid4(), email="op@orgatec.com", nome="Op", papel="operador", ativo=True
+    )
+    resp = _como(client, operador).post(
+        f"/api/tomadores/{a}/portal/convites",
+        json={"email": "socio@empresa.com", "nome": "Sócio"},
+    )
+    assert resp.status_code == 403
+
+
+def test_email_que_ja_tem_login_e_recusado_antes_do_supabase(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pré-checagem local vem ANTES da conta no Auth: se o INSERT fosse
+    falhar depois do convite remoto, sobraria a conta órfã que a ordem das
+    escritas existe para evitar."""
+    import app.routers.tomadores as tomadores_router
+
+    def _nao_deveria_chamar(email: str, redirect_to: str) -> uuid.UUID:
+        raise AssertionError("chamou o Supabase para um e-mail que já tem login")
+
+    monkeypatch.setattr(tomadores_router, "convidar_no_supabase", _nao_deveria_chamar)
+
+    a = _tomador(db_session, "Empresa A", "11222333000181")
+    db_session.add(_login_tomador(db_session, a))
+    ja_logado = db_session.query(Usuario).filter(Usuario.papel == "tomador").one()
+
+    resp = _como(client, _admin_persistido(db_session)).post(
+        f"/api/tomadores/{a}/portal/convites",
+        json={"email": ja_logado.email, "nome": "Sócio"},
+    )
+    assert resp.status_code == 409
+
+
+def test_email_ja_registrado_no_supabase_vira_409(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.routers.tomadores as tomadores_router
+    from app.core.convites import EmailJaRegistrado
+
+    def _ja_registrado(email: str, redirect_to: str) -> uuid.UUID:
+        raise EmailJaRegistrado(email)
+
+    monkeypatch.setattr(tomadores_router, "convidar_no_supabase", _ja_registrado)
+
+    a = _tomador(db_session, "Empresa A", "11222333000181")
+    resp = _como(client, _admin_persistido(db_session)).post(
+        f"/api/tomadores/{a}/portal/convites",
+        json={"email": "orfao@empresa.com", "nome": "Sócio"},
+    )
+    assert resp.status_code == 409
+    # A instrução operacional (remover a conta no painel do Auth) precisa
+    # chegar ao operador — é a única saída do estado órfão.
+    assert "Supabase" in resp.json()["detail"]
+
+
+def test_primeiro_sinal_autenticado_do_convidado_marca_o_aceite(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.routers.tomadores as tomadores_router
+
+    auth_id = uuid.uuid4()
+    monkeypatch.setattr(
+        tomadores_router, "convidar_no_supabase", lambda email, redirect_to: auth_id
+    )
+
+    a = _tomador(db_session, "Empresa A", "11222333000181")
+    admin = _admin_persistido(db_session)
+    assert (
+        _como(client, admin)
+        .post(
+            f"/api/tomadores/{a}/portal/convites",
+            json={"email": "socio@empresa.com", "nome": "Sócio"},
+        )
+        .status_code
+        == 201
+    )
+
+    convidado = db_session.query(Usuario).filter(Usuario.id == auth_id).one()
+    assert _como(client, convidado).get("/api/me").status_code == 200
+
+    aceito_em = db_session.execute(
+        text("select aceito_em from convite_portal where usuario_id = :u"), {"u": str(auth_id)}
+    ).scalar_one()
+    assert aceito_em is not None
+
+    # Idempotente: o segundo /me não reescreve o aceite (nem poderia — o
+    # trigger OC027 recusaria; o WHERE em `aceito_em is null` evita até tentar).
+    assert _como(client, convidado).get("/api/me").status_code == 200
+    assert (
+        db_session.execute(
+            text("select aceito_em from convite_portal where usuario_id = :u"),
+            {"u": str(auth_id)},
+        ).scalar_one()
+        == aceito_em
+    )
+
+
 def test_convite_so_deixa_preencher_o_aceite(db_session: Session) -> None:
     a = _tomador(db_session, "Empresa A", "11222333000181")
     login = db_session.execute(
