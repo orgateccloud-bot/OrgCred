@@ -69,6 +69,7 @@ MIGRATIONS = [
     "030_chave_canonica",
     "031_portal_do_tomador",
     "032_paridade_da_chave",
+    "033_forja_do_vigente",
 ]
 
 
