@@ -51,6 +51,7 @@ from app.routers import (
     cobranca,
     compliance,
     contratos,
+    dev,
     fiscal,
     me,
     operacoes,
@@ -239,6 +240,13 @@ def criar_app() -> FastAPI:
     # tomador é rejeitado em TODOS os routers acima (get_painel_user) e só passa
     # aqui, onde cada consulta é cercada pelo próprio tomador_id.
     app.include_router(portal.router, prefix="/api", dependencies=[Depends(get_tomador_user)])
+
+    # Login de conveniência de DESENVOLVIMENTO, montado APENAS fora de produção:
+    # em produção a rota simplesmente não existe (a ausência é a garantia, não
+    # uma checagem que se possa esquecer). Sem dependência de auth — é o login.
+    # Ver app/routers/dev.py.
+    if not modo_producao:
+        app.include_router(dev.router, prefix="/api")
 
     @app.get("/health")
     def health_check() -> Dict[str, str]:
