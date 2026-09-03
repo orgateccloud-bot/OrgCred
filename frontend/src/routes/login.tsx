@@ -185,7 +185,11 @@ function LoginPage() {
                 id="senha"
                 type="password"
                 autoComplete="current-password"
-                required
+                // No dev a senha é ignorada (Supabase ausente); exigir preenchimento
+                // aqui contradiz o aviso amarelo e trava o submit com "Preencha este
+                // campo". Fora de produção o campo é opcional; em produção continua
+                // obrigatório.
+                required={!import.meta.env.DEV}
                 value={senha}
                 onChange={(event) => setSenha(event.target.value)}
               />
