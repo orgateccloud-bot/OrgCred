@@ -107,6 +107,20 @@ describe('AcessoPortal', () => {
     await waitFor(() => expect(screen.queryByLabelText('E-mail')).not.toBeInTheDocument())
   })
 
+  it('backend antigo devolvendo o HTML do SPA degrada em erro, não derruba a ficha', async () => {
+    // Skew real de deploy: a rota não existe no backend, o fallback do SPA
+    // responde 200 text/html, e o cliente gerado entrega a string como data.
+    // Já derrubou a ficha inteira com "convites.data.map is not a function".
+    getConvitesMock.mockResolvedValue({ data: '<!doctype html><html>…</html>' })
+
+    renderAcesso()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/formato inesperado/)
+    // O resto do cartão continua de pé — inclusive o botão de convidar.
+    expect(screen.getByText('Acesso ao portal')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Convidar' })).toBeInTheDocument()
+  })
+
   it('503 (Supabase sem credenciais) mostra a instrução de infraestrutura', async () => {
     getConvitesMock.mockResolvedValue({ data: [] })
     postConvidarMock.mockRejectedValue(new ApiError('Service Unavailable', null, 503))

@@ -8,36 +8,50 @@ import {
 import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { rotuloTipo } from '@/lib/rotulos'
+import { FraseCompliance } from '@/components/portal/frase-compliance'
+import { HeroBoasVindas } from '@/components/portal/hero-boas-vindas'
+import { MeusPagamentos } from '@/components/portal/meus-pagamentos'
+import { MinhasParcelas } from '@/components/portal/minhas-parcelas'
 import { ProgressoParcelas } from '@/components/portal/progresso-parcelas'
+import { RadarDoDia } from '@/components/portal/radar-do-dia'
+import { SolicitarCredito } from '@/components/portal/solicitar-credito'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAgendas } from '@/components/portal/use-agendas'
 
 export const Route = createFileRoute('/portal/')({
   component: PortalHome,
 })
 
+/**
+ * A home de boas-vindas do portal, na ordem de urgência de quem abre o app:
+ * o dia de hoje (saudação + tempo no município), o que vence (minhas
+ * parcelas), o que existe (seus créditos), o que já passou (pagamentos),
+ * o que pode vir (solicitar crédito), o mundo lá fora (radar) e uma linha
+ * de compliance para fechar. Dinheiro continua vindo somado do banco; o
+ * que a home acrescenta é seleção, clima e contexto — nunca aritmética.
+ */
 function PortalHome() {
   const perfil = useQuery(getPerfilApiPortalPerfilGetOptions())
   const operacoes = useQuery(getOperacoesApiPortalOperacoesGetOptions())
+  const { agendas, carregando: agendasCarregando } = useAgendas(operacoes.data)
 
   return (
     <div className="space-y-6">
-      <section>
-        {perfil.isLoading ? (
-          <Skeleton className="h-8 w-64" />
-        ) : perfil.data ? (
-          <>
-            <h1 className="text-2xl font-semibold">{perfil.data.razao_social}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              CNPJ {perfil.data.cnpj} · {perfil.data.municipio}/{perfil.data.uf} ·{' '}
-              {perfil.data.operacoes_ativas}{' '}
-              {perfil.data.operacoes_ativas === 1 ? 'operação ativa' : 'operações ativas'}
-            </p>
-          </>
-        ) : (
-          <h1 className="text-2xl font-semibold">Suas operações</h1>
-        )}
-      </section>
+      {perfil.isLoading ? (
+        <Skeleton className="h-28 w-full" />
+      ) : perfil.data ? (
+        <HeroBoasVindas
+          razaoSocial={perfil.data.razao_social}
+          municipio={perfil.data.municipio}
+          uf={perfil.data.uf}
+          descricao={`CNPJ ${perfil.data.cnpj} · ${perfil.data.municipio}/${perfil.data.uf} · ${perfil.data.operacoes_ativas} ${perfil.data.operacoes_ativas === 1 ? 'operação ativa' : 'operações ativas'}`}
+        />
+      ) : (
+        <h1 className="text-2xl font-semibold">Suas operações</h1>
+      )}
+
+      <MinhasParcelas agendas={agendas} carregando={agendasCarregando} />
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium text-muted-foreground">Seus créditos</h2>
@@ -98,6 +112,16 @@ function PortalHome() {
           </ul>
         )}
       </section>
+
+      <MeusPagamentos agendas={agendas} carregando={agendasCarregando} />
+
+      {perfil.data && (
+        <SolicitarCredito razaoSocial={perfil.data.razao_social} cnpj={perfil.data.cnpj} />
+      )}
+
+      {perfil.data && <RadarDoDia municipio={perfil.data.municipio} uf={perfil.data.uf} />}
+
+      <FraseCompliance />
     </div>
   )
 }

@@ -18,6 +18,65 @@ import { semearCenarioPortal, type CenarioPortal } from './fixtures/seed'
 
 test.use({ ...devices['Pixel 7'] })
 
+/**
+ * As fontes EXTERNAS da home (clima, indicadores) respondem por fixture:
+ * teste que depende da meteorologia real de Formoso/GO passa ou falha
+ * conforme o dia — e a suíte precisa rodar offline. O dia 2 da previsão
+ * carrega 42 mm de chuva de propósito, para provar o alerta derivado.
+ */
+async function interceptarFontesExternas(page: Page) {
+  await page.route('https://geocoding-api.open-meteo.com/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        results: [{ latitude: -13.65, longitude: -48.88, name: 'Formoso', admin1: 'Goiás' }],
+      }),
+    }),
+  )
+  await page.route('https://api.open-meteo.com/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        current: {
+          temperature_2m: 27.4,
+          weather_code: 0,
+          wind_speed_10m: 12,
+          relative_humidity_2m: 65,
+        },
+        daily: {
+          time: ['2026-08-29', '2026-08-30', '2026-08-31'],
+          weather_code: [0, 80, 1],
+          temperature_2m_max: [31, 26, 30],
+          temperature_2m_min: [18, 17, 18],
+          precipitation_sum: [0, 42, 2],
+          precipitation_probability_max: [5, 90, 20],
+          wind_speed_10m_max: [15, 30, 12],
+        },
+      }),
+    }),
+  )
+  await page.route('https://api.bcb.gov.br/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        route.request().url().includes('bcdata.sgs.432')
+          ? [{ data: '28/08/2026', valor: '15.00' }]
+          : [{ data: '01/08/2026', valor: '4,85' }],
+      ),
+    }),
+  )
+  await page.route('https://economia.awesomeapi.com.br/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ USDBRL: { bid: '5.4321', create_date: '2026-08-28 10:00:00' } }),
+    }),
+  )
+}
+
 async function loginTomador(page: Page, cenario: CenarioPortal) {
   const usuario = {
     id: cenario.usuarioId,
@@ -65,22 +124,57 @@ test.describe('Portal do tomador', () => {
     page.on('pageerror', (e) => errosConsole.push(String(e)))
 
     const cenario = await semearCenarioPortal()
+    await interceptarFontesExternas(page)
     await loginTomador(page, cenario)
 
     // --- Home: a própria empresa, e só ela ------------------------------
     await expect(page.getByRole('heading', { name: cenario.razaoSocial })).toBeVisible()
     await expect(page.getByText('1 operação ativa')).toBeVisible()
-    await expect(page.getByText('Empréstimo')).toBeVisible()
+    await expect(page.getByText('Empréstimo').first()).toBeVisible()
     await expect(page.getByText('0/6 pagas')).toBeVisible()
     // A empresa alheia não pode nem ser mencionada.
     await expect(page.getByText('Comercio Alheio')).toHaveCount(0)
+
+    // --- Boas-vindas: o tempo AGORA no município do cadastro ------------
+    await expect(page.getByText('27°C')).toBeVisible()
+    await expect(page.getByText('Céu limpo · Formoso/GO')).toBeVisible()
+
+    // --- Minhas parcelas: o próximo vencimento atravessa as operações ---
+    await expect(page.getByText('Parcela 1 · Empréstimo')).toBeVisible()
+    // .first(): as três próximas parcelas dizem "vence em N dias" — a
+    // asserção é sobre a contagem regressiva existir, não sobre uma linha.
+    await expect(page.getByText(/vence em \d+ dias/).first()).toBeVisible()
+
+    // --- Meus pagamentos: nada pago ainda é estado, não erro ------------
+    await expect(page.getByText('Nenhum pagamento registrado ainda.')).toBeVisible()
+
+    // --- Radar: alerta derivado COM critério, e indicadores com fonte ---
+    await expect(page.getByText('Chuva forte prevista — 30/08/2026')).toBeVisible()
+    await expect(page.getByText('42 mm previstos, 90% de chance')).toBeVisible()
+    await expect(page.getByText('Selic (meta)')).toBeVisible()
+    await expect(page.getByText('15,00% a.a.')).toBeVisible()
+    await expect(page.getByText('R$ 5,43')).toBeVisible()
+
+    // --- Compliance: a frase do dia fecha a home ------------------------
+    await expect(page.getByText(/Compliance · Frase do dia/)).toBeVisible()
+
+    // --- Solicitar crédito: prévia honesta, nenhum POST -----------------
+    await page.getByRole('button', { name: 'Solicitar crédito' }).click()
+    await expect(page.getByText('nenhum crédito nasce aprovado automaticamente')).toBeVisible()
+    await page.getByLabel('Valor pretendido (R$)').fill('20.000,00')
+    await page.getByLabel('Finalidade').fill('Reforma do forno')
+    await expect(page.getByText('Valor pretendido: R$ 20.000,00')).toBeVisible()
+    await expect(page.getByText('não representa aprovação automática')).toBeVisible()
+    await page.keyboard.press('Escape')
 
     // --- Painel devolve o tomador ao portal -----------------------------
     await page.goto('/')
     await expect(page.getByRole('heading', { name: cenario.razaoSocial })).toBeVisible()
 
     // --- Detalhe: agenda emitida pelo banco, na forma de cartões --------
-    await page.getByText('Empréstimo').click()
+    // Pelo cartão de "Seus créditos" (o valor principal só aparece nele —
+    // "Empréstimo" sozinho agora também nomeia linhas de Minhas parcelas).
+    await page.getByRole('link', { name: /12\.000,00 · 6x/ }).click()
     await expect(page.getByRole('heading', { name: 'Empréstimo' })).toBeVisible()
     await expect(page.getByText('Ativa')).toBeVisible()
     await expect(page.getByText('juros de 2,0% a.m.')).toBeVisible()

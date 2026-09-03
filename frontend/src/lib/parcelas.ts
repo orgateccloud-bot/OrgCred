@@ -30,6 +30,65 @@ export function proximaParcelaEmAberto<T extends ParcelaOrdenavel>(parcelas: T[]
   return emAberto[0] ?? null
 }
 
+export interface AgendaDeOperacao<T> {
+  operacaoId: string
+  tipo: string
+  parcelas: T[]
+}
+
+export interface ParcelaComOperacao<T> {
+  operacaoId: string
+  tipo: string
+  parcela: T
+}
+
+/**
+ * As próximas parcelas do TOMADOR, atravessando todas as operações dele —
+ * a visão "minhas parcelas" da home. Mesma disciplina de
+ * proximaParcelaEmAberto: só seleção e ordenação; nenhum valor é somado.
+ */
+export function proximasParcelas<T extends ParcelaOrdenavel>(
+  agendas: Array<AgendaDeOperacao<T>>,
+  limite: number,
+): Array<ParcelaComOperacao<T>> {
+  return agendas
+    .flatMap(({ operacaoId, tipo, parcelas }) =>
+      parcelas.filter((p) => p.status !== 'paga').map((parcela) => ({ operacaoId, tipo, parcela })),
+    )
+    .sort(
+      (a, b) =>
+        a.parcela.vencimento.localeCompare(b.parcela.vencimento) ||
+        a.parcela.numero - b.parcela.numero,
+    )
+    .slice(0, limite)
+}
+
+interface ParcelaPagavel extends ParcelaOrdenavel {
+  pago_em?: string | null
+}
+
+/**
+ * Os últimos pagamentos do tomador — parcelas pagas, do mais recente para o
+ * mais antigo, pela data em que a ESC deu por pago (`pago_em`).
+ */
+export function ultimosPagamentos<T extends ParcelaPagavel>(
+  agendas: Array<AgendaDeOperacao<T>>,
+  limite: number,
+): Array<ParcelaComOperacao<T>> {
+  return agendas
+    .flatMap(({ operacaoId, tipo, parcelas }) =>
+      parcelas
+        .filter((p) => p.status === 'paga' && p.pago_em)
+        .map((parcela) => ({ operacaoId, tipo, parcela })),
+    )
+    .sort(
+      (a, b) =>
+        (b.parcela.pago_em ?? '').localeCompare(a.parcela.pago_em ?? '') ||
+        b.parcela.numero - a.parcela.numero,
+    )
+    .slice(0, limite)
+}
+
 /** 'aaaa-mm-dd' -> milissegundos UTC do dia, ignorando qualquer hora. */
 function diaUtc(iso: string): number {
   const [ano, mes, dia] = iso.slice(0, 10).split('-').map(Number)
@@ -47,5 +106,15 @@ function diaUtc(iso: string): number {
 export function diasDeAtraso(vencimentoIso: string, hoje: Date = new Date()): number {
   const hojeUtc = Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())
   const diff = Math.floor((hojeUtc - diaUtc(vencimentoIso)) / 86_400_000)
+  return Math.max(0, diff)
+}
+
+/**
+ * Dias até o vencimento; 0 se vence hoje ou já venceu (o atraso é assunto de
+ * diasDeAtraso — os dois lados da fronteira, cada um com a sua função).
+ */
+export function diasAteVencer(vencimentoIso: string, hoje: Date = new Date()): number {
+  const hojeUtc = Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())
+  const diff = Math.floor((diaUtc(vencimentoIso) - hojeUtc) / 86_400_000)
   return Math.max(0, diff)
 }
