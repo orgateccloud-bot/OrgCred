@@ -11,6 +11,13 @@ o status 'baixada' (aceito pelo CHECK da 007 e escrito por ninguém) saiu do
 domínio, o lastro deixou de poder ser repontado depois da baixa, a baixa
 passou a ter autor, e a colisão concorrente no índice único virou OC011 em
 vez de 23505 cru.
+
+A migration 027 fechou as duas que a 016 não olhou, também provadas aqui: o
+lastro passou a ter de COBRIR a parcela por qualquer porta (a checagem morava
+só dentro de `fn_baixar_parcela`, e um UPDATE direto quitava a carteira contra
+uma tarifa de um centavo), e o `documento` do extrato passou a ser único
+DENTRO DA CONTA — FITID colidindo entre dois bancos fazia um crédito real ser
+descartado como "já registrado", com a aritmética do relatório fechando.
 """
 
 import threading
@@ -672,3 +679,242 @@ def test_movimento_conciliado_sai_dos_disponiveis(
         ).scalar_one()
         == 0
     )
+
+
+# ---------------------------------------------------------------------
+# Migration 027: a cobertura de valor vale por QUALQUER porta
+# ---------------------------------------------------------------------
+# O furo: a regra "o movimento tem que cobrir a parcela" vivia SÓ dentro de
+# `fn_baixar_parcela`. O trigger de linha exigia `movimento_id` não nulo para
+# sair de 'aberta' (009/016) e a constraint `parcela_lastro_obrigatorio`
+# também — as duas perguntavam se existe lastro apontado, nunca quanto ele
+# vale. Um `update parcela set status='paga', movimento_id=<tarifa de R$ 0,01>`
+# atravessava tudo, e como a liquidação da 017 (OC022) pede exatamente "todas
+# as parcelas pagas", a quitação de mentira devolvia o capital inteiro ao teto
+# do Art. 5º.
+
+
+def test_update_direto_com_movimento_insuficiente_e_recusado(
+    db_session, tomador_autorizado, capital_constituido
+):
+    """O furo, reproduzido como a auditoria o reproduziu: a porta de trás da
+    baixa, com um centavo de lastro."""
+    op_id = _operacao_ativa(db_session, tomador_autorizado)
+    p = _parcela(db_session, op_id, 1)
+    tarifa = _movimento(db_session, "0.01")
+
+    with pytest.raises(Exception) as exc:
+        db_session.execute(
+            text("update parcela set status = 'paga', movimento_id = :m where id = :id"),
+            {"m": str(tarifa), "id": str(p.id)},
+        )
+        db_session.flush()
+    assert sqlstate_de(exc.value) == "OC011"
+    db_session.rollback()
+
+    assert _parcela(db_session, op_id, 1).status == "aberta"
+
+
+def test_update_direto_com_movimento_que_cobre_continua_passando(
+    db_session, tomador_autorizado, capital_constituido
+):
+    """CAMINHO FELIZ da guarda nova, e ele não é decorativo: uma checagem de
+    cobertura escrita com o sinal invertido — ou sobre a coluna errada —
+    recusaria TODA baixa, e a suíte inteira quebraria de um jeito barulhento
+    que esconderia o que este teste prova sozinho: que o trigger recusa por
+    VALOR, e não por ser um UPDATE direto.
+
+    `status` e `pago_em` sempre foram a exceção deliberada à imutabilidade da
+    agenda (007) — o que a 027 acrescenta é o quanto, não o quem.
+    """
+    op_id = _operacao_ativa(db_session, tomador_autorizado)
+    p = _parcela(db_session, op_id, 1)
+    mov = _movimento(db_session, str(p.valor_total))
+
+    db_session.execute(
+        text("update parcela set status = 'paga', movimento_id = :m where id = :id"),
+        {"m": str(mov), "id": str(p.id)},
+    )
+    db_session.commit()
+
+    depois = _parcela(db_session, op_id, 1)
+    assert depois.status == "paga"
+    assert depois.movimento_id == mov
+
+
+def test_um_centavo_a_menos_nao_cobre_e_o_valor_exato_cobre(
+    db_session, tomador_autorizado, capital_constituido
+):
+    """A borda do `>=`, dos dois lados no mesmo teste. Um centavo a menos é
+    recusado; o valor exato passa — e é ele o caso comum do pagamento em dia,
+    que um `>` no lugar do `>=` recusaria."""
+    op_id = _operacao_ativa(db_session, tomador_autorizado)
+    p = _parcela(db_session, op_id, 1)
+    # Um centavo a menos que o valor devido: o vizinho imediato do caso acima.
+    quase = _movimento(db_session, str(p.valor_total - Decimal("0.01")))
+
+    with pytest.raises(Exception) as exc:
+        db_session.execute(
+            text("update parcela set status = 'paga', movimento_id = :m where id = :id"),
+            {"m": str(quase), "id": str(p.id)},
+        )
+        db_session.flush()
+    assert sqlstate_de(exc.value) == "OC011"
+    db_session.rollback()
+
+    baixar_parcela(db_session, p.id, _movimento(db_session, str(p.valor_total)))
+    assert _parcela(db_session, op_id, 1).status == "paga"
+
+
+def test_apontar_lastro_insuficiente_sem_mudar_o_status_e_recusado(
+    db_session, tomador_autorizado, capital_constituido
+):
+    """Por que o gatilho da guarda é a transição de `movimento_id` (NULL ->
+    não nulo) e não `status = 'paga'`.
+
+    Apontar um movimento mantendo a parcela 'aberta' não parece uma baixa, mas
+    tira o crédito de `v_movimentos_disponiveis` e o TRANCA ali: nenhuma outra
+    parcela pode usá-lo (índice único) e esta não pode trocá-lo depois (016).
+    Trancar um crédito que nem cobriria a parcela é o pior dos dois mundos.
+    """
+    op_id = _operacao_ativa(db_session, tomador_autorizado)
+    p = _parcela(db_session, op_id, 1)
+    tarifa = _movimento(db_session, "0.01")
+
+    with pytest.raises(Exception) as exc:
+        db_session.execute(
+            text("update parcela set movimento_id = :m where id = :id"),
+            {"m": str(tarifa), "id": str(p.id)},
+        )
+        db_session.flush()
+    assert sqlstate_de(exc.value) == "OC011"
+    db_session.rollback()
+
+    assert (
+        db_session.execute(
+            text("select count(*) from v_movimentos_disponiveis where id = :id"),
+            {"id": str(tarifa)},
+        ).scalar_one()
+        == 1
+    )
+
+
+def test_lastro_inexistente_no_update_direto_devolve_oc011_e_nao_erro_de_fk(
+    db_session, tomador_autorizado, capital_constituido
+):
+    """A FK de `parcela.movimento_id` é verificada DEPOIS do BEFORE ROW
+    (restrições de chave estrangeira são triggers AFTER). Sem a checagem
+    explícita de existência, apontar um id inventado voltaria como 23503 —
+    fora do PGCODE_MAP, HTTP 500 — em vez da mesma instrução que
+    `fn_baixar_parcela` já dá."""
+    op_id = _operacao_ativa(db_session, tomador_autorizado)
+    p = _parcela(db_session, op_id, 1)
+
+    with pytest.raises(Exception) as exc:
+        db_session.execute(
+            text("update parcela set status = 'paga', movimento_id = :m where id = :id"),
+            {"m": str(uuid.uuid4()), "id": str(p.id)},
+        )
+        db_session.flush()
+    assert sqlstate_de(exc.value) == "OC011"
+    db_session.rollback()
+
+
+# ---------------------------------------------------------------------
+# Migration 027: FITID é único DENTRO da conta
+# ---------------------------------------------------------------------
+
+
+def test_documento_repetido_entre_contas_coexiste(db_session):
+    """O conserto da chave, provado no banco.
+
+    `movimento_bancario.documento` era UNIQUE GLOBAL desde a 009, mas FITID é
+    único dentro da CONTA pela especificação OFX — banco brasileiro emite
+    sequência curta ('000123', o número do documento) e duas instituições
+    colidem com facilidade banal. Com a chave global, o crédito do segundo
+    banco era descartado na importação como "já registrado", com a aritmética
+    do relatório fechando: a tela afirmava que nada faltou enquanto um
+    recebimento real ficava fora do lastro.
+
+    Por INSERT direto porque a proveniência (`conta_origem`) só pode ser
+    gravada pelo caminho da importação (024) — o formulário manual não a
+    coleta. O que se prova aqui é a CHAVE; a importação inteira é provada em
+    tests/test_router_cobranca.py.
+
+    OS VALORES PRECISAM DIFERIR DESDE A MIGRATION 029, e a razão é o custo que
+    ela assume por escrito: a identidade de um crédito passou a ser (documento,
+    valor, data_movimento), sem a conta, porque enquanto a conta participava da
+    identidade a mesma conta escrita de dois jeitos dobrava o lastro. Duas
+    linhas com o MESMO identificador, o MESMO valor e a MESMA data são, para o
+    sistema, o mesmo crédito — e a segunda é pulada.
+
+    A versão anterior deste teste usava R$ 100,00 nas duas e passava. Ela não
+    provava a coexistência de dois BANCOS: provava a coexistência de duas
+    GRAFIAS, que é precisamente o furo. O que continua sendo verdade, e é o que
+    este teste guarda, é que dois créditos DIFERENTES com o mesmo FITID
+    coexistem.
+    """
+    sha = "a" * 64
+    for conta, valor in (("001/111", 100), ("341/222", 250)):
+        db_session.execute(
+            text("""
+            insert into movimento_bancario
+                (data_movimento, valor, documento, origem, conta_origem, arquivo_sha256)
+            values (current_date, :valor, '000123', 'ofx', :conta, :sha)
+            """),
+            {"conta": conta, "valor": valor, "sha": sha},
+        )
+    db_session.commit()
+
+    contas = (
+        db_session.execute(
+            text("select conta_origem from movimento_bancario where documento = '000123'")
+        )
+        .scalars()
+        .all()
+    )
+    assert sorted(contas) == ["001/111", "341/222"]
+
+
+def test_documento_repetido_na_mesma_conta_continua_recusado(db_session):
+    """O outro lado: dentro da MESMA conta, o FITID continua identificando a
+    linha — é o que torna a reimportação idempotente."""
+    sha = "b" * 64
+    db_session.execute(
+        text("""
+        insert into movimento_bancario
+            (data_movimento, valor, documento, origem, conta_origem, arquivo_sha256)
+        values (current_date, 100, 'MESMA-CONTA', 'ofx', '001/111', :sha)
+        """),
+        {"sha": sha},
+    )
+    db_session.flush()
+
+    with pytest.raises(Exception) as exc:
+        db_session.execute(
+            text("""
+            insert into movimento_bancario
+                (data_movimento, valor, documento, origem, conta_origem, arquivo_sha256)
+            values (current_date, 999, 'MESMA-CONTA', 'ofx', '001/111', :sha)
+            """),
+            {"sha": sha},
+        )
+        db_session.flush()
+    assert sqlstate_de(exc.value) == "23505"
+    db_session.rollback()
+
+
+def test_manual_sem_conta_continua_num_unico_espaco_de_nomes(db_session):
+    """A razão de `NULLS NOT DISTINCT`, e o furo que ele impede de abrir.
+
+    Em SQL, NULL nunca é igual a NULL: uma UNIQUE comum sobre (documento,
+    conta_origem) NÃO impediria dois lançamentos manuais com o mesmo
+    `documento`, porque `conta_origem` é NULL nos dois por decisão da 024. A
+    idempotência do lançamento digitado sumiria em silêncio, e o crédito
+    repetido — hoje recusado com 409 — passaria a poder baixar uma segunda
+    parcela. Trocar um furo por outro pior.
+    """
+    _movimento(db_session, "1000", documento="NULO-1")
+
+    with pytest.raises(MovimentoDuplicado, match="Já existe um movimento"):
+        _movimento(db_session, "1000", documento="NULO-1")

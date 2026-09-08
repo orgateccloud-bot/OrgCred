@@ -43,7 +43,7 @@ separadamente.
 
 from datetime import date
 from decimal import Decimal
-from typing import Dict, NamedTuple, Optional, Sequence
+from typing import Dict, NamedTuple, Optional, Sequence, Tuple
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -54,7 +54,7 @@ from app.core.db_errors import extrair_sqlstate, traduzir_erro_banco
 from app.core.exceptions import MovimentoDuplicado, OperacaoNaoEncontrada
 from app.core.metrics import registrar_ativacao
 from app.models import EscCapitalSocial, OperacaoCredito
-from app.ofx import TransacaoOfx
+from app.ofx import TransacaoOfx, documento_chave
 
 
 # Tradução SQLSTATE -> exceção vive em app/core/db_errors.py desde que
@@ -283,6 +283,13 @@ def registrar_movimento_bancario(
     sobe como IntegrityError e é traduzida aqui para uma mensagem que diz o
     que de fato aconteceu, em vez de vazar o nome da constraint.
 
+    A CHAVE PASSOU A SER (documento, conta_origem) NA MIGRATION 027, e para
+    este caminho NADA MUDA: o lançamento digitado tem `conta_origem` nula por
+    decisão da 024 (manual não pode ter proveniência de arquivo), e a chave é
+    `NULLS NOT DISTINCT` — todas as linhas sem conta declarada dividem um único
+    espaço de nomes, exatamente como antes. Dois lançamentos manuais com o
+    mesmo `documento` continuam sendo recusados aqui, com 409.
+
     `origem` DEIXOU DE SER PARÂMETRO na migration 024, e a fixação em 'manual'
     é o ponto: esta função é o caminho da digitação, e não coleta arquivo
     nenhum. Desde a 024, `origem = 'ofx'` exige `arquivo_sha256` — deixar o
@@ -326,18 +333,30 @@ class ResultadoImportacaoOfx(NamedTuple):
     "débito não foi considerado", e é justamente nessa dúvida que ele decide
     se precisa lançar algo à mão.
 
-    Os quatro últimos números fecham em `lidas`:
-        lidas = criados + ja_registrados + repetidos_no_arquivo + debitos_ignorados
+    Os cinco últimos números fecham em `lidas`:
+        lidas = criados + ja_registrados + conflitos
+              + repetidos_no_arquivo + debitos_ignorados
+
+    `conflitos` SAIU DE DENTRO DE `ja_registrados` na migration 028, e a
+    separação é o remédio para o defeito que a 027 nomeou sem curar: "a
+    aritmética fecha ENQUANTO a linha se perde". Um `on conflict do nothing`
+    funde dois fatos opostos num número só — a linha que já estava lá porque é a
+    MESMA (reimportação, rotina diária) e a linha que já estava lá com outro
+    valor ou outra data (colisão de identidade, anomalia que exige olho humano).
+    Enquanto os dois somarem no mesmo contador, o relatório continua fechando
+    por cima de um crédito real descartado.
     """
 
     lidas: int
     creditos: int
     criados: int
     ja_registrados: int
+    conflitos: int
     repetidos_no_arquivo: int
     debitos_ignorados: int
     periodo_inicio: Optional[date]
     periodo_fim: Optional[date]
+    documentos_em_conflito: Tuple[str, ...] = ()
 
 
 def importar_extrato_ofx(
@@ -362,10 +381,11 @@ def importar_extrato_ofx(
     1) REIMPORTAR É ROTINA, NÃO ERRO. O extrato do mês seguinte contém os dias
        do anterior; o operador reimporta o mesmo arquivo por dúvida; o banco
        reemite com mais uma linha. Nos três casos o certo é criar o que falta e
-       PULAR o resto. Daí `on conflict (documento) do nothing` em vez do
-       `IntegrityError` de `registrar_movimento_bancario`: a duplicidade de um
-       lançamento digitado é engano de quem digitou e merece 409; a de um
-       arquivo é o funcionamento normal e merece um número no relatório.
+       PULAR o resto. Daí `on conflict (documento, conta_origem) do nothing`
+       — o par desde a 027, ver o item 4 — em vez do `IntegrityError` de
+       `registrar_movimento_bancario`: a duplicidade de um lançamento digitado
+       é engano de quem digitou e merece 409; a de um arquivo é o
+       funcionamento normal e merece um número no relatório.
 
     2) SÓ CRÉDITO ENTRA. `movimento_bancario` tem check `valor > 0` (009) e
        débito não baixa parcela — importar despesa da ESC nesta tabela criaria
@@ -387,32 +407,99 @@ def importar_extrato_ofx(
     `ja_registrados`. Os dois viram "não criado", mas significam coisas
     diferentes — o segundo é reimportação normal, o primeiro é um FITID
     duplicado pelo BANCO, anomalia do arquivo que o operador deve enxergar.
+
+    4) A IDENTIDADE DE UM CRÉDITO É (FITID, VALOR, DATA), E A CONTA NÃO ENTRA
+       NELA. É a decisão mais importante desta função, e foi errada em TRÊS
+       gerações seguidas — vale escrito por inteiro, porque o padrão do erro é
+       mais instrutivo que o acerto:
+
+         009  chave = (documento)                -> perdia o crédito do 2º banco
+         027  chave = (documento, conta_origem)  -> DOBRAVA o lastro (grafia)
+         028  chave = (documento, conta_chave)   -> DOBRAVA do outro lado
+         029  chave = (documento, valor, data)   -> a conta sai da identidade
+
+       A 027 pôs a GRAFIA na chave supondo que ela identificasse a conta: o
+       mesmo extrato exportado com e sem `<BANKID>` produz '001/123456' e
+       '123456', dois espaços de nomes, e as duas importações criam. A 028
+       canonizou a grafia e fechou essa metade — e horas depois mediu-se a
+       simétrica, com o `<ACCTID>` ausente: R$ 6.000 recebidos viraram R$ 12.000
+       de lastro, as parcelas ficaram quitadas contra dinheiro que não entrou,
+       `liquidar` foi aceito (OC022 pede exatamente "todas as parcelas pagas") e
+       o comprometido voltou a zero com principal na rua. O furo do teto do
+       Art. 5º, duas vezes, pela porta do extrato e sem má-fé nenhuma.
+
+       A PREMISSA COMUM ÀS TRÊS: que o arquivo DIZ de qual conta a linha é. Ele
+       diz o que o exportador resolveu escrever, e exportações diferentes da
+       MESMA conta escrevem coisas diferentes — com BANKID e sem, com ACCTID e
+       sem, com o bloco `<BANKACCTFROM>` e sem ele. Canonização normaliza
+       FORMATO; não recupera informação AUSENTE. Enquanto a conta estiver na
+       identidade, sempre haverá um par de exportações em que uma declara menos
+       que a outra, e duas declarações viram dois espaços de nomes.
+
+       O CUSTO DA 029, assumido: dois bancos que emitam o mesmo FITID com o
+       mesmo valor no mesmo dia colidem, e a segunda linha é pulada. É mais
+       estreito que o custo da 028 e continua sendo uma perda — mas é o lado
+       certo de errar. Duplicar fabrica lastro, quita parcela que ninguém pagou
+       e devolve capital ao teto, de forma invisível e irreversível (movimento é
+       imutável por OC012, baixa não tem estorno). Pular deixa um crédito de
+       fora, o operador confere o extrato e lança à mão — recuperável, DESDE QUE
+       ELE VEJA, e é por isso que a colisão tem contador próprio.
     """
     lidas = len(transacoes)
     creditos = [t for t in transacoes if t.valor > 0]
     debitos_ignorados = lidas - len(creditos)
 
-    # Primeira ocorrência vence: se o mesmo FITID aparece duas vezes com dados
+    # Primeira ocorrência vence: se a mesma linha aparece duas vezes com dados
     # divergentes, a de cima é a que o banco emitiu primeiro no arquivo.
-    unicas: Dict[str, TransacaoOfx] = {}
+    #
+    # A CHAVE É A IDENTIDADE DO CRÉDITO, e a conta não entra nela (029). Ela é
+    # exatamente a mesma que o banco usa em `movimento_credito_unico`, e essa
+    # igualdade é o ponto: quando a deduplicação em memória era mais FINA que a
+    # do banco (a 028 usava `conta_chave` aqui), duas linhas do arquivo com a
+    # mesma identidade e contas escritas de formas diferentes chegavam as duas
+    # ao INSERT; quando era mais GROSSA, uma linha real morria aqui e o
+    # relatório a atribuía a "anomalia do arquivo" — mandando o operador
+    # auditar o banco por uma fusão que fomos nós que fizemos.
+    unicas: Dict[Tuple[str, Decimal, date], TransacaoOfx] = {}
     for transacao in creditos:
-        unicas.setdefault(transacao.fitid, transacao)
+        unicas.setdefault(
+            (documento_chave(transacao.fitid), transacao.valor, transacao.data_movimento),
+            transacao,
+        )
     repetidos_no_arquivo = len(creditos) - len(unicas)
 
     datas = [t.data_movimento for t in transacoes] if transacoes else []
     periodo_inicio = min(datas) if datas else None
     periodo_fim = max(datas) if datas else None
 
-    def _resultado(criados: int) -> ResultadoImportacaoOfx:
+    def _resultado(
+        criados: int, ja_registrados: int = 0, em_conflito: Sequence[str] = ()
+    ) -> ResultadoImportacaoOfx:
+        """OS TRÊS DESTINOS SÃO CONTADOS, NENHUM É DERIVADO — e essa é a
+        diferença entre uma conferência e uma tautologia.
+
+        Até a 029, `ja_registrados` era `len(unicas) - criados - conflitos`.
+        Calculado por subtração, ele fazia da soma dos cinco destinos uma
+        IDENTIDADE ALGÉBRICA: o selo "Nenhuma linha do extrato se perdeu" não
+        podia falhar — nem com o motor quebrado, nem com o banco recusando
+        linhas por um motivo que ninguém previu. O ramo "Conferência NÃO fecha"
+        da tela era inalcançável, e o operador guardava, ao lado do sha256 dos
+        bytes do banco, uma prova que não provava nada.
+
+        Contando os três, a soma PODE divergir de `lidas` — e é justamente
+        quando ela divergir que o relatório terá dito alguma coisa.
+        """
         return ResultadoImportacaoOfx(
             lidas=lidas,
             creditos=len(creditos),
             criados=criados,
-            ja_registrados=len(unicas) - criados,
+            ja_registrados=ja_registrados,
+            conflitos=len(em_conflito),
             repetidos_no_arquivo=repetidos_no_arquivo,
             debitos_ignorados=debitos_ignorados,
             periodo_inicio=periodo_inicio,
             periodo_fim=periodo_fim,
+            documentos_em_conflito=tuple(em_conflito),
         )
 
     if not unicas:
@@ -422,6 +509,12 @@ def importar_extrato_ofx(
         return _resultado(0)
 
     valores = list(unicas.values())
+    chaves = [(documento_chave(t.fitid), t.valor, t.data_movimento) for t in valores]
+    parametros = {
+        "datas": [t.data_movimento for t in valores],
+        "valores": [t.valor for t in valores],
+        "documentos": [t.fitid for t in valores],
+    }
     try:
         criadas = db.execute(
             text("""
@@ -437,25 +530,78 @@ def importar_extrato_ofx(
                      cast(:descricoes as text[]),
                      cast(:contas as text[])
                    ) as t(data, valor, documento, descricao, conta)
-             on conflict (documento) do nothing
-             returning id
+             on conflict do nothing
+             returning documento_chave, valor, data_movimento
             """),
             {
+                **parametros,
                 "usuario": usuario_id,
                 "sha": arquivo_sha256,
-                "datas": [t.data_movimento for t in valores],
-                "valores": [t.valor for t in valores],
-                "documentos": [t.fitid for t in valores],
                 "descricoes": [t.descricao for t in valores],
                 "contas": [t.conta for t in valores],
             },
         ).all()
+
+        # `on conflict do nothing` SEM ALVO, e é deliberado: desde a 029 são
+        # DUAS restrições únicas — a identidade do crédito e o FITID único
+        # dentro da conta —, e nomear um alvo escolheria qual metade da
+        # proteção vale. Sem alvo, qualquer conflito pula a linha.
+        #
+        # `returning documento, valor, data_movimento` e não `id`: é o que
+        # permite saber QUAIS linhas nasceram, e sem isso o destino de cada uma
+        # só poderia ser deduzido por subtração — que é exatamente o vício que
+        # a 029 removeu.
+        criados_agora = {(r.documento_chave, r.valor, r.data_movimento) for r in criadas}
+
+        # O QUE FOI PULADO: já estava aqui IGUAL, ou já estava aqui DIFERENTE?
+        # Esta consulta roda DEPOIS do INSERT e pergunta, para cada linha
+        # enviada, se existe no banco um crédito com a mesma identidade. A
+        # conta não entra na comparação — ela é proveniência, e foi justamente
+        # tratá-la como identidade que duplicou lastro na 027 e na 028.
+        identicos = {
+            (linha.documento_chave, linha.valor, linha.data_movimento)
+            for linha in db.execute(
+                text("""
+                select m.documento_chave, m.valor, m.data_movimento
+                  from unnest(
+                         cast(:datas as date[]),
+                         cast(:valores as numeric[]),
+                         cast(:documentos as text[])
+                       ) as t(data, valor, documento)
+                  join movimento_bancario m
+                    on m.documento_chave = fn_documento_chave(t.documento)
+                   and m.valor = t.valor
+                   and m.data_movimento = t.data
+                """),
+                parametros,
+            ).all()
+        }
         db.commit()
     except DBAPIError as exc:
         db.rollback()
         raise _traduz_erro_banco(exc) from exc
 
-    return _resultado(len(criadas))
+    # Cada linha enviada recebe UM destino, e os três são contados aqui, um a
+    # um. Pulada com o mesmo crédito no banco é reimportação — rotina. Pulada
+    # SEM ele é colisão de identidade: o identificador já existe amarrado a
+    # outro valor ou a outra data, então é outro crédito, e o que veio agora
+    # ficou de fora do lastro. É a única situação em que um recebimento real se
+    # perde, e por isso ela tem contador próprio e sai destacada na tela.
+    ja_registrados = 0
+    em_conflito = []
+    for transacao, chave in zip(valores, chaves):
+        if chave in criados_agora:
+            continue
+        if chave in identicos:
+            ja_registrados += 1
+        else:
+            # O FITID VERBATIM, e não a chave canônica: o operador vai procurar
+            # esta linha no extrato que o banco emitiu, e lá está escrito o que
+            # o banco escreveu. Mostrar 'TED1' a quem tem '0ted-1' no arquivo
+            # transformaria o aviso em enigma.
+            em_conflito.append(transacao.fitid)
+
+    return _resultado(len(criadas), ja_registrados, sorted(em_conflito))
 
 
 def baixar_parcela(

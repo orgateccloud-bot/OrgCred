@@ -75,7 +75,7 @@ function ProvenienciaMovimento({ movimento }: { movimento: MovimentoOut }) {
  * Extrato bancário registrado.
  *
  * É a fonte de lastro das baixas: nenhuma parcela pode ser dada por paga
- * sem apontar para uma destas linhas (OC011). O documento é único, então
+ * sem apontar para uma destas linhas (OC011). O crédito é único, então
  * reimportar o mesmo extrato — rotina na operação real — não duplica
  * crédito nem permite baixar duas parcelas com o mesmo dinheiro.
  */
@@ -94,8 +94,8 @@ export function MovimentosBancarios() {
           <CardTitle>Extrato bancário</CardTitle>
           <CardDescription>
             Lastro das baixas. Nenhuma parcela é dada por paga sem apontar para uma destas linhas —
-            o documento é único, então reimportar o mesmo extrato não duplica crédito. A coluna{' '}
-            <strong>Origem</strong> diz como a linha entrou: importada do arquivo que o banco
+            o mesmo crédito não entra duas vezes, então reimportar o extrato não duplica lastro. A
+            coluna <strong>Origem</strong> diz como a linha entrou: importada do arquivo que o banco
             emitiu, com o resumo criptográfico dos bytes ao lado, ou digitada à mão.
           </CardDescription>
         </div>
@@ -217,7 +217,10 @@ function RegistrarMovimentoDialog({ onSucesso }: { onSucesso: () => void }) {
           <DialogTitle>Registrar movimento bancário</DialogTitle>
           <DialogDescription>
             Uma linha do extrato. O <strong>documento</strong> é o identificador dela no banco
-            (FITID, no OFX) e é único — é o que impede o mesmo crédito de baixar duas parcelas.
+            (FITID, no OFX). Ele identifica a linha dentro da conta do banco; a identidade que
+            impede o mesmo crédito de baixar duas parcelas é o conjunto identificador + valor + data
+            (migration 029), porque a mesma conta chega escrita de mais de um jeito entre
+            exportações.
           </DialogDescription>
         </DialogHeader>
 

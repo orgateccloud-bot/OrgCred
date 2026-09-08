@@ -43,7 +43,7 @@ from app.core.exceptions import (
 )
 from app.core.logging import configure_logging, get_logger
 from app.core.metrics import registrar_bloqueio, registrar_falha_auth
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_painel_user, get_tomador_user
 from app.db import engine
 from app.routers import (
     auditoria,
@@ -54,6 +54,7 @@ from app.routers import (
     fiscal,
     me,
     operacoes,
+    portal,
     tomadores,
 )
 
@@ -225,15 +226,19 @@ def criar_app() -> FastAPI:
     # /health e /health/ready ficam fora do prefixo de propósito — são
     # endpoints de infraestrutura (probes), não do app. /metrics também fica
     # fora do prefixo, mas NÃO fica fora da autenticação (ver abaixo).
-    app.include_router(capital.router, prefix="/api", dependencies=[Depends(get_current_user)])
-    app.include_router(operacoes.router, prefix="/api", dependencies=[Depends(get_current_user)])
-    app.include_router(tomadores.router, prefix="/api", dependencies=[Depends(get_current_user)])
-    app.include_router(contratos.router, prefix="/api", dependencies=[Depends(get_current_user)])
-    app.include_router(fiscal.router, prefix="/api", dependencies=[Depends(get_current_user)])
-    app.include_router(compliance.router, prefix="/api", dependencies=[Depends(get_current_user)])
-    app.include_router(cobranca.router, prefix="/api", dependencies=[Depends(get_current_user)])
-    app.include_router(auditoria.router, prefix="/api", dependencies=[Depends(get_current_user)])
+    app.include_router(capital.router, prefix="/api", dependencies=[Depends(get_painel_user)])
+    app.include_router(operacoes.router, prefix="/api", dependencies=[Depends(get_painel_user)])
+    app.include_router(tomadores.router, prefix="/api", dependencies=[Depends(get_painel_user)])
+    app.include_router(contratos.router, prefix="/api", dependencies=[Depends(get_painel_user)])
+    app.include_router(fiscal.router, prefix="/api", dependencies=[Depends(get_painel_user)])
+    app.include_router(compliance.router, prefix="/api", dependencies=[Depends(get_painel_user)])
+    app.include_router(cobranca.router, prefix="/api", dependencies=[Depends(get_painel_user)])
+    app.include_router(auditoria.router, prefix="/api", dependencies=[Depends(get_painel_user)])
     app.include_router(me.router, prefix="/api", dependencies=[Depends(get_current_user)])
+    # O portal é a única superfície montada com get_tomador_user: um login de
+    # tomador é rejeitado em TODOS os routers acima (get_painel_user) e só passa
+    # aqui, onde cada consulta é cercada pelo próprio tomador_id.
+    app.include_router(portal.router, prefix="/api", dependencies=[Depends(get_tomador_user)])
 
     @app.get("/health")
     def health_check() -> Dict[str, str]:

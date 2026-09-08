@@ -54,7 +54,7 @@ do arquivo do banco.
 
 import html
 import re
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
 
@@ -73,12 +73,38 @@ class TransacaoOfx(NamedTuple):
     """Uma linha de extrato, como escrita no arquivo.
 
     `fitid` é o identificador que o banco dá à transação — é ele que vai para
-    `movimento_bancario.documento` (UNIQUE desde a migration 009) e é por isso
-    que reimportar o mesmo extrato é idempotente por construção.
+    `movimento_bancario.documento` e é por isso que reimportar o mesmo extrato
+    é idempotente por construção.
 
     `conta` é o par BANKID/ACCTID do statement a que a transação pertence, ou
     None quando o arquivo não o declara (acontece em OFX de cartão, que só tem
     ACCTID, e em exportações capadas).
+
+    OS DOIS JUNTOS SÃO A IDENTIDADE DA LINHA, e é por isso que `conta` viaja em
+    cada transação e não só no cabeçalho do extrato. O FITID é único DENTRO da
+    conta pela especificação OFX, nunca no universo — banco brasileiro emite
+    sequência curta ('1', '000123'), e duas instituições colidem com facilidade
+    banal. Até a migration 027 `movimento_bancario.documento` era UNIQUE global
+    e o crédito do segundo banco era descartado, na importação, como "já
+    registrado": a linha existia na tabela, mas era a do OUTRO banco, com outro
+    valor e outra data.
+
+    MAS A CONTA NÃO PARTICIPA DA IDENTIDADE — correção da 029, depois de duas
+    tentativas erradas. A 027 pôs a GRAFIA na chave e a mesma conta exportada
+    com e sem `<BANKID>` passou a ocupar dois espaços de nomes: as duas
+    importações criavam, o lastro dobrava, e o lastro dobrado quitava a carteira
+    e devolvia o capital ao teto do Art. 5º. A 028 canonizou a grafia e fechou
+    essa metade; horas depois mediu-se a simétrica, com o `<ACCTID>` ausente.
+
+    A premissa comum às duas é que o arquivo DIZ de qual conta a linha é. Ele
+    diz o que o exportador resolveu escrever, e exportações diferentes da MESMA
+    conta escrevem coisas diferentes. Canonização normaliza FORMATO; não
+    recupera informação AUSENTE — e enquanto a conta estiver na identidade,
+    sempre haverá um par de exportações em que uma declara menos que a outra.
+
+    Desde a 029 a identidade de um crédito é (fitid, valor, data_movimento), e
+    `conta` é PROVENIÊNCIA: diz de onde a linha veio, aparece na tela, e não
+    decide se duas linhas são a mesma.
     """
 
     fitid: str
@@ -211,20 +237,77 @@ def _tokens(texto: str) -> Iterator[Tuple[bool, str, str]]:
         yield bool(casado.group(1)), casado.group(2).upper(), html.unescape(conteudo).strip()
 
 
-def _ler_data(bruto: str) -> date:
-    """DTPOSTED -> date. Só a parte da data importa para o extrato.
+# A ESC opera no Brasil, e é a data brasileira do crédito que o operador vê no
+# extrato e que a apuração fiscal usa. Sem fuso de referência não existe "a
+# data" de um instante — existem 24 —, e foi essa ausência que fez o mesmo
+# recebimento exportado em BRT e em GMT virar dois créditos.
+#
+# Offset fixo e não `ZoneInfo('America/Sao_Paulo')` porque o Brasil não observa
+# horário de verão desde 2019: a tabela de fusos acrescentaria uma dependência
+# de dados do sistema operacional para produzir, hoje, exatamente −03:00. Se o
+# horário de verão voltar, este é o lugar de mudar — e a mudança reclassifica
+# créditos de madrugada, o que é decisão consciente e não efeito colateral.
+FUSO_NEGOCIO = timezone(timedelta(hours=-3))
 
-    O formato do OFX é `YYYYMMDD` podendo vir com hora e fuso
-    (`20260115120000.000[-3:BRT]`). O sufixo entre colchetes é cortado ANTES
-    de filtrar dígitos — senão o `3` de `[-3:BRT]` entraria na contagem.
+_OFFSET_RE = re.compile(r"\[\s*([+-]?\d+(?:\.\d+)?)")
+
+
+def _ler_data(bruto: str) -> date:
+    """DTPOSTED -> a data do crédito no fuso do negócio.
+
+    O formato do OFX é `YYYYMMDD`, podendo vir com hora e fuso
+    (`20260115120000.000[-3:BRT]`). O sufixo entre colchetes é cortado ANTES de
+    filtrar dígitos — senão o `3` de `[-3:BRT]` entraria na contagem.
+
+    O FUSO DEIXOU DE SER DESCARTADO NA MIGRATION 030, e a razão é a mesma que
+    tirou a conta da identidade uma migration antes: exportações diferentes
+    escrevem o mesmo fato de formas diferentes. Medido, com o parser anterior:
+
+        '20260810220000.000[-3:BRT]'  ->  2026-08-10
+        '20260811010000.000[0:GMT]'   ->  2026-08-11
+
+    É O MESMO INSTANTE. Duas datas, duas identidades, duas linhas de lastro para
+    um crédito só — e o lastro dobrado quita parcela que ninguém pagou,
+    `liquidar` é aceito e o capital volta ao teto do Art. 5º.
+
+    SEM HORA declarada não há o que converter: `20260810` é a data que o banco
+    afirma, e inventar uma hora para depois convertê-la seria fabricar precisão.
+    SEM FUSO declarado, o horário é lido como já sendo o do negócio — é o que
+    banco brasileiro emite, e é a leitura que preserva o comportamento anterior
+    para todo arquivo que não declara nada.
     """
-    digitos = _NAO_DIGITO_RE.sub("", bruto.split("[", 1)[0])
+    prefixo = bruto.split("[", 1)[0]
+    digitos = _NAO_DIGITO_RE.sub("", prefixo.split(".", 1)[0])
     if len(digitos) < 8:
         raise OfxInvalido(f"DTPOSTED '{bruto}' não tem uma data no formato AAAAMMDD.")
+
     try:
-        return date(int(digitos[0:4]), int(digitos[4:6]), int(digitos[6:8]))
+        dia = date(int(digitos[0:4]), int(digitos[4:6]), int(digitos[6:8]))
     except ValueError as exc:
         raise OfxInvalido(f"DTPOSTED '{bruto}' não é uma data válida.") from exc
+
+    achado = _OFFSET_RE.search(bruto)
+    if len(digitos) < 14 or achado is None:
+        return dia
+
+    try:
+        horas = float(achado.group(1))
+        momento = datetime(
+            dia.year,
+            dia.month,
+            dia.day,
+            int(digitos[8:10]),
+            int(digitos[10:12]),
+            int(digitos[12:14]),
+            tzinfo=timezone(timedelta(hours=horas)),
+        )
+    except (ValueError, OverflowError):
+        # Hora ou offset fora de faixa: a DATA continua legível e é o que
+        # importa. Recusar o arquivo inteiro por causa de um campo que sequer
+        # entra na identidade seria desproporcional.
+        return dia
+
+    return momento.astimezone(FUSO_NEGOCIO).date()
 
 
 def _ler_valor(bruto: str) -> Decimal:
@@ -277,10 +360,100 @@ def _descricao(nome: Optional[str], memo: Optional[str]) -> Optional[str]:
 
 
 def _formatar_conta(bankid: Optional[str], acctid: Optional[str]) -> Optional[str]:
-    """BANKID + ACCTID -> "banco/conta". Só ACCTID (cartão) vira só a conta."""
+    """BANKID + ACCTID -> "banco/conta". Só ACCTID (cartão) vira só a conta.
+
+    ISTO É A GRAFIA, NÃO A IDENTIDADE, e a distinção custou um crítico: a
+    migration 027 usou o retorno desta função como metade da chave única do
+    extrato, supondo que ela identificasse a conta. Não identifica — devolve o
+    que o arquivo trouxe. A mesma conta exportada com e sem `<BANKID>` produz
+    duas strings, e com elas na chave o lastro DOBRA. A identidade é
+    `conta_chave`, logo abaixo.
+    """
     if bankid and acctid:
         return f"{bankid}/{acctid}"
-    return acctid or bankid or None
+    # SEM o ramo `or bankid`, removido na 029. Ele existia para não perder
+    # informação, e o efeito era pior que a perda: com o `<ACCTID>` vazio ou
+    # ausente, o CÓDIGO DO BANCO era gravado na coluna da conta e exibido na
+    # tela como se fosse uma. Pior ainda depois da 028, que canoniza — o COMPE
+    # '001' e a conta '0000001' viram a mesma chave, e todo código de banco
+    # brasileiro passou a ser o espaço de nomes de alguma conta real.
+    #
+    # Sem ACCTID não há conta a declarar. `None` é a resposta honesta, e o
+    # BANKID continua no arquivo para quem for auditar os bytes (o sha256 deles
+    # é gravado desde a 024).
+    return acctid or None
+
+
+# `[^0-9A-Za-z]` e não `str.isalnum()`: o `isalnum` do Python é Unicode e
+# aceitaria 'ç' ou 'á', que o `regexp_replace` de `fn_conta_chave` (migration
+# 028) apaga. A classe explícita é o que mantém as duas implementações
+# idênticas — e há teste que roda as duas sobre a mesma tabela de casos.
+_NAO_ALFANUMERICO = re.compile(r"[^0-9A-Za-z]")
+
+
+def conta_chave(conta: Optional[str]) -> Optional[str]:
+    """A IDENTIDADE da conta, a partir da grafia que o arquivo trouxe.
+
+    Espelho exato de `fn_conta_chave(text)` da migration 028, e o espelho é
+    deliberado, não descuido: a regra mora no banco (a coluna
+    `movimento_bancario.conta_chave` é GERADA por ela, e nenhum cliente pode
+    discordar da chave que o banco usa), e esta cópia existe só para a
+    deduplicação DENTRO do arquivo, que acontece antes de qualquer INSERT.
+    `tests/test_ofx.py` roda as duas sobre a mesma tabela de casos e falha se
+    divergirem — é o que torna a duplicação honesta em vez de perigosa.
+
+    A canonização descarta o BANKID de propósito. O caso que quebrou é a MESMA
+    conta com o BANKID presente numa exportação e ausente noutra, e não existe
+    normalização de string que una '001/123456' e '123456' sem descartá-lo: a
+    informação está num arquivo e não está no outro. O custo — dois bancos
+    diferentes com o mesmo número de conta E o mesmo FITID voltam a colidir —
+    está assumido e escrito no cabeçalho da 028, e deixou de ser silencioso: a
+    importação compara valor e data do que pulou e conta os divergentes à parte.
+
+    Devolve None para o que não identifica conta nenhuma (ausente, ou só zeros e
+    pontuação), jogando a linha no espaço de nomes dos sem-conta — o mesmo do
+    lançamento manual, que é a leitura conservadora.
+    """
+    if conta is None:
+        return None
+    return chave_texto(conta.rsplit("/", 1)[-1])
+
+
+def chave_texto(bruto: str) -> Optional[str]:
+    """A normalização de representação, num lugar só — espelho de
+    `fn_chave_texto` (migration 030).
+
+    Some o que não é alfanumérico, sobem as maiúsculas, caem os zeros à esquerda
+    PRESERVANDO um caractere: '000' e '0' viram a mesma coisa em vez de um deles
+    virar vazio.
+
+    Antes da 030 esta lógica estava embutida em `conta_chave` e, por isso, não
+    podia ser reusada — foi assim que o sistema chegou a ter a única canonização
+    que existia aplicada ao campo que a migration 029 havia REMOVIDO da
+    identidade, enquanto o identificador que ficou nela era comparado byte a
+    byte. 'TED1', 'ted1', '0TED1' e 'TED 1' eram quatro créditos.
+    """
+    limpo = _NAO_ALFANUMERICO.sub("", bruto).upper()
+    return re.sub(r"^0+(.)", r"\1", limpo) or None
+
+
+def documento_chave(documento: str) -> str:
+    """A identidade do identificador. Espelho da coluna gerada
+    `movimento_bancario.documento_chave`.
+
+    Cai no VERBATIM (sem upper) quando a normalização esvaziaria o campo (um
+    FITID só de pontuação ou de não-ASCII): `documento` é NOT NULL e precisa
+    continuar identificando, e devolver vazio faria duas linhas sem nada em
+    comum colidirem.
+
+    O `.upper()` saiu na migration 032, e a razão é a paridade com o banco: o
+    `str.upper()` do Python EXPANDE 'ß' para 'SS', o `upper()` do Postgres não.
+    Como o fallback só é alcançado quando nenhum alfanumérico ASCII sobreviveu,
+    não há letra ASCII a maiuscularizar — o upper só tocava os caracteres onde
+    as duas linguagens divergem, e divergir aqui recontava um crédito criado
+    como já registrado, quebrando o selo do relatório.
+    """
+    return chave_texto(documento) or documento
 
 
 def _montar_transacao(campos: Dict[str, str], conta: Optional[str]) -> TransacaoOfx:

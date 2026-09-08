@@ -285,6 +285,33 @@ class TestFitidRepetidoNoArquivo:
 
         assert [t.fitid for t in extrato.transacoes] == ["REPETIDO", "REPETIDO"]
 
+    def test_mesmo_fitid_em_contas_diferentes_sai_com_contas_diferentes(self) -> None:
+        """O CASO QUE A MIGRATION 027 EXISTE PARA RESOLVER, provado aqui na
+        camada em que ele nasce: FITID é único DENTRO da conta pela
+        especificação OFX, e banco brasileiro emite sequência curta ('1',
+        '000123', o número do documento). Duas instituições colidem com
+        facilidade banal.
+
+        O leitor já fazia a parte dele — associa cada transação à conta do
+        statement em que está — e é justamente por isso que o par (fitid,
+        conta) está disponível para o importador distinguir as duas linhas.
+        Enquanto a chave do banco era só `documento`, o segundo crédito era
+        descartado como "já registrado" com a aritmética do relatório fechando:
+        a tela afirmava que nada faltou.
+        """
+        banco_a = ofx_sgml(_transacao_sgml("000123", "100.00"), bankid="001", acctid="111")
+        banco_b = ofx_sgml(_transacao_sgml("000123", "980.00"), bankid="341", acctid="222")
+        combinado = banco_a.replace("</OFX>\n", "") + banco_b.split("<OFX>", 1)[1]
+
+        extrato = ler_ofx(combinado)
+
+        # Duas linhas, mesmo FITID, contas e valores distintos — nenhuma
+        # perdida na leitura.
+        assert [(t.fitid, t.conta, t.valor) for t in extrato.transacoes] == [
+            ("000123", "001/111", Decimal("100.00")),
+            ("000123", "341/222", Decimal("980.00")),
+        ]
+
 
 class TestCreditoEDebito:
     def test_sinal_e_preservado(self) -> None:

@@ -63,6 +63,12 @@ MIGRATIONS = [
     "024_proveniencia_do_extrato",
     "025_registro_de_execucao",
     "026_gate_de_novacao",
+    "027_bordas_da_cobranca_2",
+    "028_identidade_da_conta",
+    "029_identidade_do_credito",
+    "030_chave_canonica",
+    "031_portal_do_tomador",
+    "032_paridade_da_chave",
 ]
 
 

@@ -245,8 +245,11 @@ def post_movimento(
 ) -> MovimentoOut:
     """Registra uma linha de extrato.
 
-    `documento` é único: reimportar o mesmo extrato não duplica crédito nem
-    permite baixar duas parcelas com o mesmo dinheiro.
+    `documento` é único DENTRO DA CONTA desde a migration 027, e o lançamento
+    digitado não tem conta (a 024 proíbe proveniência em manual): na prática,
+    para este caminho, ele continua sendo único entre todos os manuais. É o que
+    mantém a garantia de sempre — reimportar o mesmo extrato à mão não duplica
+    crédito nem permite baixar duas parcelas com o mesmo dinheiro.
     """
     movimento_id = registrar_movimento_bancario(
         db,
@@ -321,9 +324,16 @@ def _casas_decimais(valor: Decimal) -> int:
 class ImportacaoOfxOut(BaseModel):
     """O relatório da importação. Todos os números, sempre.
 
-    `lidas` fecha com a soma dos quatro destinos possíveis, e é essa aritmética
+    `lidas` fecha com a soma dos CINCO destinos possíveis, e é essa aritmética
     que permite ao operador verificar que nenhuma linha do extrato dele se
     perdeu pelo caminho.
+
+    `conflitos` foi separado de `ja_registrados` na migration 028, e a separação
+    é o que impede a aritmética de fechar por cima de um crédito descartado — o
+    defeito que a 027 nomeou e não curou. Uma linha pulada porque JÁ ESTAVA LÁ
+    IGUAL é rotina; pulada porque já estava lá com OUTRO valor ou OUTRA data é
+    anomalia, e enquanto as duas somarem no mesmo contador o relatório afirma,
+    com números conferidos, que nada faltou.
     """
 
     arquivo: str
@@ -333,10 +343,17 @@ class ImportacaoOfxOut(BaseModel):
     creditos: int
     criados: int
     ja_registrados: int
+    conflitos: int
     repetidos_no_arquivo: int
     debitos_ignorados: int
     periodo_inicio: Optional[date]
     periodo_fim: Optional[date]
+    # SEM DEFAULT, e de propósito: com `= []` o campo vira opcional no OpenAPI e
+    # o cliente gerado o tipa como `Array<string> | undefined`. O router sempre
+    # o preenche, então o "opcional" seria uma promessa a menos do que a API
+    # entrega — e a tela, obrigada a tratar um `undefined` que nunca chega,
+    # ganharia um ramo que nenhum teste consegue exercitar.
+    documentos_em_conflito: List[str]
 
 
 @router.post("/movimentos/importar-ofx", response_model=ImportacaoOfxOut)
@@ -446,10 +463,12 @@ def post_importar_ofx(
         creditos=resultado.creditos,
         criados=resultado.criados,
         ja_registrados=resultado.ja_registrados,
+        conflitos=resultado.conflitos,
         repetidos_no_arquivo=resultado.repetidos_no_arquivo,
         debitos_ignorados=resultado.debitos_ignorados,
         periodo_inicio=resultado.periodo_inicio,
         periodo_fim=resultado.periodo_fim,
+        documentos_em_conflito=list(resultado.documentos_em_conflito),
     )
 
 
@@ -472,5 +491,15 @@ def post_baixar_parcela(
     aberto. O banco recusa com OC011.
 
     A baixa é terminal — não há estorno definido (ver migration 009).
+
+    O AUTOR VAI JUNTO, e este parâmetro foi por muito tempo o furo mais
+    embaraçoso do módulo: a coluna `parcela.baixado_por` existe desde a
+    migration 016, `fn_baixar_parcela` lê `app.user_id` e grava, o serviço
+    `baixar_parcela` aceita `usuario_id` — e este endpoint, o ÚNICO caminho de
+    baixa da aplicação, não passava o valor. Resultado: `baixado_por` era NULL
+    em 100% das baixas feitas pela API, e o único ato irreversível do ciclo (o
+    que a 016 diz, no próprio cabeçalho, ser o único sem nome de gente)
+    continuava sem responsável. O mecanismo inteiro estava construído e
+    desligado por uma linha que faltava.
     """
-    baixar_parcela(db, parcela_id, body.movimento_id)
+    baixar_parcela(db, parcela_id, body.movimento_id, usuario_id=str(user.id))

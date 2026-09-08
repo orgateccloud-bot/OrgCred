@@ -3,7 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: o app instalado (manifest abaixo) desenha sob o
+         notch/barra de gesto, e as safe areas são tratadas no layout do
+         portal com env(safe-area-inset-*). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="OrgCred — acompanhamento de operações de crédito da ESC ORGATEC."
+    />
+    <!-- Valor inicial = tema padrão (dark, ver stores/useAppStore.ts, que
+         também atualiza esta meta ao alternar o tema). -->
+    <meta name="theme-color" content="#04060b" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>OrgCred</title>
   </head>
   <body>

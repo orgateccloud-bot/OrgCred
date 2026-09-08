@@ -72,3 +72,33 @@ def get_operador_user(current_user: Usuario = Depends(get_current_user)) -> Usua
             f"Operação requer papel 'operador' ou 'admin', você tem '{current_user.papel}'"
         )
     return current_user
+
+
+def get_painel_user(current_user: Usuario = Depends(get_current_user)) -> Usuario:
+    """Portão do PAINEL da ESC: admin ou operador, nunca tomador.
+
+    É a dependência de nível de router de tudo que é operação interna. A
+    diferença para `get_operador_user` é o propósito, não o efeito hoje (os dois
+    aceitam o mesmo conjunto): esta existe para ser o GATE que fecha o painel a
+    um login de tomador ANTES de qualquer rota individual, mesmo as que por
+    dentro só pedem `get_current_user`. Sem ela, um tomador autenticado
+    alcançaria as leituras de capital, auditoria e compliance que não exigem
+    papel de operador — o vazamento que o portal existe para não abrir.
+    """
+    if current_user.papel not in ("operador", "admin"):
+        raise PermissaoNegada("Área restrita à equipe da ESC.")
+    return current_user
+
+
+def get_tomador_user(current_user: Usuario = Depends(get_current_user)) -> Usuario:
+    """Portão do PORTAL: papel 'tomador', com vínculo a uma empresa.
+
+    O `tomador_id is None` nunca deveria acontecer — o CHECK
+    `usuario_papel_vinculo_coerente` (migration 031) garante no banco que todo
+    tomador tem vínculo. A checagem aqui é defesa em profundidade e uma verdade
+    para o type checker: as rotas do portal filtram por `user.tomador_id`, e um
+    None ali seria um filtro que casa tudo.
+    """
+    if current_user.papel != "tomador" or current_user.tomador_id is None:
+        raise PermissaoNegada("Área restrita aos tomadores com acesso ao portal.")
+    return current_user

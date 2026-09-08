@@ -193,6 +193,22 @@ jobs:
             done
             echo "Postgres não subiu a tempo" && exit 1
       - run:
+          name: Aplicar migrations na imagem de produção (como o preDeploy do Railway)
+          # ESTE PASSO É O QUE FAZ O SMOKE PROVAR MIGRATION, e ele não existia:
+          # o CMD da imagem roda só uvicorn (o `alembic upgrade head` saiu do
+          # CMD quando o schema passou a ser aplicado no preDeployCommand do
+          # railway.json — senão duas réplicas migravam em corrida). Sem
+          # replicar aqui o que o Railway faz no preDeploy, o smoke subia a API
+          # contra um banco VAZIO e o /health/ready passava no `select 1` sem
+          # nenhuma tabela — verde afirmando o que não tinha visto.
+          #
+          # `docker run --rm ... alembic upgrade head` na MESMA imagem de
+          # produção prova, de verdade, que a cadeia 0001->head aplica em banco
+          # limpo dentro do artefato que sobe. Se qualquer migration quebrar, o
+          # job falha aqui, com o erro do alembic — não tarde, no deploy real.
+          command: |
+            docker run --rm --network orgcred-smoke               -e ORGCRED_DATABASE_URL=postgresql+psycopg://postgres:postgres@orgcred-smoke-pg:5432/orgcred_smoke               -e ORGCRED_ENVIRONMENT=production               -e ORGCRED_SUPABASE_JWT_SECRET=ci-smoke-secret-not-for-production               orgcred:ci alembic upgrade head
+      - run:
           name: Subir a imagem em modo produção
           # ORGCRED_ENVIRONMENT=production de propósito: é o único modo em que
           # a guarda de startup (app/core/config.py, validate_startup) recusa
@@ -206,10 +222,11 @@ jobs:
               orgcred:ci
       - run:
           name: Smoke test em /health/ready
-          # O CMD da imagem roda `alembic upgrade head` antes do uvicorn, então
-          # um 200 aqui prova três coisas de uma vez: a imagem builda e sobe,
-          # as migrations aplicam em banco limpo, e o app fala com o Postgres
-          # — /health/ready responde 503 se o `select 1` falhar.
+          # As migrations já aplicaram no passo anterior (contra este mesmo
+          # banco). Um 200 aqui prova o que falta: a imagem builda, sobe em modo
+          # produção (passando a guarda de startup) e fala com o Postgres já
+          # migrado — /health/ready responde 503 se o `select 1` falhar. O CMD
+          # da imagem é só uvicorn; quem migra é o passo acima, como no Railway.
           command: |
             for i in $(seq 1 60); do
               if curl -sf http://localhost:8000/health/ready > /tmp/ready.json \

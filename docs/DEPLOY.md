@@ -31,9 +31,12 @@ contêiner que não serve.
 
 ### `healthcheckTimeout: 120`
 
-O `CMD` roda `alembic upgrade head` antes do uvicorn. Numa migration pesada o
-primeiro `/health/ready` pode demorar; 120s dá margem sem mascarar contêiner
-travado.
+O `preDeployCommand` (`alembic upgrade head`) roda ANTES de o contêiner novo
+subir — não o `CMD`, que é só uvicorn. (Ficava no CMD até cada réplica passar a
+migrar no próprio start, o que fazia duas instâncias correrem `alembic upgrade
+head` ao mesmo tempo; ver o comentário no `Dockerfile`.) Ainda assim o primeiro
+`/health/ready` pode demorar numa migration pesada — o preDeploy conta para a
+janela —, e 120s dá margem sem mascarar contêiner travado.
 
 ### `restartPolicyType: ON_FAILURE`, 3 tentativas
 

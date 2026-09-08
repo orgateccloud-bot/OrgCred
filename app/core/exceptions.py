@@ -84,10 +84,41 @@ class BaixaInvalida(RegraNegocioViolada):
     inexistente, movimento já usado em outra parcela, e movimento de valor
     menor que a parcela. Dar uma parcela como paga sem lastro faria a régua
     de inadimplência (migration 008) parar de ver o atraso.
+
+    Desde a migration 027 os dois últimos caminhos valem por QUALQUER porta, e
+    não só pela função de baixa: a cobertura de valor passou a ser verificada
+    também no trigger de linha. Até ali ela morava apenas em
+    `fn_baixar_parcela`, e um `update parcela set status='paga',
+    movimento_id=<tarifa de R$ 0,01>` atravessava as guardas — que perguntavam
+    se existe movimento apontado, nunca quanto ele vale. O código é o MESMO de
+    propósito: a recusa é a mesma frase e manda conferir a mesma coisa (o
+    extrato), venha ela da função ou do trigger.
     """
 
     def __init__(self, message: str) -> None:
         super().__init__(message, sqlstate="OC011", http_status=422)
+
+
+class BaixaForaDeCobranca(RegraNegocioViolada):
+    """OC026: baixa numa agenda cuja operação não está mais em cobrança.
+
+    `fn_baixar_parcela` perguntava pelo status da PARCELA e nunca pelo da
+    OPERAÇÃO — zero ocorrências de `operacao_credito` no corpo dela até a
+    migration 028. Consumada uma novação, a agenda do título EXTINTO continua
+    'aberta' e o endpoint devolvia 204: o crédito real do tomador era consumido
+    contra uma dívida que já migrou, e a parcela VIVA da substituta passava a
+    ser recusada com OC011 ("movimento já usado"). Não há estorno — o lastro
+    ficava preso na parcela errada para sempre.
+
+    Código próprio, e não OC011, pelo critério da 016: OC011 diz "a baixa não
+    tem lastro bancário válido" e manda conferir o extrato. Aqui o lastro é
+    perfeitamente válido e o extrato está certo; o que está errado é o
+    ENDEREÇO. A instrução ao operador é outra — a dívida viva é a da operação
+    substituta.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC026", http_status=422)
 
 
 class MovimentoDuplicado(RegraNegocioViolada):
@@ -274,6 +305,52 @@ class NovacaoSemLastro(RegraNegocioViolada):
 
     def __init__(self, message: str) -> None:
         super().__init__(message, sqlstate="OC024", http_status=422)
+
+
+class ParcelaForaDaEmissao(RegraNegocioViolada):
+    """OC025: parcela inserida fora da emissão da agenda (migration 027).
+
+    `fn_parcela_imutavel` nasceu (007) como `before update or delete` e a 016,
+    que reescreveu a função inteira, manteve o gatilho — o INSERT nunca teve
+    dono. A agenda que o banco emite na ativação aceitava APÊNDICE: uma décima
+    terceira parcela num contrato de doze, que entrava no aging (008, que soma
+    toda parcela 'aberta' vencida) e na apuração fiscal (011, que no regime
+    caixa soma toda parcela 'paga'). Inventar inadimplência e inventar receita
+    pelo mesmo comando.
+
+    QUATRO RECUSAS SOB O MESMO CÓDIGO, todas a mesma frase para quem está do
+    lado de fora — "a agenda é emitida pelo banco na ativação e nada se insere
+    nela por fora": operação inexistente, operação que não está sendo ativada,
+    agenda já completa (ou número acima do contratado) e parcela que tentaria
+    nascer já paga.
+
+    CÓDIGO PRÓPRIO E NÃO OC009, que é o vizinho óbvio e o errado. OC009 diz
+    "parcela já emitida não pode ser alterada nem apagada", e a mensagem que a
+    UI associa a ele manda o operador fazer a baixa da parcela contra o
+    movimento bancário — exatamente o que quem tenta acrescentar uma parcela
+    não deve fazer. Instrução diferente, código diferente.
+
+    422 e não 409: não é conflito de estado, é regra sobre quem escreve a
+    agenda. A saída para mudar as condições de uma operação ativa existe e é
+    outra — renegociar, e a substituta nasce com agenda própria.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC025", http_status=422)
+
+
+class ConviteImutavel(RegraNegocioViolada):
+    """OC027: a trilha de convites ao portal do tomador é append-only.
+
+    Convidar um tomador é dar a um CNPJ externo uma janela para os dados de
+    crédito dele — quem convidou e quando é prova de conformidade (Lei
+    9.613/98). Só o vínculo do login e a data de aceite se preenchem depois; o
+    resto não se edita nem se apaga. Mesma disciplina de `ocorrencia_atipicidade`
+    (OC014), código próprio porque a instrução ao operador é outra.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, sqlstate="OC027", http_status=422)
 
 
 class OperacaoNaoEncontrada(Exception):

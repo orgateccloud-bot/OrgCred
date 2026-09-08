@@ -31,11 +31,22 @@ import type {
   GetContratoApiContratosOperacoesOperacaoIdContratoGetData,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetErrors,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetResponses,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetData,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetErrors,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetResponses,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetData,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetErrors,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponses,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetErrors,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponses,
+  GetEstadoRotinasApiAuditoriaRotinasGetData,
+  GetEstadoRotinasApiAuditoriaRotinasGetResponses,
   GetMeApiMeGetData,
   GetMeApiMeGetResponses,
+  GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetData,
+  GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetErrors,
+  GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetResponses,
   GetMovimentosApiCobrancaMovimentosGetData,
   GetMovimentosApiCobrancaMovimentosGetErrors,
   GetMovimentosApiCobrancaMovimentosGetResponses,
@@ -44,6 +55,8 @@ import type {
   GetOperacaoApiOperacoesOperacaoIdGetResponses,
   GetOperacoesApiOperacoesGetData,
   GetOperacoesApiOperacoesGetResponses,
+  GetOperacoesApiPortalOperacoesGetData,
+  GetOperacoesApiPortalOperacoesGetResponses,
   GetParametrosApiFiscalParametrosGetData,
   GetParametrosApiFiscalParametrosGetResponses,
   GetParametroVigenteApiFiscalParametrosVigenteGetData,
@@ -51,10 +64,15 @@ import type {
   GetParcelasApiOperacoesOperacaoIdParcelasGetData,
   GetParcelasApiOperacoesOperacaoIdParcelasGetErrors,
   GetParcelasApiOperacoesOperacaoIdParcelasGetResponses,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetErrors,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponses,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponses,
   GetPendenciasRegistroApiContratosRegistrosPendenciasGetData,
   GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponses,
+  GetPerfilApiPortalPerfilGetData,
+  GetPerfilApiPortalPerfilGetResponses,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetErrors,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponses,
@@ -97,6 +115,9 @@ import type {
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData,
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostErrors,
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponses,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostErrors,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponses,
   PostCriarOperacaoApiOperacoesPostData,
   PostCriarOperacaoApiOperacoesPostErrors,
   PostCriarOperacaoApiOperacoesPostResponses,
@@ -147,6 +168,8 @@ import type {
   PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponses,
   ReadinessCheckHealthReadyGetData,
   ReadinessCheckHealthReadyGetResponses,
+  RootGetData,
+  RootGetResponses,
 } from './types.gen'
 
 export type Options<
@@ -311,7 +334,16 @@ export const postCriarOperacaoApiOperacoesPost = <ThrowOnError extends boolean =
  * - 403: Usuário sem permissão (não é operador)
  * - 404: Operação não existe
  * - 409: Transição de estado inválida
- * - 422: Regra de negócio violada (teto, município, registro, capital) —
+ * - 422: Regra de negócio violada (teto, município, registro, capital,
+ * e — desde a migration 026, quando a operação é a SUBSTITUTA de uma
+ * novação — OC024: a substituta ficou menor que o saldo devedor da
+ * original, ou a original não está mais em condição de ser trocada —
+ * já saiu do comprometido (liquidada, ou trocada por outra substituta),
+ * ou foi baixada como prejuízo, caso em que ela continua ocupando o
+ * teto e o que se recusa é ressuscitar como título novo uma dívida cuja
+ * perda já foi reconhecida. Ativar uma substituta não é emprestar
+ * dinheiro novo: é trocar o título que já ocupa o teto por outro, e a
+ * troca acontece dentro deste endpoint) —
  * RegraNegocioViolada não é capturada aqui de propósito: propaga para
  * o exception_handler global (app/main.py), que produz o mesmo
  * formato {"detail": "...", "codigo": "..."} usado por todo o resto
@@ -538,16 +570,34 @@ export const postCancelarOperacaoApiOperacoesOperacaoIdCancelarPost = <
 /**
  * Post Renegociar Operacao
  *
- * Renegocia por novação atômica: baixa a original e cria a substituta na
- * mesma transação, sob o mesmo advisory lock do teto.
+ * Renegocia por novação: cria a operação SUBSTITUTA amarrada à original,
+ * sob o advisory lock do teto.
  *
- * Não existe endpoint para "só marcar como renegociada": fazer a baixa sem
- * amarrar a substituta deixa a original fora do comprometido e nada
- * impediria criar a substituta depois, contando o capital duas vezes em
- * janelas diferentes (o banco recusa com OC008).
+ * Não existe endpoint para "só marcar como renegociada": desde a migration
+ * 026 quem escreve esse status é o gate de ativação da substituta, e um
+ * UPDATE direto é recusado com OC008. Marcar à mão tiraria a original do
+ * comprometido sem nada entrar no lugar.
  *
- * A substituta nasce em 'registrada' — ainda não compromete capital, e
- * ativá-la passa pelos gates normais.
+ * O QUE ESTA CHAMADA **NÃO** FAZ, e é a mudança da 026 que a UI precisa
+ * dizer ao operador: a original NÃO é baixada aqui. Ela continua
+ * 'ativa'/'inadimplente', continua ocupando o teto e continua em cobrança
+ * até a substituta ser ATIVADA — a troca (original -> renegociada,
+ * substituta -> ativa) acontece num commit só, dentro do gate de ativação.
+ * É a leitura do Art. 5º §3º da LC 167/2019: enquanto o novo título não
+ * está registrado e ativo, a novação não se consumou e a dívida antiga
+ * permanece exigível. Cancelar a substituta pendente é, por isso,
+ * inofensivo — a original nunca chegou a sair.
+ *
+ * 422 com código OC024 quando o `valor_principal` da substituta é menor que
+ * o SALDO DEVEDOR da original (principal menos o que foi amortizado contra
+ * movimento bancário). Renegociar não é pagar: até a 026 esta chamada
+ * aceitava qualquer valor, e uma substituta de R$ 0,01 devolvia ao teto os
+ * R$ 30.000 de uma operação com as doze parcelas em aberto. Reduzir continua
+ * possível na medida exata do que foi pago, e capitalizar juros (substituta
+ * MAIOR) segue livre.
+ *
+ * 409 com código OC003 quando já existe outra substituta pendente sobre a
+ * mesma original: ative-a ou cancele-a antes de renegociar de novo.
  */
 export const postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPost = <
   ThrowOnError extends boolean = false,
@@ -680,6 +730,78 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch = <
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/tomadores/{tomador_id}/autorizacao',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Convites Portal
+ *
+ * A trilha de convites da empresa — quem recebeu janela, quando, e se entrou.
+ *
+ * Leitura aberta ao painel (o gate get_painel_user do main.py já barra
+ * tomador): operador precisa VER o estado do acesso para atender o cliente;
+ * o que é restrito a admin é CRIAR o acesso.
+ */
+export const getConvitesPortalApiTomadoresTomadorIdPortalConvitesGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetData, ThrowOnError>,
+): RequestResult<
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponses,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponses,
+    GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/tomadores/{tomador_id}/portal/convites',
+    ...options,
+  })
+
+/**
+ * Post Convidar Portal
+ *
+ * Convida um e-mail para o portal do tomador. Admin only: dar a um CNPJ
+ * externo uma janela para os dados de crédito dele é ato de chave, como a
+ * autorização de município.
+ *
+ * A ORDEM DAS ESCRITAS importa e é deliberada:
+ *
+ * 1. Supabase Auth PRIMEIRO — o id que ele devolve é o `sub` dos JWTs
+ * futuros, e a linha de `usuario` precisa nascer com ESTE id (senão o
+ * login autentica lá e morre em PERMISSAO_NEGADA aqui).
+ * 2. `usuario` + `convite_portal` numa transação só, depois. Se ela falhar,
+ * sobra uma conta órfã no Auth — recuperável pelo painel do Supabase, e a
+ * mensagem de EmailJaRegistrado ensina o caminho. O inverso (linha local
+ * sem conta no Auth) seria pior: um login prometido que não autentica
+ * nunca, sem nada visível para limpar.
+ *
+ * `usuario_id` do convite nasce preenchido (o login já existe); `aceito_em`
+ * fica nulo até o primeiro sinal autenticado do convidado (app/routers/me.py).
+ */
+export const postConvidarPortalApiTomadoresTomadorIdPortalConvitesPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData, ThrowOnError>,
+): RequestResult<
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponses,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponses,
+    PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/tomadores/{tomador_id}/portal/convites',
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -1063,6 +1185,38 @@ export const postApurarApiFiscalApuracoesPost = <ThrowOnError extends boolean = 
   })
 
 /**
+ * Get Memoria Calculo
+ *
+ * Memória de cálculo de UMA apuração, derivada do snapshot dela.
+ *
+ * Aberta ao operador, e não restrita ao admin: quem apura é o admin, mas
+ * quem CONFERE é o contador — e conferência que exige privilégio de escrita
+ * não é conferência.
+ *
+ * Busca por `id`, e não por (ano, trimestre): a retificação não apaga a
+ * versão anterior, e a memória da versão 1 precisa continuar acessível para
+ * explicar a diferença entre o que foi declarado e o que foi retificado.
+ */
+export const getMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetData, ThrowOnError>,
+): RequestResult<
+  GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetResponses,
+  GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetResponses,
+    GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/fiscal/apuracoes/{apuracao_id}/memoria',
+    ...options,
+  })
+
+/**
  * Get Documentos
  */
 export const getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet = <
@@ -1435,8 +1589,11 @@ export const getMovimentosApiCobrancaMovimentosGet = <ThrowOnError extends boole
  *
  * Registra uma linha de extrato.
  *
- * `documento` é único: reimportar o mesmo extrato não duplica crédito nem
- * permite baixar duas parcelas com o mesmo dinheiro.
+ * `documento` é único DENTRO DA CONTA desde a migration 027, e o lançamento
+ * digitado não tem conta (a 024 proíbe proveniência em manual): na prática,
+ * para este caminho, ele continua sendo único entre todos os manuais. É o que
+ * mantém a garantia de sempre — reimportar o mesmo extrato à mão não duplica
+ * crédito nem permite baixar duas parcelas com o mesmo dinheiro.
  */
 export const postMovimentoApiCobrancaMovimentosPost = <ThrowOnError extends boolean = false>(
   options: Options<PostMovimentoApiCobrancaMovimentosPostData, ThrowOnError>,
@@ -1525,6 +1682,16 @@ export const postImportarOfxApiCobrancaMovimentosImportarOfxPost = <
  * aberto. O banco recusa com OC011.
  *
  * A baixa é terminal — não há estorno definido (ver migration 009).
+ *
+ * O AUTOR VAI JUNTO, e este parâmetro foi por muito tempo o furo mais
+ * embaraçoso do módulo: a coluna `parcela.baixado_por` existe desde a
+ * migration 016, `fn_baixar_parcela` lê `app.user_id` e grava, o serviço
+ * `baixar_parcela` aceita `usuario_id` — e este endpoint, o ÚNICO caminho de
+ * baixa da aplicação, não passava o valor. Resultado: `baixado_por` era NULL
+ * em 100% das baixas feitas pela API, e o único ato irreversível do ciclo (o
+ * que a 016 diz, no próprio cabeçalho, ser o único sem nome de gente)
+ * continuava sem responsável. O mecanismo inteiro estava construído e
+ * desligado por uma linha que faltava.
  */
 export const postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPost = <
   ThrowOnError extends boolean = false,
@@ -1581,6 +1748,52 @@ export const getAuditoriaApiAuditoriaGet = <ThrowOnError extends boolean = false
   })
 
 /**
+ * Get Estado Rotinas
+ *
+ * Responde "as rotinas periódicas estão rodando?" — com HÁ QUANTO TEMPO.
+ *
+ * O TEMPO É O CAMPO, e não a falha. Uma rotina que nunca falhou mas parou de
+ * rodar há nove dias é o caso perigoso justamente porque não há falha para
+ * ver: nenhuma execução vermelha existe, nenhum painel de execuções mostra a
+ * execução que não houve, e a régua de aging passa nove dias declarando
+ * inadimplência com atraso enquanto tudo parece bem.
+ * `horas_desde_ultimo_sucesso` é a única leitura que enxerga esse estado,
+ * porque ela cresce sozinha, sem depender de nada acontecer.
+ *
+ * NUNCA EXECUTOU CONTA COMO ATRASADA — fail-closed, pelo mesmo critério da
+ * migration 023 ("sem evento na trilha = detecta assim mesmo"). O contrário
+ * seria o pior default possível aqui: um serviço de cron que jamais foi
+ * implantado ficaria verde para sempre, que é literalmente o estado que esta
+ * trilha existe para acabar. O preço é conhecido e aceito: nas primeiras
+ * horas depois de a migration 025 subir, a tabela está vazia e o painel avisa
+ * até a primeira execução do cron. O aviso está certo — o sistema realmente
+ * não tem evidência nenhuma.
+ *
+ * O ATRASO É MEDIDO DO ÚLTIMO SUCESSO, não da última tentativa. Uma rotina
+ * que falha todo dia tem tentativa recente e não fez o trabalho nenhuma vez;
+ * medir dali diria que ela está em dia. Ela aparece nas duas leituras: por
+ * `falhou` (a última execução deu errado) e por `atrasada`, assim que o
+ * último sucesso envelhecer além do limiar.
+ *
+ * OS LIMIARES SÃO DO EXECUTOR (`app.rotinas.LIMITE_ATRASO_HORAS`), não deste
+ * módulo. Quem muda a agenda do cron muda o arquivo que define as rotinas; se
+ * a régua de pontualidade morasse aqui, a tela continuaria cobrando uma
+ * periodicidade que ninguém mais pratica e o número seguiria bonito.
+ */
+export const getEstadoRotinasApiAuditoriaRotinasGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetEstadoRotinasApiAuditoriaRotinasGetData, ThrowOnError>,
+): RequestResult<GetEstadoRotinasApiAuditoriaRotinasGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetEstadoRotinasApiAuditoriaRotinasGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/auditoria/rotinas',
+    ...options,
+  })
+
+/**
  * Get Me
  */
 export const getMeApiMeGet = <ThrowOnError extends boolean = false>(
@@ -1589,6 +1802,78 @@ export const getMeApiMeGet = <ThrowOnError extends boolean = false>(
   (options?.client ?? client).get<GetMeApiMeGetResponses, unknown, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/me',
+    ...options,
+  })
+
+/**
+ * Get Perfil
+ */
+export const getPerfilApiPortalPerfilGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetPerfilApiPortalPerfilGetData, ThrowOnError>,
+): RequestResult<GetPerfilApiPortalPerfilGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<GetPerfilApiPortalPerfilGetResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/portal/perfil',
+    ...options,
+  })
+
+/**
+ * Get Operacoes
+ */
+export const getOperacoesApiPortalOperacoesGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetOperacoesApiPortalOperacoesGetData, ThrowOnError>,
+): RequestResult<GetOperacoesApiPortalOperacoesGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetOperacoesApiPortalOperacoesGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/portal/operacoes',
+    ...options,
+  })
+
+/**
+ * Get Parcelas
+ */
+export const getParcelasApiPortalOperacoesOperacaoIdParcelasGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData, ThrowOnError>,
+): RequestResult<
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponses,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponses,
+    GetParcelasApiPortalOperacoesOperacaoIdParcelasGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/portal/operacoes/{operacao_id}/parcelas',
+    ...options,
+  })
+
+/**
+ * Get Contrato
+ */
+export const getContratoApiPortalOperacoesOperacaoIdContratoGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetContratoApiPortalOperacoesOperacaoIdContratoGetData, ThrowOnError>,
+): RequestResult<
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetResponses,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetContratoApiPortalOperacoesOperacaoIdContratoGetResponses,
+    GetContratoApiPortalOperacoesOperacaoIdContratoGetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/portal/operacoes/{operacao_id}/contrato',
     ...options,
   })
 
@@ -1633,3 +1918,13 @@ export const metricsMetricsGet = <ThrowOnError extends boolean = false>(
     url: '/metrics',
     ...options,
   })
+
+/**
+ * Root
+ *
+ * Raiz da API (dev/CI — sem build do frontend disponível).
+ */
+export const rootGet = <ThrowOnError extends boolean = false>(
+  options?: Options<RootGetData, ThrowOnError>,
+): RequestResult<RootGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<RootGetResponses, unknown, ThrowOnError>({ url: '/', ...options })

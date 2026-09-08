@@ -6,6 +6,7 @@ import { mensagemDeErro } from '@/api/errors'
 import { formatarMoeda } from '@/lib/format'
 import { rotuloTipo } from '@/lib/rotulos'
 import { IdentificacaoTomador } from '@/components/identificacao/identificacao-tomador'
+import { AcessoPortal } from '@/components/tomadores/acesso-portal'
 import { StatusOperacaoBadge } from '@/components/status-operacao-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -86,6 +87,8 @@ function TomadorDetailPage() {
       </Card>
 
       <IdentificacaoTomador tomadorId={id} />
+
+      <AcessoPortal tomadorId={id} />
 
       <Card>
         <CardHeader>

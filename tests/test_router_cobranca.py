@@ -38,12 +38,23 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
 
 @pytest.fixture()
-def admin_client(client: TestClient) -> TestClient:
-    admin = Usuario(
+def admin_user() -> Usuario:
+    """O usuário por trás de `admin_client`, exposto como fixture própria.
+
+    Existe porque a autoria da baixa (migration 016, ligada de fato na 027) só
+    é verificável comparando `parcela.baixado_por` com o id de QUEM fez a
+    requisição — "gravou alguma coisa não nula" não distingue a autoria certa
+    da herdada de outra conexão do pool.
+    """
+    return Usuario(
         id=uuid.uuid4(), email="admin@orgatec.com", nome="Admin Teste", papel="admin", ativo=True
     )
-    app.dependency_overrides[get_current_user] = lambda: admin
-    app.dependency_overrides[get_admin_user] = lambda: admin
+
+
+@pytest.fixture()
+def admin_client(client: TestClient, admin_user: Usuario) -> TestClient:
+    app.dependency_overrides[get_current_user] = lambda: admin_user
+    app.dependency_overrides[get_admin_user] = lambda: admin_user
     return client
 
 
@@ -770,3 +781,225 @@ class TestImportacaoNaoBaixaParcela:
             json={"movimento_id": disponiveis[0]["id"]},
         )
         assert baixa.status_code == 204
+
+
+class TestFitidPorConta:
+    """Migration 027: FITID é único DENTRO da conta, nunca no universo.
+
+    O DEFEITO QUE ISTO CORRIGE ERA O PIOR FORMATO POSSÍVEL, e vale dizer por
+    quê: com `documento` UNIQUE global, uma ESC que recebe em dois bancos
+    importava o extrato do segundo e via o crédito ser contado como
+    `ja_registrados`. A linha existia na tabela — mas era a do OUTRO banco,
+    com outro valor e outra data. E a aritmética do relatório FECHAVA
+    (lidas = criados + ja_registrados + repetidos_no_arquivo +
+    debitos_ignorados), de modo que a tela afirmava, com números conferidos,
+    que nada faltou. O operador não tinha como descobrir, e a parcela do
+    tomador que pagou seguia no aging como atrasada.
+    """
+
+    def test_mesmo_fitid_em_dois_bancos_cria_os_dois_creditos(
+        self, admin_client: TestClient
+    ) -> None:
+        """Dois ARQUIVOS, duas contas, o mesmo FITID curto. Antes da 027 o
+        segundo virava `ja_registrados` e o dinheiro sumia do lastro."""
+        primeiro = admin_client.post(
+            _ROTA_IMPORTAR,
+            files=_upload(_ofx(_trn("000123", "1500.00"), bankid="001", acctid="111")),
+        ).json()
+        assert (primeiro["criados"], primeiro["ja_registrados"]) == (1, 0)
+
+        segundo = admin_client.post(
+            _ROTA_IMPORTAR,
+            files=_upload(_ofx(_trn("000123", "980.00"), bankid="341", acctid="222")),
+        ).json()
+
+        assert (segundo["criados"], segundo["ja_registrados"]) == (1, 0)
+
+        # E os dois créditos estão lá, distinguíveis pela conta — que a tela
+        # mostra desde a 024. Sem ela, duas linhas de mesmo documento seriam
+        # indistinguíveis para quem lê.
+        movimentos = admin_client.get("/api/cobranca/movimentos").json()
+        assert {(m["documento"], m["conta_origem"], Decimal(m["valor"])) for m in movimentos} == {
+            ("000123", "001/111", Decimal("1500.00")),
+            ("000123", "341/222", Decimal("980.00")),
+        }
+
+    def test_mesmo_fitid_em_contas_diferentes_do_mesmo_arquivo(
+        self, admin_client: TestClient
+    ) -> None:
+        """O mesmo furo dentro de UM arquivo — OFX com dois statements, que o
+        leitor já associa a contas distintas.
+
+        Consertar só a chave do banco deixaria este caso de pé: a
+        deduplicação de `importar_extrato_ofx` acontece em Python, ANTES do
+        INSERT, e enquanto ela foi por FITID a segunda linha era descartada
+        como `repetidos_no_arquivo` sem nunca chegar ao banco. Os dois lados
+        tinham que mudar juntos.
+        """
+        um = _ofx(_trn("1", "100.00"), bankid="001", acctid="111")
+        dois = _ofx(_trn("1", "200.00"), bankid="341", acctid="222")
+        combinado = um.replace("</OFX>\n", "") + dois.split("<OFX>", 1)[1]
+
+        corpo = admin_client.post(_ROTA_IMPORTAR, files=_upload(combinado)).json()
+
+        assert corpo["lidas"] == 2
+        assert corpo["criados"] == 2
+        assert corpo["repetidos_no_arquivo"] == 0
+        assert sorted(corpo["contas"]) == ["001/111", "341/222"]
+        assert corpo["lidas"] == (
+            corpo["criados"]
+            + corpo["ja_registrados"]
+            + corpo["repetidos_no_arquivo"]
+            + corpo["debitos_ignorados"]
+        )
+
+    def test_fitid_repetido_na_mesma_conta_continua_sendo_anomalia(
+        self, admin_client: TestClient
+    ) -> None:
+        """O outro lado da chave nova: DENTRO da mesma conta, FITID repetido
+        continua sendo uma linha duplicada pelo banco — contada e não criada.
+        Sem esta metade, a correção viraria licença para duplicar crédito."""
+        arquivo = _ofx(_trn("REP", "100.00"), _trn("REP", "100.00"))
+
+        corpo = admin_client.post(_ROTA_IMPORTAR, files=_upload(arquivo)).json()
+
+        assert (corpo["criados"], corpo["repetidos_no_arquivo"]) == (1, 1)
+
+    def test_reimportar_a_mesma_conta_continua_idempotente(self, admin_client: TestClient) -> None:
+        """A garantia da 009 que a chave nova não pode ter custado: reimportar
+        é rotina, e o mesmo arquivo não cria nada de novo."""
+        arquivo = _ofx(_trn("IDEM-1", "100.00"), bankid="001", acctid="111")
+
+        admin_client.post(_ROTA_IMPORTAR, files=_upload(arquivo))
+        repetida = admin_client.post(_ROTA_IMPORTAR, files=_upload(arquivo)).json()
+
+        assert (repetida["criados"], repetida["ja_registrados"]) == (0, 1)
+        assert len(admin_client.get("/api/cobranca/movimentos").json()) == 1
+
+    def test_extrato_sem_conta_declarada_continua_idempotente(
+        self, admin_client: TestClient
+    ) -> None:
+        """O CASO QUE `NULLS NOT DISTINCT` EXISTE PARA COBRIR, e o que mais
+        facilmente teria passado despercebido.
+
+        OFX de cartão traz só ACCTID, e exportação capada pode não trazer conta
+        nenhuma (ver o comentário de `conta_origem` na 024). Com uma UNIQUE
+        comum sobre (documento, conta_origem), essas linhas teriam
+        `conta_origem` NULL — e NULL nunca é igual a NULL em SQL, de modo que
+        o `ON CONFLICT` não veria conflito NENHUM e a reimportação passaria a
+        DUPLICAR o crédito. A idempotência da 009 sumiria em silêncio,
+        justamente no arquivo que menos informação traz.
+        """
+        sem_conta = f"""OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+
+<OFX>
+<BANKMSGSRSV1>
+<BANKTRANLIST>
+{_trn("SEM-CONTA-1", "742.00")}</BANKTRANLIST>
+</BANKMSGSRSV1>
+</OFX>
+"""
+        primeira = admin_client.post(_ROTA_IMPORTAR, files=_upload(sem_conta)).json()
+        assert (primeira["criados"], primeira["contas"]) == (1, [])
+
+        segunda = admin_client.post(_ROTA_IMPORTAR, files=_upload(sem_conta)).json()
+
+        assert (segunda["criados"], segunda["ja_registrados"]) == (0, 1)
+        movimentos = admin_client.get("/api/cobranca/movimentos").json()
+        assert len(movimentos) == 1
+        assert movimentos[0]["conta_origem"] is None
+
+
+class TestAutoriaDaBaixa:
+    """Migration 016 (d) + correção da 027: a baixa tem autor DE VERDADE.
+
+    O mecanismo inteiro existia desde a 016 — coluna `parcela.baixado_por`,
+    leitura de `app.user_id` em `fn_baixar_parcela`, guarda contra reescrita,
+    e o parâmetro `usuario_id` no serviço `baixar_parcela` — e estava
+    DESLIGADO por uma linha que faltava: o endpoint, único caminho de baixa da
+    aplicação, não passava o usuário. `baixado_por` era NULL em 100% das
+    baixas feitas pela API.
+
+    Por isso este teste passa pelo HTTP e não pela função de serviço: a função
+    já aceitava o parâmetro e já era testada em
+    tests/test_baixa_recebimento.py::test_baixa_grava_autor — ela passava
+    verde o tempo todo, enquanto a autoria não era gravada em produção. O que
+    faltava provar é que ALGUÉM PASSA o valor.
+    """
+
+    def test_baixa_pelo_endpoint_grava_o_usuario_autenticado(
+        self,
+        admin_client: TestClient,
+        admin_user: Usuario,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        op_id = _operacao_atrasada(db_session, tomador_autorizado, dias=10)
+        parcela = db_session.execute(
+            text("select id, valor_total from parcela where operacao_id = :op and numero = 1"),
+            {"op": str(op_id)},
+        ).one()
+
+        movimento_id = admin_client.post(
+            "/api/cobranca/movimentos",
+            json={
+                "data_movimento": str(date.today()),
+                "valor": str(parcela.valor_total),
+                "documento": "FITID-AUTORIA",
+            },
+        ).json()["id"]
+
+        baixa = admin_client.post(
+            f"/api/cobranca/parcelas/{parcela.id}/baixar", json={"movimento_id": movimento_id}
+        )
+        assert baixa.status_code == 204
+
+        baixado_por = db_session.execute(
+            text("select baixado_por from parcela where id = :id"), {"id": str(parcela.id)}
+        ).scalar_one()
+
+        # O autor é o usuário autenticado da requisição, não uma string
+        # qualquer não nula: `app.user_id` é uma GUC de sessão e, num pool,
+        # uma baixa sem usuário herdaria o autor da anterior na mesma conexão
+        # física. Comparar com o id do usuário do cliente é o que distingue
+        # "gravou alguém" de "gravou QUEM".
+        assert baixado_por == str(admin_user.id)
+
+    def test_a_autoria_gravada_pelo_endpoint_nao_se_reescreve(
+        self,
+        admin_client: TestClient,
+        db_session: Session,
+        tomador_autorizado: uuid.UUID,
+        capital_constituido: None,
+    ) -> None:
+        """Fecha o ciclo: de nada adianta gravar o autor se ele puder ser
+        trocado depois. A guarda é da 016, mas até a 027 ela nunca tinha nada
+        para guardar nas baixas feitas pela API."""
+        op_id = _operacao_atrasada(db_session, tomador_autorizado, dias=10)
+        parcela = db_session.execute(
+            text("select id, valor_total from parcela where operacao_id = :op and numero = 1"),
+            {"op": str(op_id)},
+        ).one()
+        movimento_id = admin_client.post(
+            "/api/cobranca/movimentos",
+            json={
+                "data_movimento": str(date.today()),
+                "valor": str(parcela.valor_total),
+                "documento": "FITID-AUTORIA-2",
+            },
+        ).json()["id"]
+        admin_client.post(
+            f"/api/cobranca/parcelas/{parcela.id}/baixar", json={"movimento_id": movimento_id}
+        )
+
+        with pytest.raises(DBAPIError) as excinfo:
+            db_session.execute(
+                text("update parcela set baixado_por = 'outra pessoa' where id = :id"),
+                {"id": str(parcela.id)},
+            )
+        db_session.rollback()
+
+        assert sqlstate_de(excinfo.value) == "OC011"

@@ -124,13 +124,27 @@ class TestGetOperadorUser:
 
         assert resultado.id == usuario_id
 
-    def test_papel_desconhecido_levanta_permissao_negada(self, db_session: Session) -> None:
-        usuario_id = _criar_usuario(db_session, papel="convidado")
-        token = _gerar_token(sub=str(usuario_id))
-        usuario = get_current_user(credentials=_credentials(token), db=db_session)
+    def test_papel_nao_operador_levanta_permissao_negada(self) -> None:
+        """`get_operador_user` recusa quem não é operador/admin. Desde a
+        migration 031, o único papel não-operador válido é 'tomador' (o CHECK do
+        banco rejeita qualquer outro no INSERT — ver tests/test_portal.py). A
+        checagem é da função pura sobre um Usuario, então construo o objeto em
+        memória, sem tocar no banco: é o próprio role-check que está sob teste,
+        não a persistência."""
+        import uuid as _uuid
 
+        from app.models import Usuario as _Usuario
+
+        tomador = _Usuario(
+            id=_uuid.uuid4(),
+            email="t@empresa.com",
+            nome="Tomador",
+            papel="tomador",
+            tomador_id=_uuid.uuid4(),
+            ativo=True,
+        )
         with pytest.raises(PermissaoNegada):
-            get_operador_user(current_user=usuario)
+            get_operador_user(current_user=tomador)
 
 
 class TestGetAdminUser:

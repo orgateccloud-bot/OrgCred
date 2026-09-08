@@ -55,6 +55,9 @@ const MENSAGENS_POR_CODIGO: Record<string, string> = {
     'A trilha de eventos da operação é somente inclusão e não aceita alteração nem exclusão. Registre um novo evento em vez de corrigir o anterior.',
   // Os quatro caminhos do trigger da 016 num texto só, porque o backend
   // devolve o mesmo SQLSTATE para todos e o operador precisa saber onde olhar.
+  // Desde a migration 027 o último deles ("valor menor que a parcela") também
+  // é recusado pelo trigger de linha, e não só pela função de baixa — mesma
+  // frase, mesma instrução, mesmo código, alcançado por qualquer porta.
   OC011:
     'A baixa não tem lastro bancário válido: a parcela pode já estar baixada, ou o movimento não existe, já foi usado em outra parcela ou tem valor menor que a parcela. Confira o extrato e selecione outro movimento.',
   OC012:
@@ -95,6 +98,20 @@ const MENSAGENS_POR_CODIGO: Record<string, string> = {
   // caminho e a tentação é justamente subfaturar a novação.
   OC024:
     'A operação substituta não pode valer menos que o saldo devedor da original — renegociar não é pagar, e reduzir o valor sem lastro liberaria capital que continua na rua. Aumente o valor da substituta até o saldo devedor, ou baixe as parcelas pagas contra o extrato antes de renegociar; se o valor não será recebido, encerre pela baixa por prejuízo, que encerra a cobrança e não devolve capital.',
+  // A agenda é emitida pelo banco na ativação e não recebe parcela avulsa
+  // (migration 027). NÃO é OC009: aquela mensagem manda "fazer a baixa da
+  // parcela contra o movimento bancário", que é a instrução errada para quem
+  // tentou ACRESCENTAR uma parcela. Aqui a saída citada é a renegociação,
+  // porque é a única forma legítima de mudar as condições de uma operação já
+  // ativa — sem ela, o operador fica sem caminho nenhum.
+  OC025:
+    'A agenda de parcelas é emitida pelo banco na ativação da operação e não recebe parcelas avulsas — ela é a prova do que foi contratado. Para mudar as condições de uma operação ativa, renegocie: a operação substituta nasce com agenda própria.',
+  // NÃO é OC011 (migration 028). Ali o lastro é inválido e a instrução é
+  // conferir o extrato; aqui o lastro está certo e o extrato também — o que
+  // está errado é o ENDEREÇO da baixa. Mandar conferir o extrato faria o
+  // operador procurar defeito onde não há.
+  OC026:
+    'Esta agenda não recebe mais baixa: a operação dela já saiu de cobrança. Se ela foi RENEGOCIADA, a dívida viva é a da operação que substituiu esta — faça a baixa na agenda dela. Se foi LIQUIDADA, não há o que baixar: confira se o crédito não é de outra operação. Se foi BAIXADA POR PREJUÍZO, a cobrança foi encerrada e o sistema não modela recuperação — registre o movimento e procure a contabilidade. O crédito bancário continua na lista de movimentos, sem consumo.',
   OC429: 'Muitas requisições em pouco tempo. Aguarde cerca de um minuto e tente novamente.',
 }
 

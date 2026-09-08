@@ -177,28 +177,61 @@ class TestProtecaoAppendOnly:
         )
 
     def test_truncate_segue_livre_fora_das_trilhas(self, db_session: Session) -> None:
-        """Caminho feliz: a 016 não proibiu TRUNCATE, proibiu TRUNCATE NAS
-        TRILHAS. `movimento_bancario` é imutável linha a linha (OC012) mas não
-        é trilha append-only de conformidade — limpar a importação de um
-        extrato inteiro continua sendo operação administrativa legítima.
+        """Caminho feliz: as travas de TRUNCATE são targeted, não um banimento
+        geral. `parametro_fiscal` é o exemplo certo do que continua livre: ela
+        não é trilha append-only e não arrasta nenhuma — é parâmetro de cálculo,
+        que se recadastra, e limpá-la num ambiente de homologação não apaga
+        prova de conformidade nenhuma.
 
-        O `cascade` não é enfeite e não é opcional: o Postgres recusa TRUNCATE
-        em tabela referenciada por FK (aqui, `parcela.movimento_id`) mesmo
-        quando a referenciadora está vazia. Ou seja, este comando alcança
-        `parcela` junto — o que confirma o limite declarado no topo da 016:
-        as travas novas valem para as CINCO trilhas, e não transformam
-        TRUNCATE numa operação segura em geral. Quem limpa extrato em base com
-        agenda emitida está apagando a agenda também."""
+        POR QUE NÃO `usuario`, que este teste usava até a migration 031: ele
+        deixou de ser livre. `usuario` passou a ancorar `convite_portal`, uma
+        trilha append-only (quem deu acesso de portal a qual CNPJ, e quando),
+        então `truncate usuario cascade` alcança a trilha e bate no
+        BEFORE TRUNCATE dela — OC027. Não é acomodação: é o cadastro que ganhou
+        um satélite append-only e, com ele, deixou de poder sumir de graça. O
+        comando está provado do lado da recusa em
+        tests/test_portal.py.
+        """
+        db_session.execute(
+            text("""
+            insert into parametro_fiscal
+                (vigencia_inicio, percentual_presuncao_irpj, percentual_presuncao_csll,
+                 aliquota_irpj, aliquota_csll, adicional_irpj_aliquota, adicional_irpj_limite,
+                 aliquota_pis, aliquota_cofins, regime_reconhecimento)
+            values ('2099-01-01', 0.32, 0.32, 0.15, 0.09, 0.10, 60000, 0.0065, 0.03, 'caixa')
+            """)
+        )
+        db_session.execute(text("truncate table parametro_fiscal"))
+
+        assert db_session.execute(text("select count(*) from parametro_fiscal")).scalar_one() == 0
+        db_session.rollback()
+
+    def test_truncate_no_extrato_alcanca_a_agenda_e_por_isso_e_recusado(
+        self, db_session: Session
+    ) -> None:
+        """O `cascade` não é enfeite e não é opcional: o Postgres recusa
+        TRUNCATE em tabela referenciada por FK (aqui, `parcela.movimento_id`)
+        mesmo quando a referenciadora está vazia. É isso que faz
+        `truncate table movimento_bancario cascade` alcançar `parcela` — e,
+        desde a 027, bater no BEFORE TRUNCATE de lá.
+
+        A recusa vem com OC009, o código da agenda imutável, porque é a agenda
+        que o comando destruiria. `movimento_bancario` não ganhou trigger
+        próprio: uma linha na tabela vizinha fecha as duas, e é a FK que faz o
+        trabalho.
+        """
         db_session.execute(
             text("""
             insert into movimento_bancario (data_movimento, valor, documento)
             values (current_date, 1000, 'FITID-TRUNCATE')
             """)
         )
-        db_session.execute(text("truncate table movimento_bancario cascade"))
 
-        assert db_session.execute(text("select count(*) from movimento_bancario")).scalar_one() == 0
+        with pytest.raises(DBAPIError) as excinfo:
+            db_session.execute(text("truncate table movimento_bancario cascade"))
         db_session.rollback()
+
+        assert sqlstate_de(excinfo.value) == "OC009"
 
 
 class TestCadeiaDeHash:

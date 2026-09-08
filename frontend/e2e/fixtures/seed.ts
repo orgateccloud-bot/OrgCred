@@ -59,6 +59,14 @@ async function arquivarIdentificacao(client: Client, tomadorId: string) {
  * exige desligar a proteção com nome e sobrenome, e é isso que este helper
  * faz — de propósito verboso, porque a dificuldade é a prova de que pela
  * aplicação não existe caminho para destruir o histórico.
+ *
+ * A LISTA CRESCE A CADA MIGRATION QUE FECHA UMA TABELA, e é bom que doa: a
+ * 027 acrescentou `parcela` (esvaziar a agenda reabria a guarda de INSERT em
+ * dois comandos) e a 028 acrescentou `contrato_emprestimo`,
+ * `registro_operacao` e `apuracao_fiscal`. Nenhuma delas é alvo direto do
+ * TRUNCATE abaixo — todas chegam pelo `cascade` a partir de
+ * `operacao_credito` —, e foi o E2E que as encontrou, falhando com a
+ * mensagem da guarda. Quem acrescentar a próxima descobre aqui.
  */
 async function zerarCenario(client: Client) {
   await client.query('alter table capital_ledger disable trigger trg_bloquear_truncate_ledger')
@@ -74,6 +82,12 @@ async function zerarCenario(client: Client) {
   await client.query(
     'alter table ocorrencia_atipicidade disable trigger trg_bloquear_truncate_ocorrencia',
   )
+  await client.query('alter table parcela disable trigger trg_bloquear_truncate_parcela')
+  await client.query(
+    'alter table contrato_emprestimo disable trigger trg_bloquear_truncate_contrato',
+  )
+  await client.query('alter table registro_operacao disable trigger trg_bloquear_truncate_registro')
+  await client.query('alter table apuracao_fiscal disable trigger trg_bloquear_truncate_apuracao')
   try {
     // movimento_bancario entra explicitamente: ele é referenciado POR parcela,
     // então o cascade de operacao_credito não o alcança — sem isto o documento
@@ -94,6 +108,14 @@ async function zerarCenario(client: Client) {
     await client.query(
       'alter table ocorrencia_atipicidade enable trigger trg_bloquear_truncate_ocorrencia',
     )
+    await client.query('alter table parcela enable trigger trg_bloquear_truncate_parcela')
+    await client.query(
+      'alter table contrato_emprestimo enable trigger trg_bloquear_truncate_contrato',
+    )
+    await client.query(
+      'alter table registro_operacao enable trigger trg_bloquear_truncate_registro',
+    )
+    await client.query('alter table apuracao_fiscal enable trigger trg_bloquear_truncate_apuracao')
   }
 }
 
@@ -106,6 +128,14 @@ async function zerarCenario(client: Client) {
  * pela aplicação, não existe caminho para destruir essas trilhas.
  */
 async function limparTomadoresDeTeste(client: Client) {
+  // Logins de portal primeiro: desde a migration 031 `usuario.tomador_id`
+  // referencia `tomador`, e um login deixado pelo spec do portal numa rodada
+  // anterior faria o DELETE de tomador abaixo falhar por FK — em QUALQUER
+  // spec, não só no do portal, porque todos limpam por aqui.
+  await client.query(
+    `delete from usuario
+      where tomador_id in (select id from tomador where cnpj like '9999%')`,
+  )
   await client.query('alter table tomador_documento disable trigger trg_documento_retencao')
   await client.query(
     'alter table ocorrencia_atipicidade disable trigger trg_ocorrencia_append_only',
@@ -431,6 +461,109 @@ export async function semearTomadorSemIdentificacao(): Promise<CenarioSemIdentif
     )
 
     return { usuarioId, accessToken, tomadorId: tomador.rows[0].id, razaoSocial }
+  } finally {
+    await client.end()
+  }
+}
+
+export interface CenarioPortal {
+  usuarioId: string
+  accessToken: string
+  razaoSocial: string
+  /** Ativa, com agenda emitida — a operação que o tomador logado acompanha. */
+  operacaoId: string
+  /** De OUTRO tomador: a URL dela no portal deve responder como inexistente. */
+  operacaoDeOutroTomadorId: string
+}
+
+/**
+ * Cenário do portal do tomador (migration 031, OC027).
+ *
+ * O usuário tem papel 'tomador' e `tomador_id` preenchido — é o vínculo que
+ * o backend usa como cerco de TODA consulta do portal (get_tomador_user).
+ * O segundo tomador existe só para provar o cerco: a operação dele tem que
+ * aparecer para este login como 404, nunca como 403 (ver app/routers/
+ * portal.py — 403 confirmaria que a operação existe).
+ */
+export async function semearCenarioPortal(): Promise<CenarioPortal> {
+  const client = new Client({ connectionString: DB_URL })
+  await client.connect()
+
+  try {
+    await zerarCenario(client)
+    await client.query("delete from usuario where email = 'e2e-tomador@orgcred.test'")
+    await limparTomadoresDeTeste(client)
+
+    await client.query(
+      `insert into esc_capital_social (valor, tipo_evento) values (50000, 'constituicao')`,
+    )
+
+    const razaoSocial = 'Transportes Horizonte ME'
+    const tomador = await client.query<{ id: string }>(
+      `insert into tomador (cnpj, razao_social, porte, municipio, uf, municipio_autorizado)
+       values ($1, $2, 'ME', 'Formoso', 'GO', true) returning id`,
+      [`9999${String(Date.now()).slice(-10)}`, razaoSocial],
+    )
+    const tomadorId = tomador.rows[0].id
+    await arquivarIdentificacao(client, tomadorId)
+
+    const op = await client.query<{ id: string }>(
+      `insert into operacao_credito
+        (tomador_id, tipo, valor_principal, taxa_juros_mensal, sistema_amortizacao,
+         numero_parcelas, status, registro_entidade_ref)
+       values ($1, 'emprestimo', 12000, 2.0, 'PRICE', 6, 'registrada', 'REG-E2E-PORTAL')
+       returning id`,
+      [tomadorId],
+    )
+    const operacaoId = op.rows[0].id
+    await confirmarRegistro(client, operacaoId)
+
+    // Ativar emite a agenda (trigger da migration 007) — é a agenda que o
+    // portal existe para mostrar.
+    await client.query(`update operacao_credito set status = 'ativa' where id = $1`, [operacaoId])
+
+    // O outro tomador e a operação que NÃO pode aparecer. Fica em 'proposta'
+    // de propósito: nem registro nem identificação são necessários para
+    // existir, e existir é tudo que o teste do cerco precisa.
+    const outroTomador = await client.query<{ id: string }>(
+      `insert into tomador (cnpj, razao_social, porte, municipio, uf, municipio_autorizado)
+       values ($1, 'Comercio Alheio ME', 'ME', 'Formoso', 'GO', true) returning id`,
+      [`9999${String(Date.now() + 1).slice(-10)}`],
+    )
+    const opAlheia = await client.query<{ id: string }>(
+      `insert into operacao_credito
+        (tomador_id, tipo, valor_principal, taxa_juros_mensal, sistema_amortizacao,
+         numero_parcelas, status)
+       values ($1, 'emprestimo', 5000, 2.0, 'PRICE', 4, 'proposta')
+       returning id`,
+      [outroTomador.rows[0].id],
+    )
+
+    const usuarioId = randomUUID()
+    await client.query(
+      `insert into usuario (id, email, nome, papel, ativo, tomador_id)
+       values ($1, $2, $3, 'tomador', true, $4)`,
+      [usuarioId, 'e2e-tomador@orgcred.test', 'Tomador E2E', tomadorId],
+    )
+
+    const accessToken = jwt.sign(
+      {
+        sub: usuarioId,
+        email: 'e2e-tomador@orgcred.test',
+        role: 'authenticated',
+        aud: 'authenticated',
+      },
+      DEV_JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '1h' },
+    )
+
+    return {
+      usuarioId,
+      accessToken,
+      razaoSocial,
+      operacaoId,
+      operacaoDeOutroTomadorId: opAlheia.rows[0].id,
+    }
   } finally {
     await client.end()
   }

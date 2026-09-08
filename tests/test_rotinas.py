@@ -16,7 +16,8 @@ O QUE ESTE ARQUIVO PRECISA PROVAR, em ordem de gravidade:
    a promessa do docstring.
 
 Os testes de shell (`rodar_script`) usam `bash` de verdade e são pulados onde
-ele não existe. O resto não depende de shell nenhum: `rodar_script` é
+ele não existe OU NÃO FUNCIONA — ver `_bash_utilizavel`, que é a diferença
+entre um "skipped" honesto e cinco vermelhos que não são defeito. O resto não depende de shell nenhum: `rodar_script` é
 substituído, porque o que se está provando ali é a decisão do executor, não a
 capacidade do sistema operacional de rodar um script.
 """
@@ -25,6 +26,7 @@ import io
 import json
 import logging
 import shutil
+import subprocess
 import time
 import uuid
 from datetime import date, datetime, timedelta
@@ -79,9 +81,42 @@ from tests.conftest import confirmar_registro, envelhecer_execucao_rotina, sqlst
 from tests.test_logging import _estado_de_logging_preservado
 
 
+def _bash_utilizavel() -> bool:
+    r"""`shutil.which` responde "existe", que não é a pergunta que interessa.
+
+    No Windows o PATH tem `C:\Windows\System32\bash.exe` MESMO SEM NENHUMA
+    distribuição WSL instalada: o arquivo está lá, `which` o encontra, o skipif
+    não pula, e os cinco testes desta classe falham com `execvpe(/bin/bash)
+    failed: No such file or directory` — erro do WSL, não do código sob teste.
+
+    É o mesmo defeito que este projeto persegue no SQL: uma guarda que confere
+    PRESENÇA quando o invariante é USABILIDADE. O custo aqui não é segurança, é
+    diagnóstico — ela troca um "skipped" honesto por um vermelho que não aponta
+    para bug nenhum, e uma suíte que fica vermelha por motivo errado é uma
+    suíte que se aprende a ignorar.
+
+    A sonda EXECUTA, uma vez na importação do módulo, e responde exatamente o
+    que a decisão precisa saber.
+    """
+    caminho = shutil.which("bash")
+    if caminho is None:
+        return False
+    try:
+        return (
+            subprocess.run(
+                [caminho, "-c", "exit 0"],
+                capture_output=True,
+                timeout=15,
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 sem_bash = pytest.mark.skipif(
-    shutil.which("bash") is None,
-    reason="bash indisponível — o executor roda em contêiner Linux, onde ele existe",
+    not _bash_utilizavel(),
+    reason="bash indisponível ou inoperante — o executor roda em contêiner Linux, onde ele funciona",
 )
 
 

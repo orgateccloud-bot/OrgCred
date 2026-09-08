@@ -13,16 +13,23 @@ import {
   getCapitalSnapshotApiCapitalSnapshotGet,
   getConteudoDocumentoApiComplianceDocumentosDocumentoIdConteudoGet,
   getContratoApiContratosOperacoesOperacaoIdContratoGet,
+  getContratoApiPortalOperacoesOperacaoIdContratoGet,
+  getConvitesPortalApiTomadoresTomadorIdPortalConvitesGet,
   getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet,
+  getEstadoRotinasApiAuditoriaRotinasGet,
   getMeApiMeGet,
+  getMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGet,
   getMovimentosApiCobrancaMovimentosGet,
   getOperacaoApiOperacoesOperacaoIdGet,
   getOperacoesApiOperacoesGet,
+  getOperacoesApiPortalOperacoesGet,
   getParametrosApiFiscalParametrosGet,
   getParametroVigenteApiFiscalParametrosVigenteGet,
   getParcelasApiOperacoesOperacaoIdParcelasGet,
+  getParcelasApiPortalOperacoesOperacaoIdParcelasGet,
   getPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGet,
   getPendenciasRegistroApiContratosRegistrosPendenciasGet,
+  getPerfilApiPortalPerfilGet,
   getRegistrosApiContratosOperacoesOperacaoIdRegistrosGet,
   getRetencaoDocumentoApiComplianceDocumentosDocumentoIdRetencaoGet,
   getTomadorApiTomadoresTomadorIdGet,
@@ -39,6 +46,7 @@ import {
   postCancelarOperacaoApiOperacoesOperacaoIdCancelarPost,
   postCapitalEventoApiCapitalEventosPost,
   postConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPost,
+  postConvidarPortalApiTomadoresTomadorIdPortalConvitesPost,
   postCriarOperacaoApiOperacoesPost,
   postCriarTomadorApiTomadoresPost,
   postDetectarApiComplianceAtipicidadesDetectarPost,
@@ -56,6 +64,7 @@ import {
   postVerificarContratoApiContratosContratoIdVerificarPost,
   postVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPost,
   readinessCheckHealthReadyGet,
+  rootGet,
 } from '../sdk.gen'
 import type {
   GetAgingApiCobrancaAgingGetData,
@@ -78,11 +87,22 @@ import type {
   GetContratoApiContratosOperacoesOperacaoIdContratoGetData,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetError,
   GetContratoApiContratosOperacoesOperacaoIdContratoGetResponse,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetData,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetError,
+  GetContratoApiPortalOperacoesOperacaoIdContratoGetResponse,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetData,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetError,
+  GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponse,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetError,
   GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetResponse,
+  GetEstadoRotinasApiAuditoriaRotinasGetData,
+  GetEstadoRotinasApiAuditoriaRotinasGetResponse,
   GetMeApiMeGetData,
   GetMeApiMeGetResponse,
+  GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetData,
+  GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetError,
+  GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetResponse,
   GetMovimentosApiCobrancaMovimentosGetData,
   GetMovimentosApiCobrancaMovimentosGetError,
   GetMovimentosApiCobrancaMovimentosGetResponse,
@@ -91,6 +111,8 @@ import type {
   GetOperacaoApiOperacoesOperacaoIdGetResponse,
   GetOperacoesApiOperacoesGetData,
   GetOperacoesApiOperacoesGetResponse,
+  GetOperacoesApiPortalOperacoesGetData,
+  GetOperacoesApiPortalOperacoesGetResponse,
   GetParametrosApiFiscalParametrosGetData,
   GetParametrosApiFiscalParametrosGetResponse,
   GetParametroVigenteApiFiscalParametrosVigenteGetData,
@@ -98,10 +120,15 @@ import type {
   GetParcelasApiOperacoesOperacaoIdParcelasGetData,
   GetParcelasApiOperacoesOperacaoIdParcelasGetError,
   GetParcelasApiOperacoesOperacaoIdParcelasGetResponse,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetError,
+  GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponse,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetData,
   GetPendenciasIdentificacaoApiComplianceIdentificacaoPendenciasGetResponse,
   GetPendenciasRegistroApiContratosRegistrosPendenciasGetData,
   GetPendenciasRegistroApiContratosRegistrosPendenciasGetResponse,
+  GetPerfilApiPortalPerfilGetData,
+  GetPerfilApiPortalPerfilGetResponse,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetData,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetError,
   GetRegistrosApiContratosOperacoesOperacaoIdRegistrosGetResponse,
@@ -143,6 +170,9 @@ import type {
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostData,
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostError,
   PostConfirmarRegistroApiContratosRegistrosRegistroIdConfirmarPostResponse,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostError,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponse,
   PostCriarOperacaoApiOperacoesPostData,
   PostCriarOperacaoApiOperacoesPostError,
   PostCriarOperacaoApiOperacoesPostResponse,
@@ -192,6 +222,8 @@ import type {
   PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostError,
   PostVerificarDocumentoApiComplianceDocumentosDocumentoIdVerificarPostResponse,
   ReadinessCheckHealthReadyGetData,
+  RootGetData,
+  RootGetResponse,
 } from '../types.gen'
 
 export type QueryKey<TOptions extends Options> = [
@@ -435,7 +467,16 @@ export const postCriarOperacaoApiOperacoesPostMutation = (
  * - 403: Usuário sem permissão (não é operador)
  * - 404: Operação não existe
  * - 409: Transição de estado inválida
- * - 422: Regra de negócio violada (teto, município, registro, capital) —
+ * - 422: Regra de negócio violada (teto, município, registro, capital,
+ * e — desde a migration 026, quando a operação é a SUBSTITUTA de uma
+ * novação — OC024: a substituta ficou menor que o saldo devedor da
+ * original, ou a original não está mais em condição de ser trocada —
+ * já saiu do comprometido (liquidada, ou trocada por outra substituta),
+ * ou foi baixada como prejuízo, caso em que ela continua ocupando o
+ * teto e o que se recusa é ressuscitar como título novo uma dívida cuja
+ * perda já foi reconhecida. Ativar uma substituta não é emprestar
+ * dinheiro novo: é trocar o título que já ocupa o teto por outro, e a
+ * troca acontece dentro deste endpoint) —
  * RegraNegocioViolada não é capturada aqui de propósito: propaga para
  * o exception_handler global (app/main.py), que produz o mesmo
  * formato {"detail": "...", "codigo": "..."} usado por todo o resto
@@ -699,16 +740,34 @@ export const postCancelarOperacaoApiOperacoesOperacaoIdCancelarPostMutation = (
 /**
  * Post Renegociar Operacao
  *
- * Renegocia por novação atômica: baixa a original e cria a substituta na
- * mesma transação, sob o mesmo advisory lock do teto.
+ * Renegocia por novação: cria a operação SUBSTITUTA amarrada à original,
+ * sob o advisory lock do teto.
  *
- * Não existe endpoint para "só marcar como renegociada": fazer a baixa sem
- * amarrar a substituta deixa a original fora do comprometido e nada
- * impediria criar a substituta depois, contando o capital duas vezes em
- * janelas diferentes (o banco recusa com OC008).
+ * Não existe endpoint para "só marcar como renegociada": desde a migration
+ * 026 quem escreve esse status é o gate de ativação da substituta, e um
+ * UPDATE direto é recusado com OC008. Marcar à mão tiraria a original do
+ * comprometido sem nada entrar no lugar.
  *
- * A substituta nasce em 'registrada' — ainda não compromete capital, e
- * ativá-la passa pelos gates normais.
+ * O QUE ESTA CHAMADA **NÃO** FAZ, e é a mudança da 026 que a UI precisa
+ * dizer ao operador: a original NÃO é baixada aqui. Ela continua
+ * 'ativa'/'inadimplente', continua ocupando o teto e continua em cobrança
+ * até a substituta ser ATIVADA — a troca (original -> renegociada,
+ * substituta -> ativa) acontece num commit só, dentro do gate de ativação.
+ * É a leitura do Art. 5º §3º da LC 167/2019: enquanto o novo título não
+ * está registrado e ativo, a novação não se consumou e a dívida antiga
+ * permanece exigível. Cancelar a substituta pendente é, por isso,
+ * inofensivo — a original nunca chegou a sair.
+ *
+ * 422 com código OC024 quando o `valor_principal` da substituta é menor que
+ * o SALDO DEVEDOR da original (principal menos o que foi amortizado contra
+ * movimento bancário). Renegociar não é pagar: até a 026 esta chamada
+ * aceitava qualquer valor, e uma substituta de R$ 0,01 devolvia ao teto os
+ * R$ 30.000 de uma operação com as doze parcelas em aberto. Reduzir continua
+ * possível na medida exata do que foi pago, e capitalizar juros (substituta
+ * MAIOR) segue livre.
+ *
+ * 409 com código OC003 quando já existe outra substituta pendente sobre a
+ * mesma original: ative-a ou cancele-a antes de renegociar de novo.
  */
 export const postRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostMutation = (
   options?: Partial<Options<PostRenegociarOperacaoApiOperacoesOperacaoIdRenegociarPostData>>,
@@ -871,6 +930,85 @@ export const patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatchMutation = (
   > = {
     mutationFn: async (fnOptions) => {
       const { data } = await patchAutorizacaoApiTomadoresTomadorIdAutorizacaoPatch({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}
+
+export const getConvitesPortalApiTomadoresTomadorIdPortalConvitesGetQueryKey = (
+  options: Options<GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetData>,
+) => createQueryKey('getConvitesPortalApiTomadoresTomadorIdPortalConvitesGet', options)
+
+/**
+ * Get Convites Portal
+ *
+ * A trilha de convites da empresa — quem recebeu janela, quando, e se entrou.
+ *
+ * Leitura aberta ao painel (o gate get_painel_user do main.py já barra
+ * tomador): operador precisa VER o estado do acesso para atender o cliente;
+ * o que é restrito a admin é CRIAR o acesso.
+ */
+export const getConvitesPortalApiTomadoresTomadorIdPortalConvitesGetOptions = (
+  options: Options<GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetData>,
+) =>
+  queryOptions<
+    GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponse,
+    GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetError,
+    GetConvitesPortalApiTomadoresTomadorIdPortalConvitesGetResponse,
+    ReturnType<typeof getConvitesPortalApiTomadoresTomadorIdPortalConvitesGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getConvitesPortalApiTomadoresTomadorIdPortalConvitesGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getConvitesPortalApiTomadoresTomadorIdPortalConvitesGetQueryKey(options),
+  })
+
+/**
+ * Post Convidar Portal
+ *
+ * Convida um e-mail para o portal do tomador. Admin only: dar a um CNPJ
+ * externo uma janela para os dados de crédito dele é ato de chave, como a
+ * autorização de município.
+ *
+ * A ORDEM DAS ESCRITAS importa e é deliberada:
+ *
+ * 1. Supabase Auth PRIMEIRO — o id que ele devolve é o `sub` dos JWTs
+ * futuros, e a linha de `usuario` precisa nascer com ESTE id (senão o
+ * login autentica lá e morre em PERMISSAO_NEGADA aqui).
+ * 2. `usuario` + `convite_portal` numa transação só, depois. Se ela falhar,
+ * sobra uma conta órfã no Auth — recuperável pelo painel do Supabase, e a
+ * mensagem de EmailJaRegistrado ensina o caminho. O inverso (linha local
+ * sem conta no Auth) seria pior: um login prometido que não autentica
+ * nunca, sem nada visível para limpar.
+ *
+ * `usuario_id` do convite nasce preenchido (o login já existe); `aceito_em`
+ * fica nulo até o primeiro sinal autenticado do convidado (app/routers/me.py).
+ */
+export const postConvidarPortalApiTomadoresTomadorIdPortalConvitesPostMutation = (
+  options?: Partial<Options<PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData>>,
+): UseMutationOptions<
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponse,
+  PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostError,
+  Options<PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostResponse,
+    PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostError,
+    Options<PostConvidarPortalApiTomadoresTomadorIdPortalConvitesPostData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await postConvidarPortalApiTomadoresTomadorIdPortalConvitesPost({
         ...options,
         ...fnOptions,
         throwOnError: true,
@@ -1313,6 +1451,44 @@ export const postApurarApiFiscalApuracoesPostMutation = (
   return mutationOptions
 }
 
+export const getMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetQueryKey = (
+  options: Options<GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetData>,
+) => createQueryKey('getMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGet', options)
+
+/**
+ * Get Memoria Calculo
+ *
+ * Memória de cálculo de UMA apuração, derivada do snapshot dela.
+ *
+ * Aberta ao operador, e não restrita ao admin: quem apura é o admin, mas
+ * quem CONFERE é o contador — e conferência que exige privilégio de escrita
+ * não é conferência.
+ *
+ * Busca por `id`, e não por (ano, trimestre): a retificação não apaga a
+ * versão anterior, e a memória da versão 1 precisa continuar acessível para
+ * explicar a diferença entre o que foi declarado e o que foi retificado.
+ */
+export const getMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetOptions = (
+  options: Options<GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetData>,
+) =>
+  queryOptions<
+    GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetResponse,
+    GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetError,
+    GetMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetResponse,
+    ReturnType<typeof getMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getMemoriaCalculoApiFiscalApuracoesApuracaoIdMemoriaGetQueryKey(options),
+  })
+
 export const getDocumentosApiComplianceTomadoresTomadorIdDocumentosGetQueryKey = (
   options: Options<GetDocumentosApiComplianceTomadoresTomadorIdDocumentosGetData>,
 ) => createQueryKey('getDocumentosApiComplianceTomadoresTomadorIdDocumentosGet', options)
@@ -1738,8 +1914,11 @@ export const getMovimentosApiCobrancaMovimentosGetOptions = (
  *
  * Registra uma linha de extrato.
  *
- * `documento` é único: reimportar o mesmo extrato não duplica crédito nem
- * permite baixar duas parcelas com o mesmo dinheiro.
+ * `documento` é único DENTRO DA CONTA desde a migration 027, e o lançamento
+ * digitado não tem conta (a 024 proíbe proveniência em manual): na prática,
+ * para este caminho, ele continua sendo único entre todos os manuais. É o que
+ * mantém a garantia de sempre — reimportar o mesmo extrato à mão não duplica
+ * crédito nem permite baixar duas parcelas com o mesmo dinheiro.
  */
 export const postMovimentoApiCobrancaMovimentosPostMutation = (
   options?: Partial<Options<PostMovimentoApiCobrancaMovimentosPostData>>,
@@ -1831,6 +2010,16 @@ export const postImportarOfxApiCobrancaMovimentosImportarOfxPostMutation = (
  * aberto. O banco recusa com OC011.
  *
  * A baixa é terminal — não há estorno definido (ver migration 009).
+ *
+ * O AUTOR VAI JUNTO, e este parâmetro foi por muito tempo o furo mais
+ * embaraçoso do módulo: a coluna `parcela.baixado_por` existe desde a
+ * migration 016, `fn_baixar_parcela` lê `app.user_id` e grava, o serviço
+ * `baixar_parcela` aceita `usuario_id` — e este endpoint, o ÚNICO caminho de
+ * baixa da aplicação, não passava o valor. Resultado: `baixado_por` era NULL
+ * em 100% das baixas feitas pela API, e o único ato irreversível do ciclo (o
+ * que a 016 diz, no próprio cabeçalho, ser o único sem nome de gente)
+ * continuava sem responsável. O mecanismo inteiro estava construído e
+ * desligado por uma linha que faltava.
  */
 export const postBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostMutation = (
   options?: Partial<Options<PostBaixarParcelaApiCobrancaParcelasParcelaIdBaixarPostData>>,
@@ -1895,6 +2084,64 @@ export const getAuditoriaApiAuditoriaGetOptions = (
     queryKey: getAuditoriaApiAuditoriaGetQueryKey(options),
   })
 
+export const getEstadoRotinasApiAuditoriaRotinasGetQueryKey = (
+  options?: Options<GetEstadoRotinasApiAuditoriaRotinasGetData>,
+) => createQueryKey('getEstadoRotinasApiAuditoriaRotinasGet', options)
+
+/**
+ * Get Estado Rotinas
+ *
+ * Responde "as rotinas periódicas estão rodando?" — com HÁ QUANTO TEMPO.
+ *
+ * O TEMPO É O CAMPO, e não a falha. Uma rotina que nunca falhou mas parou de
+ * rodar há nove dias é o caso perigoso justamente porque não há falha para
+ * ver: nenhuma execução vermelha existe, nenhum painel de execuções mostra a
+ * execução que não houve, e a régua de aging passa nove dias declarando
+ * inadimplência com atraso enquanto tudo parece bem.
+ * `horas_desde_ultimo_sucesso` é a única leitura que enxerga esse estado,
+ * porque ela cresce sozinha, sem depender de nada acontecer.
+ *
+ * NUNCA EXECUTOU CONTA COMO ATRASADA — fail-closed, pelo mesmo critério da
+ * migration 023 ("sem evento na trilha = detecta assim mesmo"). O contrário
+ * seria o pior default possível aqui: um serviço de cron que jamais foi
+ * implantado ficaria verde para sempre, que é literalmente o estado que esta
+ * trilha existe para acabar. O preço é conhecido e aceito: nas primeiras
+ * horas depois de a migration 025 subir, a tabela está vazia e o painel avisa
+ * até a primeira execução do cron. O aviso está certo — o sistema realmente
+ * não tem evidência nenhuma.
+ *
+ * O ATRASO É MEDIDO DO ÚLTIMO SUCESSO, não da última tentativa. Uma rotina
+ * que falha todo dia tem tentativa recente e não fez o trabalho nenhuma vez;
+ * medir dali diria que ela está em dia. Ela aparece nas duas leituras: por
+ * `falhou` (a última execução deu errado) e por `atrasada`, assim que o
+ * último sucesso envelhecer além do limiar.
+ *
+ * OS LIMIARES SÃO DO EXECUTOR (`app.rotinas.LIMITE_ATRASO_HORAS`), não deste
+ * módulo. Quem muda a agenda do cron muda o arquivo que define as rotinas; se
+ * a régua de pontualidade morasse aqui, a tela continuaria cobrando uma
+ * periodicidade que ninguém mais pratica e o número seguiria bonito.
+ */
+export const getEstadoRotinasApiAuditoriaRotinasGetOptions = (
+  options?: Options<GetEstadoRotinasApiAuditoriaRotinasGetData>,
+) =>
+  queryOptions<
+    GetEstadoRotinasApiAuditoriaRotinasGetResponse,
+    DefaultError,
+    GetEstadoRotinasApiAuditoriaRotinasGetResponse,
+    ReturnType<typeof getEstadoRotinasApiAuditoriaRotinasGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getEstadoRotinasApiAuditoriaRotinasGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getEstadoRotinasApiAuditoriaRotinasGetQueryKey(options),
+  })
+
 export const getMeApiMeGetQueryKey = (options?: Options<GetMeApiMeGetData>) =>
   createQueryKey('getMeApiMeGet', options)
 
@@ -1918,6 +2165,118 @@ export const getMeApiMeGetOptions = (options?: Options<GetMeApiMeGetData>) =>
       return data
     },
     queryKey: getMeApiMeGetQueryKey(options),
+  })
+
+export const getPerfilApiPortalPerfilGetQueryKey = (
+  options?: Options<GetPerfilApiPortalPerfilGetData>,
+) => createQueryKey('getPerfilApiPortalPerfilGet', options)
+
+/**
+ * Get Perfil
+ */
+export const getPerfilApiPortalPerfilGetOptions = (
+  options?: Options<GetPerfilApiPortalPerfilGetData>,
+) =>
+  queryOptions<
+    GetPerfilApiPortalPerfilGetResponse,
+    DefaultError,
+    GetPerfilApiPortalPerfilGetResponse,
+    ReturnType<typeof getPerfilApiPortalPerfilGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getPerfilApiPortalPerfilGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getPerfilApiPortalPerfilGetQueryKey(options),
+  })
+
+export const getOperacoesApiPortalOperacoesGetQueryKey = (
+  options?: Options<GetOperacoesApiPortalOperacoesGetData>,
+) => createQueryKey('getOperacoesApiPortalOperacoesGet', options)
+
+/**
+ * Get Operacoes
+ */
+export const getOperacoesApiPortalOperacoesGetOptions = (
+  options?: Options<GetOperacoesApiPortalOperacoesGetData>,
+) =>
+  queryOptions<
+    GetOperacoesApiPortalOperacoesGetResponse,
+    DefaultError,
+    GetOperacoesApiPortalOperacoesGetResponse,
+    ReturnType<typeof getOperacoesApiPortalOperacoesGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getOperacoesApiPortalOperacoesGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getOperacoesApiPortalOperacoesGetQueryKey(options),
+  })
+
+export const getParcelasApiPortalOperacoesOperacaoIdParcelasGetQueryKey = (
+  options: Options<GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData>,
+) => createQueryKey('getParcelasApiPortalOperacoesOperacaoIdParcelasGet', options)
+
+/**
+ * Get Parcelas
+ */
+export const getParcelasApiPortalOperacoesOperacaoIdParcelasGetOptions = (
+  options: Options<GetParcelasApiPortalOperacoesOperacaoIdParcelasGetData>,
+) =>
+  queryOptions<
+    GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponse,
+    GetParcelasApiPortalOperacoesOperacaoIdParcelasGetError,
+    GetParcelasApiPortalOperacoesOperacaoIdParcelasGetResponse,
+    ReturnType<typeof getParcelasApiPortalOperacoesOperacaoIdParcelasGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getParcelasApiPortalOperacoesOperacaoIdParcelasGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getParcelasApiPortalOperacoesOperacaoIdParcelasGetQueryKey(options),
+  })
+
+export const getContratoApiPortalOperacoesOperacaoIdContratoGetQueryKey = (
+  options: Options<GetContratoApiPortalOperacoesOperacaoIdContratoGetData>,
+) => createQueryKey('getContratoApiPortalOperacoesOperacaoIdContratoGet', options)
+
+/**
+ * Get Contrato
+ */
+export const getContratoApiPortalOperacoesOperacaoIdContratoGetOptions = (
+  options: Options<GetContratoApiPortalOperacoesOperacaoIdContratoGetData>,
+) =>
+  queryOptions<
+    GetContratoApiPortalOperacoesOperacaoIdContratoGetResponse,
+    GetContratoApiPortalOperacoesOperacaoIdContratoGetError,
+    GetContratoApiPortalOperacoesOperacaoIdContratoGetResponse,
+    ReturnType<typeof getContratoApiPortalOperacoesOperacaoIdContratoGetQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getContratoApiPortalOperacoesOperacaoIdContratoGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getContratoApiPortalOperacoesOperacaoIdContratoGetQueryKey(options),
   })
 
 export const healthCheckHealthGetQueryKey = (options?: Options<HealthCheckHealthGetData>) =>
@@ -1999,4 +2358,26 @@ export const metricsMetricsGetOptions = (options?: Options<MetricsMetricsGetData
       return data
     },
     queryKey: metricsMetricsGetQueryKey(options),
+  })
+
+export const rootGetQueryKey = (options?: Options<RootGetData>) =>
+  createQueryKey('rootGet', options)
+
+/**
+ * Root
+ *
+ * Raiz da API (dev/CI — sem build do frontend disponível).
+ */
+export const rootGetOptions = (options?: Options<RootGetData>) =>
+  queryOptions<RootGetResponse, DefaultError, RootGetResponse, ReturnType<typeof rootGetQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await rootGet({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: rootGetQueryKey(options),
   })

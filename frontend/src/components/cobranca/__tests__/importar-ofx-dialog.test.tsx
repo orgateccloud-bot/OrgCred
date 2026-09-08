@@ -21,8 +21,10 @@ const RELATORIO = {
   creditos: 9,
   criados: 7,
   ja_registrados: 1,
+  conflitos: 0,
   repetidos_no_arquivo: 1,
   debitos_ignorados: 3,
+  documentos_em_conflito: [] as string[],
   periodo_inicio: '2026-03-01',
   periodo_fim: '2026-03-31',
 }
@@ -81,7 +83,7 @@ describe('ImportarOfxDialog', () => {
     const dialogo = await screen.findByRole('dialog')
     const conferencia = await within(dialogo).findByRole('status')
     // 7 + 1 + 1 + 3 = 12, e 12 é o que o arquivo tinha.
-    expect(conferencia).toHaveTextContent('7 + 1 + 1 + 3 = 12')
+    expect(conferencia).toHaveTextContent('7 + 1 + 0 + 1 + 3 = 12')
     expect(conferencia).toHaveTextContent(/Conferência fecha/)
     expect(conferencia).toHaveTextContent(/Nenhuma linha do extrato se perdeu/)
 
@@ -155,6 +157,7 @@ describe('ImportarOfxDialog', () => {
 
     expect(cartao('Repetidos dentro do arquivo')).toHaveAttribute('data-anomalia', 'sim')
     expect(cartao('Já registrados')).toHaveAttribute('data-anomalia', 'nao')
+    expect(cartao('Conflitos de identidade')).toHaveAttribute('data-anomalia', 'nao')
     expect(cartao('Movimentos criados')).toHaveAttribute('data-anomalia', 'nao')
     expect(cartao('Débitos ignorados')).toHaveAttribute('data-anomalia', 'nao')
   })
@@ -193,10 +196,48 @@ describe('ImportarOfxDialog', () => {
 
     const dialogo = await screen.findByRole('dialog')
     const conferencia = await within(dialogo).findByRole('status')
-    expect(conferencia).toHaveTextContent('0 + 9 + 0 + 0 = 9')
+    expect(conferencia).toHaveTextContent('0 + 9 + 0 + 0 + 0 = 9')
     expect(conferencia).toHaveTextContent(/Conferência fecha/)
     // Zero criados NÃO é falha: o alerta é para conferência que não fecha.
     expect(within(dialogo).queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('separa colisão de identidade de reimportação, e só a primeira é anomalia', async () => {
+    // O achado que derrubou a migration 027 não foi "uma linha se perdeu": foi
+    // "uma linha se perdeu E A ARITMÉTICA FECHOU". Enquanto `conflitos`
+    // estivesse somado dentro de `ja_registrados`, o relatório afirmava, com
+    // números conferidos, que nada faltou — enquanto um crédito real ficava de
+    // fora do lastro. Este teste é o que impede a fusão de voltar.
+    postImportarOfxMock.mockResolvedValue({
+      data: {
+        ...RELATORIO,
+        lidas: 4,
+        creditos: 4,
+        criados: 2,
+        ja_registrados: 1,
+        conflitos: 1,
+        repetidos_no_arquivo: 0,
+        debitos_ignorados: 0,
+        documentos_em_conflito: ['TED0007'],
+      },
+    })
+
+    const { user } = await abrirImportacao()
+    await importar(user)
+
+    const dialogo = await screen.findByRole('dialog')
+    const cartao = (rotulo: string) =>
+      within(dialogo).getByText(rotulo).closest('li') as HTMLElement
+
+    expect(cartao('Conflitos de identidade')).toHaveAttribute('data-anomalia', 'sim')
+    expect(cartao('Já registrados')).toHaveAttribute('data-anomalia', 'nao')
+    // O identificador precisa chegar à tela: sem ele o operador sabe que UMA
+    // linha ficou de fora e não sabe QUAL, o que torna o aviso inacionável.
+    expect(cartao('Conflitos de identidade')).toHaveTextContent('TED0007')
+
+    const conferencia = await within(dialogo).findByRole('status')
+    expect(conferencia).toHaveTextContent('2 + 1 + 1 + 0 + 0 = 4')
+    expect(conferencia).toHaveTextContent(/Conferência fecha/)
   })
 
   it('extrato válido e VAZIO não ganha o selo verde: 0 = 0 não prova importação', async () => {

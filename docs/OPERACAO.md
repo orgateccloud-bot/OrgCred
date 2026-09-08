@@ -209,13 +209,15 @@ outro lado é descobrir na hora do desastre que o backup nunca foi testado.
 
 ## Pré-requisitos do serviço de cron
 
-> **Estado atual: o `Dockerfile` da aplicação NÃO satisfaz estes requisitos.** A
-> imagem de runtime (`python:3.12-slim`) copia apenas `app/`, `migrations/`,
-> `alembic/` e o frontend — não copia `scripts/` — e não instala o cliente
-> Postgres. Rodar `python -m app.rotinas` nessa imagem hoje faz `aging` e
-> `atipicidades` passarem e `backup` e `restore_test` falharem com
-> `script não encontrado`. **Isso é falha explícita e ruidosa, de propósito** —
-> mas é falha. O serviço de cron precisa de uma imagem que atenda ao que segue.
+> **Estado atual: o `Dockerfile` da aplicação satisfaz estes requisitos** — a
+> imagem de runtime instala `postgresql-client` (`Dockerfile`, passo de
+> `apt-get install`) e copia `scripts/` (`COPY scripts/ ./scripts/`), então
+> `python -m app.rotinas` nela roda as quatro rotinas, `backup` e
+> `restore_test` inclusive. Esta nota já afirmou o CONTRÁRIO, e era verdade num
+> commit anterior; o Dockerfile foi corrigido e a nota não. Fica o registro,
+> porque documentação que descreve um estado que já não existe é o defeito que
+> este projeto persegue. Os requisitos abaixo continuam valendo como
+> checklist para quem for auditar uma imagem nova.
 
 O serviço de cron precisa de:
 
