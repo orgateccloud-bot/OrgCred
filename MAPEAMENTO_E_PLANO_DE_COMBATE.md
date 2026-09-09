@@ -85,23 +85,65 @@ que deviam ser append-only aceitam INSERT que troca o registro vigente, e a
 
 ---
 
-## 2. Scorecard por domínio
+## 2. Scorecard por domínio — pontuação
 
-Verde exige implementado **e** testado **e** sem achado confirmado em aberto.
+> **Regenerado em 2026-08-28**, depois dos consertos desta sessão (migrations
+> 027–032, o portal do tomador, e o ataque aos findings de código de Infra,
+> Rotinas, Segurança e Frontend). Os achados que sustentam cada nota estão na
+> seção 3; aqui é a pontuação, com a rubrica ao lado para os números serem
+> **reproduzíveis** na próxima rodada.
 
-| Domínio | Nota | Por quê |
-|---|---|---|
-| **Capital e teto (Art. 5º)** | 🟢 | A saída pela novação foi **fechada e verificada** (026, OC024): reproduzi a sequência do furo e ela é recusada, com a mensagem dizendo o valor mínimo aceito. Somado ao advisory lock provado sob concorrência e à hash-chain resistindo a inversão e antedatação. |
-| **Operações e novação** | 🟢 | As duas portas do mesmo furo fechadas (026): o valor da substituta e a janela em que ela nascia sem ocupar o teto. Renegociação legítima preservada — alongar prazo, capitalizar juros e reduzir na medida do que foi amortizado com lastro continuam passando. E a agenda do título EXTINTO deixou de aceitar baixa (028, OC026): antes dela, consumada a troca, o endpoint devolvia 204 sobre operação `renegociada`, o crédito real do tomador era consumido para sempre e a parcela VIVA da substituta passava a ser recusada com OC011. |
-| **Cobrança** | 🟡 | **A chave do extrato foi errada QUATRO vezes, e a 030 muda a forma de errar.** 009 `(documento)`; 027 `(documento, conta_origem)` dobrava por grafia da conta; 028 canonizou a conta e fechou metade (ficou o `<ACCTID>` ausente); 029 tirou a conta da identidade e deixou os OUTROS DOIS campos verbatim — medido: `TED1` contra `ted1`, contra `0TED1`, contra `TED 1`, e o mesmo instante em BRT contra GMT, todos dobrando o lastro. A ironia era verificável: a única canonização do sistema estava aplicada ao campo que a 029 havia REMOVIDO da identidade. Desde a 030 **todo campo da identidade é canônico** (`fn_chave_texto`, num lugar só) e o parser deixou de descartar o fuso do `DTPOSTED`. O teste que guarda isso não lista casos, lista EIXOS: 7 contas × 6 identificadores × 5 datas = **210 formas de escrever o mesmo crédito**, e nenhuma pode criar duas linhas. **Segue aberto:** movimento maior que a parcela é consumido inteiro, e o excedente vira receita tributável. |
-| **Contratos e registro** | 🔴 | Hash calculado pelo banco (provado por INSERT com hash forjado — o banco recalculou), corpo determinístico, gate OC004 real. `TRUNCATE` foi fechado na 028. Mas **um INSERT com `versao` alta substitui o instrumento vigente** por um corpo qualquer, com hash que o próprio banco calcula e abençoa, e nada no sistema re-deriva o corpo para notar. O registro segue forjável em dois comandos por `enviado_em` antedatado, e confirmar registro não grava autor. |
-| **Fiscal (Lucro Presumido)** | 🔴 | Núcleo sólido: as quatro correções da 018 são reais e reproduzidas nos dois sentidos, e o arredondamento não diverge em 20.000 sorteios. `TRUNCATE` fechado na 028. Mas **OC016 torna a apuração imutável só contra UPDATE e DELETE** — um `INSERT` com versão 99 entra e é ele que `v_apuracao_vigente` entrega à tela. E `receita_demais` soma QUALQUER diferença entre o crédito e a parcela: um TED que cobre três parcelas leva a base de R$ 240,00 a R$ 2.509,44, sendo 81% disso principal devolvido. `parametro_fiscal` segue vazia, o que é recusa deliberada. |
-| **Compliance PLD** | 🔴 | Os três invariantes em trigger são reais e foram reproduzidos, não lidos: OC013 recusa o DELETE dentro do prazo, OC014 recusa apagar e rebaixar severidade, OC019 recusa a ativação sem evidência, e `greatest(piso, encerramento + 5 anos)` devolve a data certa nas duas direções. Mas **a regra de fracionamento — a única de severidade alta do catálogo — continua ancorada em `current_date`** (023:188): três operações de R$ 4.000 feitas há 40 dias devolvem zero na varredura diária, e qualquer intervalo em que o cron não rodar apaga a detecção daquele período em definitivo. Somado a **produção sem storage configurado**, que faz arquivar responder 503 e o gate OC019 travar todo tomador novo. |
-| **Segurança e auditoria** | 🔴 | Perímetro genuinamente fechado: as 50 rotas sob `/api` exigem autenticação, enumeradas com o app em modo produção. Derrubado pelo rate limit — um balde **único global** atrás do proxy do Railway, onde um anônimo nega serviço a todos os operadores. |
-| **Rotinas e observabilidade** | 🔴 | Engenharia de operação de primeira linha, e testada de verdade: o executor sai != 0 na falha, uma falha não derruba as outras, e a regra mensal cobre 24 de 24 meses onde um cron "dia 31" cobriria 14. Mas o serviço de cron roda **`7a9ce42`** — um commit antes do que criou a trilha —, então as quatro rotinas terminam verdes em produção todos os dias **sem gravar uma única linha**, e o banner acusa "nunca executou". Não são sete commits atrás; medido, são **doze**. Não há alerta ativo, e os dumps que ele produz moram em `/tmp/backups` sem volume nenhum atrás — o rebuild que consertaria a trilha é o mesmo ato que apaga os backups. |
-| **Frontend** | 🟡 | Cobre quase todo o backend; `baseUrl` relativo nos dois modos com teste de regressão; dicionário de erro por código. A tela exibe o **piso** de retenção sob o rótulo "Guarda até" — exatamente o número que a migration 022 declarou não valer. |
-| **Qualidade e CI** | 🟡 | 882 testes de backend e 219 de frontend passando, 6 E2E, com peças excelentes: a guarda da suíte-fantasma, o teste de catálogo que pega ramo de escrita sem advisory lock. **O job `alembic` da CI nunca tinha passado** — `downgrade base` morria em 0006→0005 com `DuplicateObject` no trigger `trg_check_reducao_capital`, desde o primeiro commit dela; uma linha (`drop trigger if exists`, o remédio que já estava no downgrade da própria 0003) resolveu, e o ciclo `upgrade head → downgrade base → upgrade head` foi verificado inteiro. Segue amarelo porque o smoke **ainda não prova** que as migrations aplicam: o `CMD` deixou de rodar `alembic upgrade head` e `/health/ready` só faz `select 1`, que devolve 200 em banco vazio. |
-| **Infra e deploy** | 🔴 | Boa onde foi construída depois de um incidente, frágil onde nunca doeu. Backup sem cópia fora do provedor: dump e banco moram no mesmo projeto Railway. |
+### A rubrica (auditável)
+
+Cada domínio parte de 100 em dois eixos independentes. Penalidade por achado
+aberto = gravidade (**crítico 40 · alto 20 · médio 8 · baixo 3**), no eixo do
+seu dono:
+
+- **Código** — defeito de implementação (dono = código). Mede: construído,
+  testado, sem defeito aberto?
+- **Prontidão** — bloqueio de operação (dono = dado / configuração / terceiro).
+  Mede: pode entrar em produção?
+- **Geral** = 0,6 × Código + 0,4 × Prontidão. Banda: 🟢 ≥ 90 · 🟡 70–89 · 🔴 < 70.
+
+Os dois eixos existem porque a lição central deste projeto é que **o código dos
+motores legais está são; o que impede produção é dado, configuração e terceiro**.
+Um número só esconderia isso.
+
+### A tabela
+
+| Domínio | Código | Prontidão | Geral | Por quê |
+|---|---:|---:|---:|---|
+| Operações e novação | 100 | 100 | **100** 🟢 | Furo do Art. 5º fechado dos dois lados (026); sem achado aberto. |
+| Cobrança e extrato | 100 | 100 | **100** 🟢 | Identidade `(documento_chave, valor, data)`; paridade Unicode fechada (032). |
+| Fiscal (Lucro Presumido) | 100 | 97 | **99** 🟢 | Núcleo estável desde a 018; salto de versão da apuração **fechado** (033, OC016); apuração inconsistente é denunciada pela memória de cálculo. Só o footgun do skip local. |
+| Portal do tomador | 97 | 100 | **98** 🟢 | Isolamento provado (12 testes + smoke); falta E2E da tela. |
+| Frontend | 97 | 100 | **98** 🟢 | Contrato de erro agora DERIVA do `PGCODE_MAP` (não mais lista estática). |
+| Contratos e registro | 97 | 97 | **97** 🟢 | Salto de versão que forjava o instrumento vigente **fechado** (033, OC017); resíduo de forja na próxima versão é §7. `enviado_em` antedatável; registradora não contratada. |
+| Segurança e auditoria | 100 | 92 | **97** 🟢 | JWT exige `exp` e verifica emissor; rate limit global é config. |
+| Qualidade e CI | 97 | 97 | **97** 🟢 | Ciclo alembic up/down provado; escopo CircleCI não observado daqui. |
+| Capital e teto (Art. 5º) | 100 | 89 | **96** 🟢 | Código impecável; **capital social não integralizado** (teto R$ 0). |
+| Infra e deploy | 97 | 92 | **95** 🟢 | Smoke da CI passou a **provar migration**; docs corrigidas. |
+| Compliance PLD | 100 | 66 | **86** 🟡 | Código 100; **COAF** (terceiro) e **storage real** (config) faltam. |
+| Rotinas e observabilidade | 97 | 77 | **89** 🟡 | Código testado; **cron de prod pré-025**, trilha vazia, backup sem volume. |
+
+**Média da carteira: 96 / 100.** Placar por banda: **10 🟢 · 2 🟡 · 0 🔴.** Contra
+os nove-verdes-com-dois-críticos de 18/08, é a honestidade funcionando: nenhum
+crítico de código sobrou nos motores, e os dois 🟡 têm o eixo Código no teto — o
+que os segura é externo (parecer de COAF, service_role key, deploy do cron).
+
+**Achado desta sessão que a pontuação incorpora:** um forge por SQL direto (INSERT
+de versão 99 vira o vigente) em contrato e apuração — que este mapeamento não
+tinha encontrado — foi **fechado no vetor reproduzido** pela migration 033
+(monotonia de versão). O resíduo (forja na próxima versão; apuração inconsistente)
+está no §7 e no §3, e é por isso que Contratos/Fiscal seguem 🟢 sem esconder nada:
+o que o banco PODE decidir, decide; o que não pode, está nomeado.
+
+**Notas sobre a pontuação, para ela não ser lida como precisão que não tem:**
+a Prontidão do Portal (100) é NOMINAL — o módulo nunca operou em produção (que
+segue em 0026); o 100 diz "sem bloqueio conhecido", não "provado em produção". E
+Capital/Fiscal/PLD dependem de **dado de negócio** (capital social,
+`parametro_fiscal`) cuja ausência é recusa deliberada e correta — pesa na
+Prontidão, não é defeito.
 
 ---
 
@@ -294,7 +336,12 @@ torna a fila acionável:
 - **A hash-chain é evidência contra adulteração retroativa, não contra
   fabricação.** Um `INSERT` forjado no ledger recebe hash válido.
 - **Não há isolamento de privilégio no banco.** A aplicação é dona das tabelas, e
-  os comentários que afirmam o contrário estão errados.
+  os comentários que afirmam o contrário estão errados. Instância concreta,
+  medida nesta sessão: um `INSERT` por SQL direto na PRÓXIMA versão de
+  `contrato_emprestimo` (corpo gerado pela app, que o banco não re-deriva) ou de
+  `apuracao_fiscal` (números inventados) ainda fabrica um vigente. A 033 fechou
+  o SALTO de versão; a monotonia é o que o banco pode; o resto é este item. A
+  apuração inconsistente é, além disso, denunciada pela memória de cálculo.
 - **Os bytes do extrato não são arquivados** — só o hash.
 - **O gate OC004 prova que alguém digitou um protocolo**, não que houve registro.
 - **Backup e banco no mesmo provedor.**

@@ -194,9 +194,12 @@ describe('mensagemDeErro', () => {
     expect(mensagemDeErro(erro)).toBe(mensagemEsperada)
   })
 
-  // Cobertura do contrato: todo SQLSTATE traduzido pelo backend
-  // (PGCODE_MAP em app/core/db_errors.py) precisa ter mensagem aqui, senão o
-  // operador recebe o texto técnico do trigger.
+  // Este it.each testa o COMPORTAMENTO de mensagemDeErro (traduz, não vaza o
+  // texto cru). A GARANTIA DE CONTRATO — de que todo código emissível pelo
+  // backend tem mensagem aqui — vive em tests/test_contrato_erro_frontend.py,
+  // que DERIVA a lista de PGCODE_MAP em vez de digitá-la: era esta lista
+  // estática que deixava um código novo do backend passar sem ficar vermelho.
+  // A lista abaixo é conveniência de teste unitário, não a fonte da verdade.
   it.each([
     'OC001',
     'OC002',
@@ -220,6 +223,7 @@ describe('mensagemDeErro', () => {
     'OC024',
     'OC025',
     'OC026',
+    'OC027',
   ])('%s tem tradução própria, e não o texto cru do backend', (codigo) => {
     const tecnico = `ERROR: trigger recusou a operação (SQLSTATE ${codigo})`
     const traduzida = mensagemDeErro(new ApiError(tecnico, codigo, 422))

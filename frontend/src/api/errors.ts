@@ -112,6 +112,11 @@ const MENSAGENS_POR_CODIGO: Record<string, string> = {
   // operador procurar defeito onde não há.
   OC026:
     'Esta agenda não recebe mais baixa: a operação dela já saiu de cobrança. Se ela foi RENEGOCIADA, a dívida viva é a da operação que substituiu esta — faça a baixa na agenda dela. Se foi LIQUIDADA, não há o que baixar: confira se o crédito não é de outra operação. Se foi BAIXADA POR PREJUÍZO, a cobrança foi encerrada e o sistema não modela recuperação — registre o movimento e procure a contabilidade. O crédito bancário continua na lista de movimentos, sem consumo.',
+  // A trilha de convites ao portal do tomador é append-only (migration 031):
+  // quem deu acesso a qual CNPJ é prova de conformidade e não se reescreve.
+  // Só o vínculo do login e a data de aceite se preenchem, uma vez.
+  OC027:
+    'Este convite ao portal já foi registrado e não pode ser alterado nem apagado — a trilha de quem recebeu acesso é a prova de quem abriu a janela. Para revogar o acesso, desative o login do tomador em vez de editar o convite.',
   OC429: 'Muitas requisições em pouco tempo. Aguarde cerca de um minuto e tente novamente.',
 }
 

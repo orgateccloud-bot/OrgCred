@@ -31,15 +31,43 @@ def get_current_user(
 
     token = credentials.credentials
     try:
-        # Supabase utiliza HS256 por padrão
+        # Supabase utiliza HS256 por padrão.
+        #
+        # `require=["exp", "sub"]` NÃO é redundante com `verify_exp`: sem ele,
+        # um token assinado com o segredo mas SEM claim `exp` é aceito e NUNCA
+        # expira — a assinatura confere, e `verify_exp` só checa um `exp` que
+        # exista. Exigir a presença fecha o token eterno. `sub` idem: sem ele o
+        # `payload.get("sub")` abaixo cairia num TokenInvalido genérico; exigido
+        # aqui, a recusa é no lugar certo.
+        #
+        # ISSUER verificado SÓ QUANDO CONFIGURADO. Supabase assina com
+        # `iss = {url}/auth/v1`. Em produção `supabase_url` pode ainda não estar
+        # setada (a chave de assinatura basta para validar), e exigir o issuer
+        # sem ele configurado recusaria todo token — fail-closed pelo motivo
+        # errado. Com a URL presente, passamos o issuer esperado ao PyJWT e um
+        # token de OUTRO projeto Supabase (mesmo que por acaso compartilhasse o
+        # segredo) é recusado. `aud` segue não verificado: o valor default do
+        # Supabase ('authenticated') é estável, mas verificá-lo sem necessidade
+        # só adicionaria uma forma de quebrar sem fechar nada que o issuer não
+        # feche.
+        # `issuer=None` faz o PyJWT NÃO verificar o emissor (comportamento de
+        # hoje, com supabase_url vazia). Com a URL setada, passamos o issuer
+        # esperado e o PyJWT recusa qualquer outro.
+        emissor_esperado = settings.supabase_url.strip()
+        issuer = f"{emissor_esperado}/auth/v1" if emissor_esperado else None
         payload = jwt.decode(
             token,
             settings.supabase_jwt_secret,
             algorithms=["HS256"],
-            options={"verify_aud": False},
+            options={"verify_aud": False, "require": ["exp", "sub"]},
+            issuer=issuer,
         )
     except jwt.ExpiredSignatureError:
         raise TokenInvalido("Token expirado")
+    except jwt.MissingRequiredClaimError:
+        raise TokenInvalido("Token sem claim obrigatória (exp/sub)")
+    except jwt.InvalidIssuerError:
+        raise TokenInvalido("Token de emissor não reconhecido")
     except jwt.PyJWTError:
         raise TokenInvalido("Assinatura inválida")
 
