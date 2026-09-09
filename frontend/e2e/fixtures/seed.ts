@@ -128,10 +128,25 @@ async function zerarCenario(client: Client) {
  * pela aplicação, não existe caminho para destruir essas trilhas.
  */
 async function limparTomadoresDeTeste(client: Client) {
-  // Logins de portal primeiro: desde a migration 031 `usuario.tomador_id`
+  // A trilha de convites primeiro: `convite_portal` (migration 031) é
+  // append-only (OC027) e referencia `usuario` E `tomador` — um convite
+  // deixado por uma rodada anterior (ou por um seed de demonstração) trava
+  // por FK os DELETEs abaixo, em QUALQUER spec. Apagar exige desligar a
+  // guarda com nome e sobrenome, como nas outras trilhas — e é bom que doa:
+  // pela aplicação não existe caminho para destruir a prova de quem recebeu
+  // acesso.
+  await client.query('alter table convite_portal disable trigger trg_convite_portal_imutavel')
+  await client.query('alter table convite_portal disable trigger trg_bloquear_truncate_convite')
+  await client.query(
+    `delete from convite_portal
+      where tomador_id in (select id from tomador where cnpj like '9999%')`,
+  )
+  await client.query('alter table convite_portal enable trigger trg_convite_portal_imutavel')
+  await client.query('alter table convite_portal enable trigger trg_bloquear_truncate_convite')
+
+  // Logins de portal em seguida: desde a migration 031 `usuario.tomador_id`
   // referencia `tomador`, e um login deixado pelo spec do portal numa rodada
-  // anterior faria o DELETE de tomador abaixo falhar por FK — em QUALQUER
-  // spec, não só no do portal, porque todos limpam por aqui.
+  // anterior faria o DELETE de tomador abaixo falhar por FK.
   await client.query(
     `delete from usuario
       where tomador_id in (select id from tomador where cnpj like '9999%')`,
