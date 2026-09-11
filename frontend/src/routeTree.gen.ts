@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as PortalRouteImport } from './routes/portal'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DefinirSenhaRouteImport } from './routes/definir-senha'
+import { Route as AppRouteImport } from './routes/app'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
@@ -40,6 +41,11 @@ const LoginRoute = LoginRouteImport.update({
 const DefinirSenhaRoute = DefinirSenhaRouteImport.update({
   id: '/definir-senha',
   path: '/definir-senha',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -119,6 +125,7 @@ const AuthenticatedOperacoesIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/app': typeof AppRoute
   '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
   '/portal': typeof PortalRouteWithChildren
@@ -136,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/tomadores/': typeof AuthenticatedTomadoresIndexRoute
 }
 export interface FileRoutesByTo {
+  '/app': typeof AppRoute
   '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
@@ -155,6 +163,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/app': typeof AppRoute
   '/definir-senha': typeof DefinirSenhaRoute
   '/login': typeof LoginRoute
   '/portal': typeof PortalRouteWithChildren
@@ -176,6 +185,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/app'
     | '/definir-senha'
     | '/login'
     | '/portal'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/tomadores/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/app'
     | '/definir-senha'
     | '/login'
     | '/auditoria'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_authenticated'
+    | '/app'
     | '/definir-senha'
     | '/login'
     | '/portal'
@@ -231,6 +243,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  AppRoute: typeof AppRoute
   DefinirSenhaRoute: typeof DefinirSenhaRoute
   LoginRoute: typeof LoginRoute
   PortalRoute: typeof PortalRouteWithChildren
@@ -257,6 +270,13 @@ declare module '@tanstack/react-router' {
       path: '/definir-senha'
       fullPath: '/definir-senha'
       preLoaderRoute: typeof DefinirSenhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -407,6 +427,7 @@ const PortalRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  AppRoute: AppRoute,
   DefinirSenhaRoute: DefinirSenhaRoute,
   LoginRoute: LoginRoute,
   PortalRoute: PortalRouteWithChildren,

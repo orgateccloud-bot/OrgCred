@@ -6,6 +6,8 @@ import { papelDoLogin } from '@/auth/papel'
 import { AppSidebar } from '@/components/app-sidebar'
 import { CommandPalette } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { OrgCredMobileApp } from '@/mobile/OrgCredMobileApp'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -61,6 +63,19 @@ function AuthenticatedLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const trilha = migalhas(pathname)
   const [paletaAberta, setPaletaAberta] = useState(false)
+  const isMobile = useIsMobile()
+
+  // Em telas estreitas o painel VIRA o app mobile v2 (OrgCred Mobile). O shell
+  // de sidebar é desktop; no celular o operador recebe o app nativo-mobile, com
+  // navegação própria por estado. O painel desktop (largo) segue intacto — zero
+  // regressão. É o "no lugar" do plano; a mesma tela também mora em `/app`.
+  if (isMobile) {
+    return (
+      <div style={{ height: '100dvh', width: '100%' }}>
+        <OrgCredMobileApp />
+      </div>
+    )
+  }
 
   return (
     <SidebarProvider>
